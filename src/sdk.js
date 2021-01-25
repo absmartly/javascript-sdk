@@ -13,18 +13,34 @@ export default class SDK {
 		this.client = new Client(options);
 	}
 
-	createContext(params) {
-		const transformed = Object.assign({}, params, {
-			units: Object.keys(params.units).map((type) => ({
-				type,
-				uid: params.units[type],
-			})),
-		});
+	createContext(params, options) {
+		const transformed = Object.assign(
+			{},
+			{
+				units: Object.keys(params.units).map((type) => ({
+					type,
+					uid: params.units[type],
+				})),
+			}
+		);
+
+		options = SDK._contextOptions(options);
 		const data = this.client.createContext(transformed);
-		return new Context(this, this.client, data);
+		return new Context(this, this.client, options, data);
 	}
 
-	createContextWith(data) {
-		return new Context(this, this.client, data);
+	createContextWith(data, options) {
+		options = SDK._contextOptions(options);
+		return new Context(this, this.client, options, data);
+	}
+
+	static _contextOptions(options) {
+		const isBrowser = typeof window !== "undefined" && typeof window.navigator !== "undefined";
+		return Object.assign(
+			{
+				publishDelay: isBrowser ? 200 : -1,
+			},
+			options || {}
+		);
 	}
 }

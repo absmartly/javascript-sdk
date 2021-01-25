@@ -30,6 +30,10 @@ describe("SDK", () => {
 		const promise = Promise.resolve({});
 		sdk.client.createContext.mockReturnValue(promise);
 
+		const options = {
+			publishDelay: -1,
+		};
+
 		const request = {
 			units: {
 				session_id: "ab",
@@ -45,7 +49,7 @@ describe("SDK", () => {
 		});
 
 		expect(Context).toHaveBeenCalledTimes(1);
-		expect(Context).toHaveBeenCalledWith(sdk, sdk.client, promise);
+		expect(Context).toHaveBeenCalledWith(sdk, sdk.client, options, promise);
 
 		done();
 	});
@@ -55,6 +59,10 @@ describe("SDK", () => {
 			guid: "test",
 		};
 
+		const options = {
+			publishDelay: -1,
+		};
+
 		const sdk = new SDK(sdkOptions);
 		const context = sdk.createContextWith(data);
 
@@ -62,7 +70,7 @@ describe("SDK", () => {
 		expect(sdk.client.createContext).not.toHaveBeenCalled();
 
 		expect(Context).toHaveBeenCalledTimes(1);
-		expect(Context).toHaveBeenCalledWith(sdk, sdk.client, data);
+		expect(Context).toHaveBeenCalledWith(sdk, sdk.client, options, data);
 
 		done();
 	});

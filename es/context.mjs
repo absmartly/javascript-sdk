@@ -1,9 +1,10 @@
 export default class Context {
-  constructor(sdk, client, promise) {
-    this.sdk = sdk;
-    this.client = client;
-    this.pendingCount = 0;
-    this.failed = false;
+  constructor(sdk, client, options, promise) {
+    this._sdk = sdk;
+    this._cli = client;
+    this._opts = options;
+    this._pending = 0;
+    this._failed = false;
 
     const initialize = data => {
       this._data = data;
@@ -11,20 +12,20 @@ export default class Context {
         [experiment.name]: index
       })));
       this.exposed = {};
-      this.pendingExposures = [];
-      this.pendingGoals = [];
-      this.currentAttributes = [];
+      this._exposures = [];
+      this._goals = [];
+      this._attrs = [];
     };
 
     if (promise instanceof Promise) {
-      this.promise = promise.then(data => {
+      this._promise = promise.then(data => {
         initialize(data);
-        delete this.promise;
+        delete this._promise;
       }).catch(error => {
         console.error(`ABSmartly Context: ${error}`);
         initialize({});
-        this.failed = true;
-        delete this.promise;
+        this._failed = true;
+        delete this._promise;
       });
     } else {
       initialize(promise);
@@ -32,11 +33,11 @@ export default class Context {
   }
 
   isReady() {
-    return this.promise === undefined;
+    return this._promise === undefined;
   }
 
   isFailed() {
-    return this.failed;
+    return this._failed;
   }
 
   ready() {
@@ -45,12 +46,12 @@ export default class Context {
     }
 
     return new Promise(resolve => {
-      this.promise.then(() => resolve(true)).catch(e => resolve(e));
+      this._promise.then(() => resolve(true)).catch(e => resolve(e));
     });
   }
 
   pending() {
-    return this.pendingCount;
+    return this._pending;
   }
 
   data() {
@@ -74,7 +75,7 @@ export default class Context {
   }
 
   attribute(attrName, value) {
-    this.currentAttributes.push({
+    this._attrs.push({
       name: attrName,
       value: value.toString(),
       setAt: Date.now()
@@ -85,7 +86,7 @@ export default class Context {
     const now = Date.now();
 
     for (const [attrName, value] of Object.entries(attrs)) {
-      this.currentAttributes.push({
+      this._attrs.push({
         name: attrName,
         value: value.toString(),
         setAt: now
@@ -131,14 +132,17 @@ export default class Context {
     const exposed = (experimentName in this.exposed);
 
     if (!exposed) {
-      this.pendingExposures.push({
+      this._exposures.push({
         name: experimentName,
         variant,
         exposedAt: Date.now(),
         assigned
       });
-      this.pendingCount++;
+
+      this._pending++;
       this.exposed[experimentName] = true;
+
+      this._setTimeout();
     }
 
     return variant;
@@ -159,37 +163,53 @@ export default class Context {
       }
     }
 
-    this.pendingGoals.push({
+    this._goals.push({
       name: goalName,
       values,
       achievedAt: Date.now()
     });
-    this.pendingCount++;
+
+    this._pending++;
+
+    this._setTimeout();
+  }
+
+  _setTimeout() {
+    if (this.timeout === undefined && this._opts.publishDelay >= 0) {
+      this.timeout = setTimeout(() => {
+        this._flush();
+      }, this._opts.publishDelay);
+    }
   }
 
   _flush(callback) {
-    if (this.pendingCount === 0) {
+    if (this.timeout !== undefined) {
+      clearTimeout(this.timeout);
+      delete this.timeout;
+    }
+
+    if (this._pending === 0) {
       if (typeof callback === "function") {
         callback();
       }
     } else {
-      if (!this.failed) {
+      if (!this._failed) {
         const request = {
           guid: this._data.guid,
           units: this._data.units,
           application: this._data.application
         };
 
-        if (this.pendingGoals.length > 0) {
-          request.goals = this.pendingGoals.map(x => ({
+        if (this._goals.length > 0) {
+          request.goals = this._goals.map(x => ({
             name: x.name,
             achievedAt: x.achievedAt,
             values: x.values
           }));
         }
 
-        if (this.pendingExposures.length > 0) {
-          request.exposures = this.pendingExposures.map(x => ({
+        if (this._exposures.length > 0) {
+          request.exposures = this._exposures.map(x => ({
             name: x.name,
             exposedAt: x.exposedAt,
             variant: x.variant,
@@ -197,15 +217,15 @@ export default class Context {
           }));
         }
 
-        if (this.currentAttributes.length > 0) {
-          request.attributes = this.currentAttributes.map(x => ({
+        if (this._attrs.length > 0) {
+          request.attributes = this._attrs.map(x => ({
             name: x.name,
             value: x.value,
             setAt: x.setAt
           }));
         }
 
-        this.client.publish(request).then(() => {
+        this._cli.publish(request).then(() => {
           if (typeof callback === "function") {
             callback();
           }
@@ -220,9 +240,9 @@ export default class Context {
         }
       }
 
-      this.pendingCount = 0;
-      this.pendingExposures = [];
-      this.pendingGoals = [];
+      this._pending = 0;
+      this._exposures = [];
+      this._goals = [];
     }
   }
 

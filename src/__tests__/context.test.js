@@ -51,8 +51,12 @@ describe("Context", () => {
 	const sdk = new SDK();
 	const client = new Client();
 
+	const contextOptions = {
+		publishDelay: -1,
+	};
+
 	it("should be ready with data", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.isReady()).toEqual(true);
 		expect(context.isFailed()).toEqual(false);
 
@@ -65,7 +69,7 @@ describe("Context", () => {
 	});
 
 	it("should become ready and call handler", (done) => {
-		const context = new Context(sdk, client, Promise.resolve(createContextResponse));
+		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
 		expect(context.isReady()).toEqual(false);
 		expect(context.isFailed()).toEqual(false);
 
@@ -80,7 +84,7 @@ describe("Context", () => {
 	it("should become ready and failed, and call handler on failure", (done) => {
 		jest.spyOn(console, "error").mockImplementation(() => {});
 
-		const context = new Context(sdk, client, Promise.reject("bad request error text"));
+		const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
 		expect(context.isReady()).toEqual(false);
 		expect(context.isFailed()).toEqual(false);
 
@@ -96,7 +100,7 @@ describe("Context", () => {
 	});
 
 	it("should throw when not ready", (done) => {
-		const context = new Context(sdk, client, Promise.resolve(createContextResponse));
+		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
 		expect(context.isReady()).toEqual(false);
 		expect(context.isFailed()).toEqual(false);
 
@@ -109,7 +113,7 @@ describe("Context", () => {
 	});
 
 	it("constructor() should load experiment data", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 
 		expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
 		for (const assignment of createContextResponse.assignments) {
@@ -124,7 +128,7 @@ describe("Context", () => {
 	});
 
 	it("treatment() should queue exposures only once", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		for (const assignment of createContextResponse.assignments) {
@@ -143,7 +147,7 @@ describe("Context", () => {
 	});
 
 	it("treatment() should queue exposure with base variant on unknown experiment", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		expect(context.treatment("not_found")).toEqual(0);
@@ -154,7 +158,7 @@ describe("Context", () => {
 	});
 
 	it("track() should queue goals", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		context.track("goal1", [125, 245]);
@@ -170,7 +174,7 @@ describe("Context", () => {
 	});
 
 	it("track() should throw when too many goal values", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		expect(() => context.track("goal1", [125, 245, 999])).toThrow();
@@ -180,7 +184,7 @@ describe("Context", () => {
 	});
 
 	it("track() should throw when goal values not integers", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		expect(() => context.track("goal1", 125.125)).toThrowError();
@@ -196,7 +200,7 @@ describe("Context", () => {
 		const timeOrigin = 1611141535729;
 		jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		context.track("goal1", 125.0);
@@ -227,7 +231,7 @@ describe("Context", () => {
 	});
 
 	it("publish() should not call client publish when queue is empty", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		client.publish.mockReturnValue(Promise.resolve());
@@ -239,7 +243,7 @@ describe("Context", () => {
 	});
 
 	it("publish() should propagate client error message", (done) => {
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 		expect(context.pending()).toEqual(0);
 
 		context.track("goal1", [125.0, 245]);
@@ -257,7 +261,7 @@ describe("Context", () => {
 		const timeOrigin = 1611141535729;
 		jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 
 		context.treatment("exp_test_ab");
 
@@ -327,7 +331,7 @@ describe("Context", () => {
 		const timeOrigin = 1611141535729;
 		jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-		const context = new Context(sdk, client, Promise.reject("bad request error text"));
+		const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
 		context.ready().then(() => {
 			context.treatment("exp_test_ab");
 
@@ -349,7 +353,7 @@ describe("Context", () => {
 		const timeOrigin = 1611141535729;
 		jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-		const context = new Context(sdk, client, createContextResponse);
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
 
 		context.treatment("exp_test_ab");
 		context.treatment("not_found");
@@ -433,5 +437,79 @@ describe("Context", () => {
 
 				done();
 			});
+	});
+
+	it("publish() should be called options.publishDelay ms after an exposure being queued", () => {
+		jest.useFakeTimers();
+
+		const publishDelay = 100;
+		const context = new Context(
+			sdk,
+			client,
+			Object.assign(contextOptions, { publishDelay }),
+			createContextResponse
+		);
+
+		expect(context.isReady()).toEqual(true);
+		expect(context.isFailed()).toEqual(false);
+
+		context.treatment("exp_test_ab");
+
+		expect(context.pending()).toEqual(1);
+		expect(setTimeout).toHaveBeenCalledTimes(1);
+		expect(setTimeout).toHaveBeenLastCalledWith(expect.anything(), publishDelay);
+
+		context.track("goal1", 125);
+
+		expect(context.pending()).toEqual(2);
+		expect(setTimeout).toHaveBeenCalledTimes(1); // no new calls
+		expect(setTimeout).toHaveBeenLastCalledWith(expect.anything(), publishDelay);
+
+		jest.advanceTimersByTime(publishDelay - 1);
+
+		expect(client.publish).not.toHaveBeenCalled();
+
+		client.publish.mockReturnValue(Promise.resolve({}));
+
+		jest.runAllTimers();
+
+		expect(client.publish).toHaveBeenCalledTimes(1);
+	});
+
+	it("publish() should be called options.publishDelay ms after a goal being queued", () => {
+		jest.useFakeTimers();
+
+		const publishDelay = 100;
+		const context = new Context(
+			sdk,
+			client,
+			Object.assign(contextOptions, { publishDelay }),
+			createContextResponse
+		);
+
+		expect(context.isReady()).toEqual(true);
+		expect(context.isFailed()).toEqual(false);
+
+		context.track("goal1", 125);
+
+		expect(context.pending()).toEqual(1);
+		expect(setTimeout).toHaveBeenCalledTimes(1);
+		expect(setTimeout).toHaveBeenLastCalledWith(expect.anything(), publishDelay);
+
+		context.treatment("exp_test_ab");
+
+		expect(context.pending()).toEqual(2);
+		expect(setTimeout).toHaveBeenCalledTimes(1); // no new calls
+		expect(setTimeout).toHaveBeenLastCalledWith(expect.anything(), publishDelay);
+
+		jest.advanceTimersByTime(publishDelay - 1);
+
+		expect(client.publish).not.toHaveBeenCalled();
+
+		client.publish.mockReturnValue(Promise.resolve({}));
+
+		jest.runAllTimers();
+
+		expect(client.publish).toHaveBeenCalledTimes(1);
 	});
 });
