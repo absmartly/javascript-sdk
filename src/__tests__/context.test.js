@@ -22,21 +22,7 @@ describe("Context", () => {
 				eligible: true,
 				overriden: false,
 				originalVariant: 1,
-				config: [
-					{
-						key: "a",
-						value: "1",
-					},
-					{
-						key: "b.c.a",
-						value: "2",
-					},
-					{
-						key: "b.c.b",
-						value: '{"test": 5}',
-						format: "json",
-					},
-				],
+				config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5,}}',
 			},
 			{
 				name: "exp_test_abc",
@@ -44,6 +30,7 @@ describe("Context", () => {
 				eligible: true,
 				overriden: false,
 				originalVariant: 2,
+				config: '{"a":"2","b.c.a":"3","a.c.b":{"test":2,}}',
 			},
 		],
 	};
@@ -118,11 +105,11 @@ describe("Context", () => {
 		expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
 		for (const assignment of createContextResponse.assignments) {
 			expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-			expect(context.experimentConfig(assignment.name)).toEqual(assignment.config || []);
+			expect(context.experimentConfig(assignment.name)).toEqual(assignment.config || {});
 			expect(context.data()).toEqual(createContextResponse);
 		}
 
-		expect(context.experimentConfig("not_found")).toEqual([]);
+		expect(context.experimentConfig("not_found")).toEqual({});
 
 		done();
 	});

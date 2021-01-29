@@ -7,16 +7,10 @@ describe("Config", () => {
 	it("mergeConfig() should create getters that call treatment", (done) => {
 		const context = new Context();
 
-		const mockConfig = [
-			{
-				key: "d",
-				value: 5,
-			},
-			{
-				key: "e",
-				value: 5,
-			},
-		];
+		const mockConfig = {
+			d: 5,
+			e: 5,
+		};
 
 		context.experiments.mockReturnValue(["exp_test"]);
 		context.experimentConfig.mockReturnValue(mockConfig);
@@ -33,12 +27,12 @@ describe("Config", () => {
 		expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
 		expect(actual).toStrictEqual(previousConfig);
 
-		expect(actual.d).toEqual(mockConfig.filter((x) => x.key === "d")[0].value);
+		expect(actual.d).toEqual(mockConfig["d"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
 
-		expect(actual.e).toEqual(mockConfig.filter((x) => x.key === "e")[0].value);
+		expect(actual.e).toEqual(mockConfig["e"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 
@@ -48,16 +42,10 @@ describe("Config", () => {
 	it("mergeConfig() should merge dotted keys", (done) => {
 		const context = new Context();
 
-		const mockConfig = [
-			{
-				key: "c.d",
-				value: 5,
-			},
-			{
-				key: "e.f",
-				value: 5,
-			},
-		];
+		const mockConfig = {
+			"c.d": 5,
+			"e.f": 5,
+		};
 
 		context.experiments.mockReturnValue(["exp_test"]);
 		context.experimentConfig.mockReturnValue(mockConfig);
@@ -88,12 +76,12 @@ describe("Config", () => {
 		expect(actual).toStrictEqual(expected);
 		context.treatment.mockClear();
 
-		expect(actual.c.d).toEqual(mockConfig.filter((x) => x.key === "c.d")[0].value);
+		expect(actual.c.d).toEqual(mockConfig["c.d"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
 
-		expect(actual.e.f).toEqual(mockConfig.filter((x) => x.key === "e.f")[0].value);
+		expect(actual.e.f).toEqual(mockConfig["e.f"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
@@ -106,20 +94,14 @@ describe("Config", () => {
 
 		const context = new Context();
 
-		const mockConfig = [
-			{
-				key: "b.c.d",
-				value: 5,
-			},
-			{
-				key: "c.d",
-				value: 5,
-			},
-			{
-				key: "d.e",
-				value: 5,
-			},
-		];
+		const mockConfig = {
+			"b.c.d": 5,
+			"c.d": 5,
+			"d.e": 5,
+			"e.f": {
+				a: 5,
+			}
+		};
 
 		context.experiments.mockReturnValue(["exp_test"]);
 		context.experimentConfig.mockReturnValue(mockConfig);
@@ -135,6 +117,9 @@ describe("Config", () => {
 					f: 3,
 				},
 			},
+			e: {
+				f: 1,
+			}
 		};
 
 		const expected = {
@@ -150,6 +135,11 @@ describe("Config", () => {
 			d: {
 				e: 5,
 			},
+			e: {
+				f: {
+					a: 5,
+				}
+			}
 		};
 
 		const actual = mergeConfig(context, previousConfig);
@@ -157,17 +147,17 @@ describe("Config", () => {
 		expect(actual).toStrictEqual(expected);
 		context.treatment.mockClear();
 
-		expect(actual.b.c.d).toEqual(mockConfig.filter((x) => x.key === "b.c.d")[0].value);
+		expect(actual.b.c.d).toEqual(mockConfig["b.c.d"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
 
-		expect(actual.c.d).toEqual(mockConfig.filter((x) => x.key === "c.d")[0].value);
+		expect(actual.c.d).toEqual(mockConfig["c.d"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
 
-		expect(actual.d.e).toEqual(mockConfig.filter((x) => x.key === "d.e")[0].value);
+		expect(actual.d.e).toEqual(mockConfig["d.e"]);
 		expect(context.treatment).toHaveBeenCalledTimes(1);
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
@@ -186,67 +176,54 @@ describe("Config", () => {
 		done();
 	});
 
-	it("mergeConfig() should format values", (done) => {
-		jest.spyOn(console, "warn").mockImplementation(() => {});
+	it("mergeConfig() should error with multiple experiments overriding key", (done) => {
+		jest.spyOn(console, "error").mockImplementation(() => {});
 
 		const context = new Context();
 
-		const mockConfig = [
-			{
-				key: "json",
-				value: '{"key":"test","value":5}',
-				format: "json",
-			},
-			{
-				key: "string",
-				value: "test",
-			},
-			{
-				key: "number",
-				value: "5",
-				format: "number",
-			},
-		];
+		const mockConfig = {
+			"a": 5,
+			"b.c.d": 5,
+		};
 
-		context.experiments.mockReturnValue(["exp_test"]);
-		context.experimentConfig.mockReturnValue(mockConfig);
+		const mockConfigOverride = {
+			"a": 4,
+			"b.c.d": 4,
+		};
+
+		context.experiments.mockReturnValue(["exp_test", "exp_test_override"]);
+		context.experimentConfig.mockReturnValueOnce(mockConfig);
+		context.experimentConfig.mockReturnValueOnce(mockConfigOverride);
 
 		const previousConfig = {
 			a: 1,
-			b: 2,
-			c: 3,
+			b: {
+				c: {
+					d: 1,
+				},
+			},
 		};
 
 		const expected = {
-			a: 1,
-			b: 2,
-			c: 3,
-			// json: {
-			// 	key: "test",
-			// 	value: 5
-			// },
-			// string: "test",
-			// number: "5",
+			a: 5,
+			b: {
+				c: {
+					d: 5,
+				},
+			},
 		};
 
 		const actual = mergeConfig(context, previousConfig);
 		expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
 		expect(actual).toStrictEqual(expected);
-		context.treatment.mockClear();
 
-		expect(actual.json).toEqual(JSON.parse(mockConfig.filter((x) => x.key === "json")[0].value));
-		expect(context.treatment).toHaveBeenCalledWith("exp_test");
-		context.treatment.mockClear();
-
-		expect(actual.string).toStrictEqual(mockConfig.filter((x) => x.key === "string")[0].value);
-		expect(context.treatment).toHaveBeenCalledWith("exp_test");
-		context.treatment.mockClear();
-
-		expect(actual.number).toStrictEqual(mockConfig.filter((x) => x.key === "number")[0].value);
-		expect(context.treatment).toHaveBeenCalledWith("exp_test");
-		context.treatment.mockClear();
-
-		expect(console.warn).toHaveBeenCalledTimes(1);
+		expect(console.error).toHaveBeenCalledTimes(2);
+		expect(console.error).toHaveBeenCalledWith(
+			"Config key 'a' already set by experiment 'exp_test'."
+		);
+		expect(console.error).toHaveBeenCalledWith(
+			"Config key 'b.c.d' already set by experiment 'exp_test'."
+		);
 
 		done();
 	});

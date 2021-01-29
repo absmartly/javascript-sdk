@@ -111,10 +111,10 @@ export default class Context {
 		this._checkReady();
 
 		if (experimentName in this.assignments) {
-			return this._data.assignments[this.assignments[experimentName]].config || [];
+			return this._data.assignments[this.assignments[experimentName]].config || {};
 		}
 
-		return [];
+		return {};
 	}
 
 	_checkReady() {
