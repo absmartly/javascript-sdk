@@ -6,29 +6,21 @@ export default class Context {
     this._pending = 0;
     this._failed = false;
 
-    const initialize = data => {
-      this._data = data;
-      this.assignments = Object.assign({}, ...(data.assignments || []).map((experiment, index) => ({
-        [experiment.name]: index
-      })));
-      this.exposed = {};
-      this._exposures = [];
-      this._goals = [];
-      this._attrs = [];
-    };
-
     if (promise instanceof Promise) {
       this._promise = promise.then(data => {
-        initialize(data);
+        this._init(data);
+
         delete this._promise;
       }).catch(error => {
         console.error(`ABSmartly Context: ${error}`);
-        initialize({});
+
+        this._init({});
+
         this._failed = true;
         delete this._promise;
       });
     } else {
-      initialize(promise);
+      this._init(promise);
     }
   }
 
@@ -74,6 +66,20 @@ export default class Context {
     });
   }
 
+  refresh() {
+    this._checkReady();
+
+    return new Promise((resolve, reject) => {
+      this._refresh(error => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
   attribute(attrName, value) {
     this._attrs.push({
       name: attrName,
@@ -105,17 +111,17 @@ export default class Context {
   experiments() {
     this._checkReady();
 
-    return Object.keys(this.assignments);
+    return Object.keys(this._assignments);
   }
 
   experimentConfig(experimentName) {
     this._checkReady();
 
-    if (experimentName in this.assignments) {
-      return this._data.assignments[this.assignments[experimentName]].config || [];
+    if (experimentName in this._assignments) {
+      return this._data.assignments[this._assignments[experimentName]].config || {};
     }
 
-    return [];
+    return {};
   }
 
   _checkReady() {
@@ -127,9 +133,9 @@ export default class Context {
   _treatment(experimentName) {
     this._checkReady();
 
-    const assigned = (experimentName in this.assignments);
-    const variant = assigned ? this._data.assignments[this.assignments[experimentName]].variant : 0;
-    const exposed = (experimentName in this.exposed);
+    const assigned = (experimentName in this._assignments);
+    const variant = assigned ? this._data.assignments[this._assignments[experimentName]].variant : 0;
+    const exposed = (experimentName in this._exposed);
 
     if (!exposed) {
       this._exposures.push({
@@ -140,7 +146,7 @@ export default class Context {
       });
 
       this._pending++;
-      this.exposed[experimentName] = true;
+      this._exposed[experimentName] = true;
 
       this._setTimeout();
     }
@@ -244,6 +250,43 @@ export default class Context {
       this._exposures = [];
       this._goals = [];
     }
+  }
+
+  _refresh(callback) {
+    if (!this._failed) {
+      const request = {
+        guid: this._data.guid,
+        units: this._data.units,
+        application: this._data.application
+      };
+
+      this._cli.refreshContext(request).then(data => {
+        this._init(data, this._exposed);
+
+        if (typeof callback === "function") {
+          callback();
+        }
+      }).catch(e => {
+        if (typeof callback === "function") {
+          callback(e);
+        }
+      });
+    } else {
+      if (typeof callback === "function") {
+        callback();
+      }
+    }
+  }
+
+  _init(data, exposed = {}) {
+    this._data = data;
+    this._assignments = Object.assign({}, ...(data.assignments || []).map((experiment, index) => ({
+      [experiment.name]: index
+    })));
+    this._exposed = exposed;
+    this._exposures = [];
+    this._goals = [];
+    this._attrs = [];
   }
 
 }

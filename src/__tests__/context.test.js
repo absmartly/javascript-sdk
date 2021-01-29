@@ -35,6 +35,19 @@ describe("Context", () => {
 		],
 	};
 
+	const refreshContextResponse = Object.assign({}, createContextResponse, {
+		assignments: [
+			{
+				name: "exp_test_refreshed",
+				variant: 2,
+				eligible: true,
+				overriden: false,
+				originalVariant: 2,
+				config: '{"c":"5"}',
+			},
+		].concat(createContextResponse.assignments),
+	});
+
 	const sdk = new SDK();
 	const client = new Client();
 
@@ -106,12 +119,94 @@ describe("Context", () => {
 		for (const assignment of createContextResponse.assignments) {
 			expect(context.treatment(assignment.name)).toEqual(assignment.variant);
 			expect(context.experimentConfig(assignment.name)).toEqual(assignment.config || {});
-			expect(context.data()).toEqual(createContextResponse);
 		}
-
+		expect(context.data()).toEqual(createContextResponse);
 		expect(context.experimentConfig("not_found")).toEqual({});
 
 		done();
+	});
+
+	it("refresh() should call client refresh and load new data", (done) => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.refreshContext.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+		context.refresh().then(() => {
+			expect(client.refreshContext).toHaveBeenCalledTimes(1);
+			expect(client.refreshContext).toHaveBeenCalledWith({
+				guid: createContextResponse.guid,
+				units: refreshContextResponse.units,
+				application: refreshContextResponse.application,
+			});
+
+			expect(context.experiments()).toEqual(refreshContextResponse.assignments.map((x) => x.name));
+			for (const assignment of refreshContextResponse.assignments) {
+				expect(context.treatment(assignment.name)).toEqual(assignment.variant);
+				expect(context.experimentConfig(assignment.name)).toEqual(assignment.config || {});
+			}
+			expect(context.data()).toEqual(refreshContextResponse);
+			expect(context.experimentConfig("not_found")).toEqual({});
+
+			done();
+		});
+	});
+
+	it("refresh() promise should reject", (done) => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.refreshContext.mockReturnValueOnce(Promise.reject(new Error("test error")));
+
+		context.refresh().catch((error) => {
+			expect(error.message).toEqual("test error");
+			done();
+		});
+	});
+
+	it("refresh() should not re-queue exposures after refresh", (done) => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		for (const assignment of createContextResponse.assignments) {
+			context.treatment(assignment.name);
+		}
+
+		expect(context.pending()).toEqual(2);
+
+		context.refresh().then(() => {
+			expect(context.pending()).toEqual(2);
+
+			expect(client.refreshContext).toHaveBeenCalledTimes(1);
+			expect(client.refreshContext).toHaveBeenCalledWith({
+				guid: createContextResponse.guid,
+				units: refreshContextResponse.units,
+				application: refreshContextResponse.application,
+			});
+
+			for (const assignment of createContextResponse.assignments) {
+				context.treatment(assignment.name);
+			}
+
+			expect(context.pending()).toEqual(2);
+
+			for (const assignment of refreshContextResponse.assignments) {
+				context.treatment(assignment.name);
+			}
+
+			expect(context.pending()).toEqual(3);
+
+			done();
+		});
+	});
+
+	it("refresh() should not call client publish when failed", (done) => {
+		const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+
+		context.ready().then(() => {
+			context.refresh().then(() => {
+				expect(client.refreshContext).toHaveBeenCalledTimes(0);
+
+				done();
+			});
+		});
 	});
 
 	it("treatment() should queue exposures only once", (done) => {

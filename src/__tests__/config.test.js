@@ -98,9 +98,9 @@ describe("Config", () => {
 			"b.c.d": 5,
 			"c.d": 5,
 			"d.e": 5,
-			"e.f": {
-				a: 5,
-			}
+			e: {
+				f: 5,
+			},
 		};
 
 		context.experiments.mockReturnValue(["exp_test"]);
@@ -117,9 +117,7 @@ describe("Config", () => {
 					f: 3,
 				},
 			},
-			e: {
-				f: 1,
-			}
+			e: 1,
 		};
 
 		const expected = {
@@ -136,10 +134,8 @@ describe("Config", () => {
 				e: 5,
 			},
 			e: {
-				f: {
-					a: 5,
-				}
-			}
+				f: 5,
+			},
 		};
 
 		const actual = mergeConfig(context, previousConfig);
@@ -162,7 +158,12 @@ describe("Config", () => {
 		expect(context.treatment).toHaveBeenCalledWith("exp_test");
 		context.treatment.mockClear();
 
-		expect(console.warn).toHaveBeenCalledTimes(3);
+		expect(actual.e).toEqual(mockConfig["e"]);
+		expect(context.treatment).toHaveBeenCalledTimes(1);
+		expect(context.treatment).toHaveBeenCalledWith("exp_test");
+		context.treatment.mockClear();
+
+		expect(console.warn).toHaveBeenCalledTimes(4);
 		expect(console.warn).toHaveBeenCalledWith(
 			"Config key 'b.c.d' for experiment 'exp_test' is overriding non-object value at 'b.c' with an object."
 		);
@@ -171,6 +172,9 @@ describe("Config", () => {
 		);
 		expect(console.warn).toHaveBeenCalledWith(
 			"Config key 'd.e' for experiment 'exp_test' is overriding object with non-object value."
+		);
+		expect(console.warn).toHaveBeenCalledWith(
+			"Config key 'e' for experiment 'exp_test' is overriding non-object value with object."
 		);
 
 		done();
@@ -182,12 +186,12 @@ describe("Config", () => {
 		const context = new Context();
 
 		const mockConfig = {
-			"a": 5,
+			a: 5,
 			"b.c.d": 5,
 		};
 
 		const mockConfigOverride = {
-			"a": 4,
+			a: 4,
 			"b.c.d": 4,
 		};
 
@@ -218,12 +222,8 @@ describe("Config", () => {
 		expect(actual).toStrictEqual(expected);
 
 		expect(console.error).toHaveBeenCalledTimes(2);
-		expect(console.error).toHaveBeenCalledWith(
-			"Config key 'a' already set by experiment 'exp_test'."
-		);
-		expect(console.error).toHaveBeenCalledWith(
-			"Config key 'b.c.d' already set by experiment 'exp_test'."
-		);
+		expect(console.error).toHaveBeenCalledWith("Config key 'a' already set by experiment 'exp_test'.");
+		expect(console.error).toHaveBeenCalledWith("Config key 'b.c.d' already set by experiment 'exp_test'.");
 
 		done();
 	});

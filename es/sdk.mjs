@@ -3,7 +3,7 @@ import Context from "./context";
 export default class SDK {
   constructor(options) {
     options = Object.assign({
-      agent: "javascript-sdk"
+      agent: "absmartly-javascript-sdk"
     }, options);
     this.client = new Client(options);
   }

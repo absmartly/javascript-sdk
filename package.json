@@ -26,10 +26,10 @@
 		"build-browser": "TARGET=browser webpack --progress --config webpack.config.js && TARGET=browser NODE_ENV=production webpack --progress --config webpack.config.js",
 		"build-cjs": "TARGET=cjs babel src --delete-dir-on-start --ignore 'src/__tests__' --ignore 'src/browser.js' -d lib",
 		"build-mjs": "TARGET=mjs babel src --delete-dir-on-start --ignore 'src/__tests__' --ignore 'src/browser.js' --out-file-extension=.mjs -d es",
-		"build": "npm run -s build-mjs && npm run -s build-cjs && npm run -s build-browser",
+		"build": "npm run -s format && npm run -s lint && npm run -s test && npm run -s build-mjs && npm run -s build-cjs && npm run -s build-browser",
 		"lint": "eslint -f stylish 'src/**/*.{js,mjs,jsx}'",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json}'",
-		"prepack": "npm run -s test && npm run -s build",
+		"prepack": "npm run -s build",
 		"test": "jest --coverage"
 	},
 	"browser": {
