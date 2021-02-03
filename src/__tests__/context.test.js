@@ -8,13 +8,12 @@ jest.mock("../sdk");
 describe("Context", () => {
 	const createContextResponse = {
 		guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
-		application: {
-			name: "website",
-			version: 1_000_000,
-		},
-		units: {
-			session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-		},
+		units: [
+			{
+				type: "session_id",
+				uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+			},
+		],
 		assignments: [
 			{
 				name: "exp_test_ab",
@@ -63,6 +62,7 @@ describe("Context", () => {
 		context.ready().then(() => {
 			expect(context.isReady()).toEqual(true);
 			expect(context.data()).toStrictEqual(createContextResponse);
+			expect(context.client()).toBe(client);
 
 			done();
 		});
@@ -76,6 +76,7 @@ describe("Context", () => {
 		context.ready().then(() => {
 			expect(context.isReady()).toEqual(true);
 			expect(context.data()).toStrictEqual(createContextResponse);
+			expect(context.client()).toBe(client);
 
 			done();
 		});
@@ -92,6 +93,7 @@ describe("Context", () => {
 			expect(context.isReady()).toEqual(true);
 			expect(context.isFailed()).toEqual(true);
 			expect(context.data()).toStrictEqual({});
+			expect(context.client()).toBe(client);
 
 			expect(console.error).toHaveBeenCalledWith("ABSmartly Context: bad request error text");
 
@@ -136,7 +138,6 @@ describe("Context", () => {
 			expect(client.refreshContext).toHaveBeenCalledWith({
 				guid: createContextResponse.guid,
 				units: refreshContextResponse.units,
-				application: refreshContextResponse.application,
 			});
 
 			expect(context.experiments()).toEqual(refreshContextResponse.assignments.map((x) => x.name));
@@ -178,7 +179,6 @@ describe("Context", () => {
 			expect(client.refreshContext).toHaveBeenCalledWith({
 				guid: createContextResponse.guid,
 				units: refreshContextResponse.units,
-				application: refreshContextResponse.application,
 			});
 
 			for (const assignment of createContextResponse.assignments) {
@@ -296,7 +296,6 @@ describe("Context", () => {
 			expect(client.publish).toHaveBeenCalledWith({
 				guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 				units: createContextResponse.units,
-				application: createContextResponse.application,
 				goals: [
 					{
 						name: "goal1",
@@ -368,7 +367,6 @@ describe("Context", () => {
 			expect(client.publish).toHaveBeenCalledWith({
 				guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 				units: createContextResponse.units,
-				application: createContextResponse.application,
 				exposures: [
 					{
 						name: "exp_test_ab",
@@ -453,7 +451,6 @@ describe("Context", () => {
 				expect(client.publish).toHaveBeenCalledWith({
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
-					application: createContextResponse.application,
 					exposures: [
 						{
 							name: "exp_test_ab",
@@ -498,7 +495,6 @@ describe("Context", () => {
 				expect(client.publish).toHaveBeenCalledWith({
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
-					application: createContextResponse.application,
 					goals: [
 						{
 							name: "goal2",
@@ -593,5 +589,134 @@ describe("Context", () => {
 		jest.runAllTimers();
 
 		expect(client.publish).toHaveBeenCalledTimes(1);
+	});
+
+	it("createVariantOverride() should call client", () => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.createVariantOverride.mockReturnValue(Promise.resolve({}));
+
+		context.createVariantOverride("exp_test", 2);
+
+		expect(client.createVariantOverride).toHaveBeenCalledTimes(1);
+		expect(client.createVariantOverride).toHaveBeenCalledWith({
+			overrides: [
+				{
+					name: "exp_test",
+					variant: 2,
+				},
+			],
+			units: [
+				{
+					type: "session_id",
+					uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+				},
+			],
+		});
+	});
+
+	it("createVariantOverrides() should call client", () => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.createVariantOverride.mockReturnValue(Promise.resolve({}));
+
+		context.createVariantOverrides({
+			exp_test: 2,
+			exp_test_another: 1,
+		});
+
+		expect(client.createVariantOverride).toHaveBeenCalledTimes(1);
+		expect(client.createVariantOverride).toHaveBeenCalledWith({
+			overrides: [
+				{
+					name: "exp_test",
+					variant: 2,
+				},
+				{
+					name: "exp_test_another",
+					variant: 1,
+				},
+			],
+			units: [
+				{
+					type: "session_id",
+					uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+				},
+			],
+		});
+	});
+
+	it("removeVariantOverride() should call client", () => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.createVariantOverride.mockReturnValue(Promise.resolve({}));
+
+		context.removeVariantOverride("exp_test");
+
+		expect(client.removeVariantOverride).toHaveBeenCalledTimes(1);
+		expect(client.removeVariantOverride).toHaveBeenCalledWith({
+			units: [
+				{
+					type: "session_id",
+					uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+				},
+			],
+			experiment: "exp_test",
+		});
+	});
+
+	it("removeVariantOverrides() should call client", () => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.createVariantOverride.mockReturnValue(Promise.resolve({}));
+
+		context.removeVariantOverrides("session_id", createContextResponse.units.session_id);
+
+		expect(client.removeVariantOverride).toHaveBeenCalledTimes(1);
+		expect(client.removeVariantOverride).toHaveBeenCalledWith({
+			units: [
+				{
+					type: "session_id",
+					uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+				},
+			],
+		});
+	});
+
+	it("getVariantOverride() should call client", () => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.getVariantOverride.mockReturnValue(Promise.resolve({}));
+
+		context.getVariantOverride("exp_test");
+
+		expect(client.getVariantOverride).toHaveBeenCalledTimes(1);
+		expect(client.getVariantOverride).toHaveBeenCalledWith({
+			units: [
+				{
+					type: "session_id",
+					uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+				},
+			],
+			experiment: "exp_test",
+		});
+	});
+
+	it("getVariantOverrides() should call client", () => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		client.getVariantOverride.mockReturnValue(Promise.resolve({}));
+
+		context.getVariantOverrides("session_id", createContextResponse.units.session_id);
+
+		expect(client.getVariantOverride).toHaveBeenCalledTimes(1);
+		expect(client.getVariantOverride).toHaveBeenCalledWith({
+			units: [
+				{
+					type: "session_id",
+					uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+				},
+			],
+		});
 	});
 });

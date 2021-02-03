@@ -52,6 +52,10 @@ export default class Context {
     return this._data;
   }
 
+  client() {
+    return this._cli;
+  }
+
   publish() {
     this._checkReady();
 
@@ -122,6 +126,48 @@ export default class Context {
     }
 
     return {};
+  }
+
+  createVariantOverride(experimentName, variant) {
+    return this.createVariantOverrides({
+      [experimentName]: variant
+    });
+  }
+
+  createVariantOverrides(overrides) {
+    return this._cli.createVariantOverride({
+      units: this._data.units,
+      overrides: Object.entries(overrides).map(entry => ({
+        name: entry[0],
+        variant: entry[1]
+      }))
+    });
+  }
+
+  getVariantOverride(experimentName) {
+    return this._cli.getVariantOverride({
+      units: this._data.units,
+      experiment: experimentName
+    });
+  }
+
+  getVariantOverrides() {
+    return this._cli.getVariantOverride({
+      units: this._data.units
+    });
+  }
+
+  removeVariantOverride(experimentName) {
+    return this._cli.removeVariantOverride({
+      units: this._data.units,
+      experiment: experimentName
+    });
+  }
+
+  removeVariantOverrides() {
+    return this._cli.removeVariantOverride({
+      units: this._data.units
+    });
   }
 
   _checkReady() {
@@ -202,8 +248,7 @@ export default class Context {
       if (!this._failed) {
         const request = {
           guid: this._data.guid,
-          units: this._data.units,
-          application: this._data.application
+          units: this._data.units
         };
 
         if (this._goals.length > 0) {
@@ -256,8 +301,7 @@ export default class Context {
     if (!this._failed) {
       const request = {
         guid: this._data.guid,
-        units: this._data.units,
-        application: this._data.application
+        units: this._data.units
       };
 
       this._cli.refreshContext(request).then(data => {
