@@ -355,7 +355,15 @@ describe("Context", () => {
 		Date.now.mockImplementation(() => timeOrigin + 3);
 		context.attributes({
 			attr2: "value2",
-			attr3: 3, // test coercion
+			attr3: 3,
+			attr4: 5.0,
+			attr5: true,
+			attr6: [1, 2, 3, 4],
+			attr7: null,
+			attr8: [],
+			attr9: [null, 1, 2],
+			attr10: ["one", null, "two"],
+			attr11: [null, null],
 		});
 
 		expect(context.pending()).toEqual(2);
@@ -396,7 +404,48 @@ describe("Context", () => {
 					{
 						name: "attr3",
 						setAt: 1611141535732,
-						value: "3", // attributes should be always coerced to string
+						value: 3,
+					},
+					{
+						name: "attr4",
+						setAt: 1611141535732,
+						value: 5.0,
+					},
+					{
+						name: "attr5",
+						setAt: 1611141535732,
+						value: true,
+					},
+					{
+						name: "attr6",
+						setAt: 1611141535732,
+						value: [1, 2, 3, 4],
+					},
+					{
+						name: "attr7",
+						setAt: 1611141535732,
+						value: null,
+					},
+					{
+						name: "attr8",
+						setAt: 1611141535732,
+						value: [],
+					},
+					{
+						name: "attr9",
+						setAt: 1611141535732,
+						value: [null, 1, 2],
+					},
+					{
+						name: "attr10",
+						setAt: 1611141535732,
+						value: ["one", null, "two"],
+					},
+
+					{
+						name: "attr11",
+						setAt: 1611141535732,
+						value: [null, null],
 					},
 				],
 			});
@@ -405,6 +454,22 @@ describe("Context", () => {
 
 			done();
 		});
+	});
+
+	it("publish() should throw on unsupported attribute type", (done) => {
+		const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+		expect(() => context.attribute("attr1", {})).toThrow(
+			new Error("Attribute 'attr1' is of unsupported type 'object'")
+		);
+		expect(() => context.attribute("attr1", [1, {}])).toThrow(
+			new Error("Attribute 'attr1' element at index 1 is of unsupported type 'object'")
+		);
+		expect(() => context.attribute("attr1", [1, "two"])).toThrow(
+			new Error("Attribute 'attr1' has elements of different types")
+		);
+
+		done();
 	});
 
 	it("publish() should not call client publish when failed", (done) => {
