@@ -201,6 +201,7 @@ export default class Context {
 
     const assigned = (experimentName in this._assignments);
     const variant = assigned ? this._data.assignments[this._assignments[experimentName]].variant : 0;
+    const eligible = assigned ? this._data.assignments[this._assignments[experimentName]].eligible : true;
     const exposed = (experimentName in this._exposed);
 
     if (!exposed) {
@@ -208,7 +209,8 @@ export default class Context {
         name: experimentName,
         variant,
         exposedAt: Date.now(),
-        assigned
+        assigned,
+        eligible
       });
 
       this._pending++;
@@ -284,7 +286,8 @@ export default class Context {
             name: x.name,
             exposedAt: x.exposedAt,
             variant: x.variant,
-            assigned: x.assigned
+            assigned: x.assigned,
+            eligible: x.eligible
           }));
         }
 

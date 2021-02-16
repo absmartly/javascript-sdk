@@ -197,10 +197,11 @@ export default class Context {
 
 		const assigned = experimentName in this._assignments;
 		const variant = assigned ? this._data.assignments[this._assignments[experimentName]].variant : 0;
+		const eligible = assigned ? this._data.assignments[this._assignments[experimentName]].eligible : true;
 		const exposed = experimentName in this._exposed;
 
 		if (!exposed) {
-			this._exposures.push({ name: experimentName, variant, exposedAt: Date.now(), assigned });
+			this._exposures.push({ name: experimentName, variant, exposedAt: Date.now(), assigned, eligible });
 			this._pending++;
 			this._exposed[experimentName] = true;
 
@@ -269,6 +270,7 @@ export default class Context {
 						exposedAt: x.exposedAt,
 						variant: x.variant,
 						assigned: x.assigned,
+						eligible: x.eligible,
 					}));
 				}
 

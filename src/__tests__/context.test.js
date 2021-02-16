@@ -31,6 +31,14 @@ describe("Context", () => {
 				originalVariant: 2,
 				config: '{"a":"2","b.c.a":"3","a.c.b":{"test":2,}}',
 			},
+			{
+				name: "exp_test_not_eligible",
+				variant: 0,
+				eligible: false,
+				overriden: false,
+				originalVariant: 2,
+				config: "{}",
+			},
 		],
 	};
 
@@ -170,10 +178,10 @@ describe("Context", () => {
 			context.treatment(assignment.name);
 		}
 
-		expect(context.pending()).toEqual(2);
+		expect(context.pending()).toEqual(createContextResponse.assignments.length);
 
 		context.refresh().then(() => {
-			expect(context.pending()).toEqual(2);
+			expect(context.pending()).toEqual(createContextResponse.assignments.length);
 
 			expect(client.refreshContext).toHaveBeenCalledTimes(1);
 			expect(client.refreshContext).toHaveBeenCalledWith({
@@ -185,13 +193,13 @@ describe("Context", () => {
 				context.treatment(assignment.name);
 			}
 
-			expect(context.pending()).toEqual(2);
+			expect(context.pending()).toEqual(createContextResponse.assignments.length);
 
 			for (const assignment of refreshContextResponse.assignments) {
 				context.treatment(assignment.name);
 			}
 
-			expect(context.pending()).toEqual(3);
+			expect(context.pending()).toEqual(refreshContextResponse.assignments.length);
 
 			done();
 		});
@@ -217,13 +225,13 @@ describe("Context", () => {
 			context.treatment(assignment.name);
 		}
 
-		expect(context.pending()).toEqual(2);
+		expect(context.pending()).toEqual(createContextResponse.assignments.length);
 
 		for (const assignment of createContextResponse.assignments) {
 			context.treatment(assignment.name);
 		}
 
-		expect(context.pending()).toEqual(2);
+		expect(context.pending()).toEqual(createContextResponse.assignments.length);
 
 		done();
 	});
@@ -345,6 +353,7 @@ describe("Context", () => {
 		const context = new Context(sdk, client, contextOptions, createContextResponse);
 
 		context.treatment("exp_test_ab");
+		context.treatment("exp_test_not_eligible");
 
 		Date.now.mockImplementation(() => timeOrigin + 1); // ensure that time is kept separately per event
 		context.track("goal1", [125.0, 245]);
@@ -366,7 +375,7 @@ describe("Context", () => {
 			attr11: [null, null],
 		});
 
-		expect(context.pending()).toEqual(2);
+		expect(context.pending()).toEqual(3);
 
 		client.publish.mockReturnValue(Promise.resolve());
 
@@ -381,6 +390,14 @@ describe("Context", () => {
 						exposedAt: 1611141535729,
 						variant: 1,
 						assigned: true,
+						eligible: true,
+					},
+					{
+						name: "exp_test_not_eligible",
+						exposedAt: 1611141535729,
+						variant: 0,
+						assigned: true,
+						eligible: false,
 					},
 				],
 				goals: [
@@ -522,12 +539,14 @@ describe("Context", () => {
 							exposedAt: 1611141535729,
 							variant: 1,
 							assigned: true,
+							eligible: true,
 						},
 						{
 							name: "not_found",
 							exposedAt: 1611141535729,
 							variant: 0,
 							assigned: false,
+							eligible: true,
 						},
 					],
 					goals: [
