@@ -1,6 +1,6 @@
 {
 	"name": "@absmartly/javascript-sdk",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
@@ -36,7 +36,7 @@
 		"fs": false
 	},
 	"dependencies": {
-		"@absmartly/javascript-client": "^1.0.5",
+		"@absmartly/javascript-client": "^1.0.6",
 		"rfdc": "^1.2.0"
 	},
 	"devDependencies": {
