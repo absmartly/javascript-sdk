@@ -5,6 +5,7 @@ export default class Context {
 		this._opts = options;
 		this._pending = 0;
 		this._failed = false;
+		this._attrs = [];
 
 		if (promise instanceof Promise) {
 			this._promise = promise
@@ -343,6 +344,5 @@ export default class Context {
 		this._exposed = exposed;
 		this._exposures = [];
 		this._goals = [];
-		this._attrs = [];
 	}
 }

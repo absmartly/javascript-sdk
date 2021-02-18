@@ -90,6 +90,67 @@ describe("Context", () => {
 		});
 	});
 
+	it("attribute() should be callable before ready()", (done) => {
+		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+		expect(context.isReady()).toEqual(false);
+		expect(context.isFailed()).toEqual(false);
+
+		const timeOrigin = 1611141535729;
+		jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+		context.attribute("attr1", "value1");
+		context.attributes({
+			attr2: "value2",
+			attr3: 3,
+		});
+
+		context.ready().then(() => {
+			expect(context.isReady()).toEqual(true);
+			expect(context.data()).toStrictEqual(createContextResponse);
+			expect(context.client()).toBe(client);
+
+			context.treatment("exp_test_ab");
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(client.publish).toHaveBeenCalledTimes(1);
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					units: createContextResponse.units,
+					exposures: [
+						{
+							name: "exp_test_ab",
+							exposedAt: 1611141535729,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+						},
+					],
+					attributes: [
+						{
+							name: "attr1",
+							setAt: 1611141535729,
+							value: "value1",
+						},
+						{
+							name: "attr2",
+							setAt: 1611141535729,
+							value: "value2",
+						},
+						{
+							name: "attr3",
+							setAt: 1611141535729,
+							value: 3,
+						},
+					],
+				});
+
+				done();
+			});
+		});
+	});
+
 	it("should become ready and failed, and call handler on failure", (done) => {
 		jest.spyOn(console, "error").mockImplementation(() => {});
 
