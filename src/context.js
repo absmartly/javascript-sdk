@@ -6,24 +6,28 @@ export default class Context {
 		this._pending = 0;
 		this._failed = false;
 		this._attrs = [];
+		this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 
 		if (promise instanceof Promise) {
 			this._promise = promise
 				.then((data) => {
 					this._init(data);
-
 					delete this._promise;
+
+					this._logEvent("ready", data);
 				})
 				.catch((error) => {
-					console.error(`ABSmartly Context: ${error}`);
-
 					this._init({});
 
 					this._failed = true;
 					delete this._promise;
+
+					this._logError(error);
 				});
 		} else {
 			this._init(promise);
+
+			this._logEvent("ready", promise);
 		}
 	}
 
@@ -202,7 +206,10 @@ export default class Context {
 		const exposed = experimentName in this._exposed;
 
 		if (!exposed) {
-			this._exposures.push({ name: experimentName, variant, exposedAt: Date.now(), assigned, eligible });
+			const exposureEvent = { name: experimentName, variant, exposedAt: Date.now(), assigned, eligible };
+			this._logEvent("exposure", exposureEvent);
+
+			this._exposures.push(exposureEvent);
 			this._pending++;
 			this._exposed[experimentName] = true;
 
@@ -226,24 +233,27 @@ export default class Context {
 			}
 		}
 
-		this._goals.push({ name: goalName, values, achievedAt: Date.now() });
+		const goalEvent = { name: goalName, values, achievedAt: Date.now() };
+		this._logEvent("goal", goalEvent);
+
+		this._goals.push(goalEvent);
 		this._pending++;
 
 		this._setTimeout();
 	}
 
 	_setTimeout() {
-		if (this.timeout === undefined && this._opts.publishDelay >= 0) {
-			this.timeout = setTimeout(() => {
+		if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
+			this._publishTimeout = setTimeout(() => {
 				this._flush();
 			}, this._opts.publishDelay);
 		}
 	}
 
 	_flush(callback) {
-		if (this.timeout !== undefined) {
-			clearTimeout(this.timeout);
-			delete this.timeout;
+		if (this._publishTimeout !== undefined) {
+			clearTimeout(this._publishTimeout);
+			delete this._publishTimeout;
 		}
 
 		if (this._pending === 0) {
@@ -289,11 +299,15 @@ export default class Context {
 						if (typeof callback === "function") {
 							callback();
 						}
+
+						this._logEvent("publish", request);
 					})
 					.catch((e) => {
 						if (typeof callback === "function") {
 							callback(e);
 						}
+
+						this._logError(e);
 					});
 			} else {
 				if (typeof callback === "function") {
@@ -322,16 +336,32 @@ export default class Context {
 					if (typeof callback === "function") {
 						callback();
 					}
+
+					this._logEvent("refresh", data);
 				})
 				.catch((e) => {
 					if (typeof callback === "function") {
 						callback(e);
 					}
+
+					this._logError(e);
 				});
 		} else {
 			if (typeof callback === "function") {
 				callback();
 			}
+		}
+	}
+
+	_logEvent(eventName, data) {
+		if (this._eventLogger) {
+			this._eventLogger(this, eventName, data);
+		}
+	}
+
+	_logError(error) {
+		if (this._eventLogger) {
+			this._eventLogger(this, "error", error);
 		}
 	}
 

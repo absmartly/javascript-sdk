@@ -143,6 +143,40 @@ await context.publish().then(() => {
 })
 ```
 
+#### Using a custom Event Logger
+The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
+In addition, an event logger can be specified when creating a particular context, in the `createContext` call options.
+The example below illustrates this with the implementation of the default event logger, used if none is specified.
+```javascript
+const sdk = new absmartly.SDK({
+    endpoint: 'https://sandbox-api.absmartly.com/v1',
+    apiKey: process.env.ABSMARTLY_API_KEY,
+    environment: process.env.NODE_ENV,
+    application: {
+        name: process.env.APPLICATION_NAME,
+        version: process.env.APPLICATION_VERSION,
+    },
+    eventLogger: (context, eventName, data) => {
+        if (eventName == "error") {
+            console.error(data);
+        }
+    },
+});
+```
+
+The data parameter depends on the type of event.
+Currently, the SDK logs the following events:
+
+| eventName | when | data |
+|:---: |---|---|
+| `"error"` | `Context` receives an error | error object thrown |
+| `"ready"` | `Context` turns ready | data used to initialize the context |
+| `"refresh"` | `Context.refresh()` method succeeds | data used to refresh the context |
+| `"publish"` | `Context.publish()` method succeeds | data sent to the A/B Smartly event collector |
+| `"exposure"` | `Context.treatment()` method succeeds on first exposure | exposure data enqueued for publishing |
+| `"goal"` | `Context.track()` method succeeds | goal data enqueued for publishing |
+
+
 ## About A/B Smartly
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
 A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.

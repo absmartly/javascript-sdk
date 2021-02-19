@@ -2,15 +2,32 @@ import { Client } from "@absmartly/javascript-client";
 import Context from "./context";
 
 export default class SDK {
+	static defaultEventLogger = (context, eventName, data) => {
+		if (eventName === "error") {
+			console.error(data);
+		}
+	};
+
 	constructor(options) {
-		options = Object.assign(
+		const clientOptions = Object.assign(
 			{
 				agent: "absmartly-javascript-sdk",
+			},
+			...Object.entries(options || {})
+				.filter((x) => ["agent", "apiKey", "endpoint", "environment", "timeout"].indexOf(x[0]) !== -1)
+				.map((x) => ({ [x[0]]: x[1] }))
+		);
+
+		options = Object.assign(
+			{},
+			{
+				eventLogger: SDK.defaultEventLogger,
 			},
 			options
 		);
 
-		this.client = new Client(options);
+		this._eventLogger = options.eventLogger;
+		this._client = new Client(clientOptions);
 	}
 
 	createContext(params, options) {
@@ -24,21 +41,34 @@ export default class SDK {
 			}
 		);
 
-		options = SDK._contextOptions(options);
-		const data = this.client.createContext(transformed);
-		return new Context(this, this.client, options, data);
+		options = this._contextOptions(options);
+		const data = this._client.createContext(transformed);
+		return new Context(this, this._client, options, data);
+	}
+
+	setEventLogger(logger) {
+		this._eventLogger = logger;
+	}
+
+	getEventLogger() {
+		return this._eventLogger;
+	}
+
+	getClient() {
+		return this._client;
 	}
 
 	createContextWith(data, options) {
-		options = SDK._contextOptions(options);
-		return new Context(this, this.client, options, data);
+		options = this._contextOptions(options);
+		return new Context(this, this._client, options, data);
 	}
 
-	static _contextOptions(options) {
+	_contextOptions(options) {
 		const isBrowser = typeof window !== "undefined" && typeof window.navigator !== "undefined";
 		return Object.assign(
 			{
-				publishDelay: isBrowser ? 200 : -1,
+				publishDelay: isBrowser ? 100 : -1,
+				eventLogger: this.getEventLogger(),
 			},
 			options || {}
 		);
