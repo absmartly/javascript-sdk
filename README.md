@@ -66,7 +66,7 @@ const request = {
 };
 
 // create context with raw promises
-const context = client.createContext(request);
+const context = sdk.createContext(request);
 
 context.ready().then((response) => {
     console.log("ABSmartly Context ready!")
@@ -85,7 +85,7 @@ const request = {
 };
 
 // create context with raw promises
-const context = client.createContext(request);
+const context = sdk.createContext(request);
 
 try {
     await context.ready();
@@ -93,6 +93,20 @@ try {
 } catch (e) {
     console.log(error);
 }
+```
+
+#### Creating a new Context with pre-fetched data
+When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side.
+Creating a context involves a round-trip to the A/B Smartly event collector.
+We can avoid repeating the round-trip on the client-side by sending the server-side data embedded in the first document, for example, by rendering it on the template.
+Then we can initialize the A/B Smartly context on the client-side directly with it.
+
+```html
+    <head>
+        <script type="javascript">
+            const context = sdk.createContextWith({{ serverSideContext.data() }});
+        </script>
+    </head>
 ```
 
 #### Setting context attributes
@@ -104,7 +118,7 @@ context.attributes({
 });
 ```
 
-#### Selecting treatment
+#### Selecting a treatment
 ```javascript
 if (context.treament("exp_test_experiment") == 0) {
     // user is in control group (variant 0)
