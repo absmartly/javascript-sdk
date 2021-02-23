@@ -49,10 +49,7 @@ const sdk = new absmartly.SDK({
     endpoint: 'https://sandbox-api.absmartly.com/v1',
     apiKey: process.env.ABSMARTLY_API_KEY,
     environment: process.env.NODE_ENV,
-    application: {
-        name: process.env.APPLICATION_NAME,
-        version: process.env.APPLICATION_VERSION,
-    },
+    application: process.env.APPLICATION_NAME,
 });
 ```
 
@@ -90,7 +87,7 @@ const context = sdk.createContext(request);
 try {
     await context.ready();
     console.log("ABSmartly Context ready!")
-} catch (e) {
+} catch (error) {
     console.log(error);
 }
 ```
@@ -141,6 +138,21 @@ You can explicitly call the `publish()` method, which returns a promise, before 
 await context.publish().then(() => {
     window.location = "https://www.absmartly.com"
 })
+```
+
+#### Refreshing the context with fresh experiment data
+For long-running single-page-applications (SPA), the context is usually created once when the application is first reached.
+However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
+To mitigate this, we can call the `refresh()` method periodically, say, every 5 minutes.
+The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `treatment()` is called again. 
+```javascript
+setTimeout(async () => {
+    try {
+        context.refresh();
+    } catch(error) {
+        console.error(error);
+    }
+}, 5 * 60 * 1000);
 ```
 
 #### Using a custom Event Logger
