@@ -6,7 +6,7 @@ export default class SDK {
   constructor(options) {
     const clientOptions = Object.assign({
       agent: "absmartly-javascript-sdk"
-    }, ...Object.entries(options || {}).filter(x => ["agent", "apiKey", "endpoint", "environment", "timeout"].indexOf(x[0]) !== -1).map(x => ({
+    }, ...Object.entries(options || {}).filter(x => ["application", "agent", "apiKey", "endpoint", "environment", "timeout"].indexOf(x[0]) !== -1).map(x => ({
       [x[0]]: x[1]
     })));
     options = Object.assign({}, {

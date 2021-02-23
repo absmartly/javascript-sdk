@@ -14,7 +14,9 @@ export default class SDK {
 				agent: "absmartly-javascript-sdk",
 			},
 			...Object.entries(options || {})
-				.filter((x) => ["agent", "apiKey", "endpoint", "environment", "timeout"].indexOf(x[0]) !== -1)
+				.filter(
+					(x) => ["application", "agent", "apiKey", "endpoint", "environment", "timeout"].indexOf(x[0]) !== -1
+				)
 				.map((x) => ({ [x[0]]: x[1] }))
 		);
 

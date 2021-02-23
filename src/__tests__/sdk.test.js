@@ -7,12 +7,13 @@ jest.mock("../context");
 
 const testEventLogger = jest.fn();
 const sdkOptions = {
-	endpoint: "localhost:8080",
 	agent: "javascript-sdk",
-	environment: "test",
 	apiKey: "apikey",
-	timeout: 1000,
+	application: "website",
+	endpoint: "localhost:8080",
+	environment: "test",
 	eventLogger: testEventLogger,
+	timeout: 1000,
 };
 
 describe("SDK", () => {
@@ -23,10 +24,11 @@ describe("SDK", () => {
 		expect(sdk.getEventLogger()).toBe(testEventLogger);
 		expect(Client).toHaveBeenCalledTimes(1);
 		expect(Client).toHaveBeenCalledWith({
-			endpoint: "localhost:8080",
 			agent: "javascript-sdk",
-			environment: "test",
 			apiKey: "apikey",
+			application: "website",
+			endpoint: "localhost:8080",
+			environment: "test",
 			timeout: 1000,
 		});
 
@@ -35,9 +37,10 @@ describe("SDK", () => {
 
 	it("constructor should set default values for unspecified client options", (done) => {
 		const options = {
+			application: "application",
+			apiKey: "apikey",
 			endpoint: "localhost:8080",
 			environment: "test",
-			apiKey: "apikey",
 		};
 
 		const sdk = new SDK(options);
