@@ -166,11 +166,7 @@ export default class Context {
 	experimentConfig(experimentName) {
 		this._checkReady();
 
-		if (experimentName in this._assignments) {
-			return this._data.assignments[this._assignments[experimentName]].config || {};
-		}
-
-		return {};
+		return this._configs[experimentName] || {};
 	}
 
 	createVariantOverride(experimentName, variant) {
@@ -402,6 +398,10 @@ export default class Context {
 		this._assignments = Object.assign(
 			{},
 			...(data.assignments || []).map((experiment, index) => ({ [experiment.name]: index }))
+		);
+		this._configs = Object.assign(
+			{},
+			...(data.assignments || []).map((experiment) => ({ [experiment.name]: experiment.config ? JSON.parse(experiment.config) : {} }))
 		);
 		this._exposed = exposed;
 		this._exposures = [];

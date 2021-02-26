@@ -21,7 +21,7 @@ describe("Context", () => {
 				eligible: true,
 				overriden: false,
 				originalVariant: 1,
-				config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5,}}',
+				config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
 			},
 			{
 				name: "exp_test_abc",
@@ -29,7 +29,7 @@ describe("Context", () => {
 				eligible: true,
 				overriden: false,
 				originalVariant: 2,
-				config: '{"a":"2","b.c.a":"3","a.c.b":{"test":2,}}',
+				config: '{"a":"2","b.c.a":"3","a.c.b":{"test":2}}',
 			},
 			{
 				name: "exp_test_not_eligible",
@@ -226,7 +226,7 @@ describe("Context", () => {
 		expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
 		for (const assignment of createContextResponse.assignments) {
 			expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-			expect(context.experimentConfig(assignment.name)).toEqual(assignment.config || {});
+			expect(context.experimentConfig(assignment.name)).toEqual(assignment.config ? JSON.parse(assignment.config) : {});
 		}
 		expect(context.data()).toEqual(createContextResponse);
 		expect(context.experimentConfig("not_found")).toEqual({});
@@ -250,7 +250,7 @@ describe("Context", () => {
 				expect(context.experiments()).toEqual(refreshContextResponse.assignments.map((x) => x.name));
 				for (const assignment of refreshContextResponse.assignments) {
 					expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-					expect(context.experimentConfig(assignment.name)).toEqual(assignment.config || {});
+					expect(context.experimentConfig(assignment.name)).toEqual(assignment.config ? JSON.parse(assignment.config) : {});
 				}
 				expect(context.data()).toEqual(refreshContextResponse);
 				expect(context.experimentConfig("not_found")).toEqual({});
