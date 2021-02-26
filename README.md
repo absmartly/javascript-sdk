@@ -130,12 +130,20 @@ Goals are created in the A/B Smartly web console.
 context.goal("payment", 1000);
 ```
 
-#### Publishing pending data to the A/B Smartly collector
-Sometimes it is necessary ensure all events have been published to the A/B Smartly collector, before proceeding.
+#### Publishing pending data
+Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector, before proceeding.
 One such case is when the user is about to navigate away right before being exposed to a treatment.
 You can explicitly call the `publish()` method, which returns a promise, before navigating away.
 ```javascript
 await context.publish().then(() => {
+    window.location = "https://www.absmartly.com"
+})
+```
+
+#### Finalizing
+The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
+```javascript
+await context.finalize().then(() => {
     window.location = "https://www.absmartly.com"
 })
 ```
@@ -164,10 +172,7 @@ const sdk = new absmartly.SDK({
     endpoint: 'https://sandbox-api.absmartly.com/v1',
     apiKey: process.env.ABSMARTLY_API_KEY,
     environment: process.env.NODE_ENV,
-    application: {
-        name: process.env.APPLICATION_NAME,
-        version: process.env.APPLICATION_VERSION,
-    },
+    application: process.env.APPLICATION_NAME,
     eventLogger: (context, eventName, data) => {
         if (eventName == "error") {
             console.error(data);
@@ -187,6 +192,7 @@ Currently, the SDK logs the following events:
 | `"publish"` | `Context.publish()` method succeeds | data sent to the A/B Smartly event collector |
 | `"exposure"` | `Context.treatment()` method succeeds on first exposure | exposure data enqueued for publishing |
 | `"goal"` | `Context.track()` method succeeds | goal data enqueued for publishing |
+| `"finalize"` | `Context.finalize()` method succeeds the first time | undefined |
 
 
 ## About A/B Smartly

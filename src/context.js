@@ -5,6 +5,7 @@ export default class Context {
 		this._opts = options;
 		this._pending = 0;
 		this._failed = false;
+		this._finalized = false;
 		this._attrs = [];
 		this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 
@@ -33,6 +34,10 @@ export default class Context {
 
 	isReady() {
 		return this._promise === undefined;
+	}
+
+	isFinalized() {
+		return this._finalized;
 	}
 
 	isFailed() {
@@ -64,7 +69,7 @@ export default class Context {
 	}
 
 	publish() {
-		this._checkReady();
+		this._checkReady(true);
 
 		return new Promise((resolve, reject) => {
 			this._flush((error) => {
@@ -78,7 +83,7 @@ export default class Context {
 	}
 
 	refresh() {
-		this._checkReady();
+		this._checkReady(true);
 
 		return new Promise((resolve, reject) => {
 			this._refresh((error) => {
@@ -128,11 +133,19 @@ export default class Context {
 	}
 
 	treatment(experimentName, callback) {
+		this._checkReady(true);
+
 		return this._treatment(experimentName, callback);
 	}
 
 	track(goalName, values, callback) {
+		this._checkReady(true);
+
 		return this._track(goalName, values, callback);
+	}
+
+	finalize() {
+		return this._finalize();
 	}
 
 	experiments() {
@@ -191,15 +204,17 @@ export default class Context {
 		});
 	}
 
-	_checkReady() {
+	_checkReady(expectNotFinalized) {
 		if (!this.isReady()) {
 			throw new Error("ABSmartly Context is not yet ready.");
+		}
+
+		if (expectNotFinalized && this.isFinalized()) {
+			throw new Error("ABSmartly Context is finalized.");
 		}
 	}
 
 	_treatment(experimentName) {
-		this._checkReady();
-
 		const assigned = experimentName in this._assignments;
 		const variant = assigned ? this._data.assignments[this._assignments[experimentName]].variant : 0;
 		const eligible = assigned ? this._data.assignments[this._assignments[experimentName]].eligible : true;
@@ -219,8 +234,6 @@ export default class Context {
 	}
 
 	_track(goalName, values = null) {
-		this._checkReady();
-
 		if (values !== null && values !== undefined) {
 			if (!Array.isArray(values)) {
 				values = [values];
@@ -296,18 +309,18 @@ export default class Context {
 				this._cli
 					.publish(request)
 					.then(() => {
+						this._logEvent("publish", request);
+
 						if (typeof callback === "function") {
 							callback();
 						}
-
-						this._logEvent("publish", request);
 					})
 					.catch((e) => {
+						this._logError(e);
+
 						if (typeof callback === "function") {
 							callback(e);
 						}
-
-						this._logError(e);
 					});
 			} else {
 				if (typeof callback === "function") {
@@ -333,18 +346,18 @@ export default class Context {
 				.then((data) => {
 					this._init(data, this._exposed);
 
+					this._logEvent("refresh", data);
+
 					if (typeof callback === "function") {
 						callback();
 					}
-
-					this._logEvent("refresh", data);
 				})
 				.catch((e) => {
+					this._logError(e);
+
 					if (typeof callback === "function") {
 						callback(e);
 					}
-
-					this._logError(e);
 				});
 		} else {
 			if (typeof callback === "function") {
@@ -374,5 +387,37 @@ export default class Context {
 		this._exposed = exposed;
 		this._exposures = [];
 		this._goals = [];
+	}
+
+	_finalize() {
+		if (!this._finalized) {
+			if (!this._finalizing) {
+				if (this.pending() > 0) {
+					this._finalizing = new Promise((resolve, reject) => {
+						this._flush((error) => {
+							if (error) {
+								reject(error);
+							} else {
+								this._finalized = true;
+								this._logEvent("finalize");
+
+								resolve();
+							}
+						});
+					});
+
+					return this._finalizing;
+				}
+
+				this._finalized = true;
+				this._logEvent("finalize");
+
+				return Promise.resolve();
+			}
+
+			return this._finalizing;
+		}
+
+		return Promise.resolve();
 	}
 }

@@ -146,6 +146,7 @@ describe("Context", () => {
 		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
 		expect(context.isReady()).toEqual(false);
 		expect(context.isFailed()).toEqual(false);
+		expect(context.isFinalized()).toEqual(false);
 
 		expect(() => context.data()).toThrow();
 		expect(() => context.treatment("test")).toThrow();
@@ -160,6 +161,7 @@ describe("Context", () => {
 			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
+			expect(context.isFinalized()).toEqual(false);
 
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
@@ -341,6 +343,17 @@ describe("Context", () => {
 				});
 			});
 		});
+
+		it("should throw when finalized", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.finalize().then(() => {
+				expect(() => context.refresh()).toThrow();
+
+				done();
+			});
+		});
 	});
 
 	describe("treatment()", () => {
@@ -400,6 +413,17 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			done();
+		});
+
+		it("should throw when finalized", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.finalize().then(() => {
+				expect(() => context.treatment("exp_test_ab")).toThrow();
+
+				done();
+			});
 		});
 	});
 
@@ -489,6 +513,17 @@ describe("Context", () => {
 				});
 
 				expect(context.pending()).toEqual(0);
+
+				done();
+			});
+		});
+
+		it("should throw when finalized", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.finalize().then(() => {
+				expect(() => context.track("payment", 125.0)).toThrow();
 
 				done();
 			});
@@ -897,6 +932,170 @@ describe("Context", () => {
 			jest.runAllTimers();
 
 			expect(client.publish).toHaveBeenCalledTimes(1);
+		});
+
+		it("should throw when finalized", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.finalize().then(() => {
+				expect(() => context.publish()).toThrow();
+
+				done();
+			});
+		});
+	});
+
+	describe("finalize()", () => {
+		it("should not call client publish when queue is empty", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.finalize().then(() => {
+				expect(client.publish).not.toHaveBeenCalled();
+				expect(context.isFinalized()).toEqual(true);
+				done();
+			});
+		});
+
+		it("should propagate client error message", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.treatment("exp_test_ab");
+
+			client.publish.mockReturnValue(Promise.reject("test"));
+
+			context.finalize().catch((e) => {
+				expect(e).toEqual("test");
+				expect(context.isFinalized()).toEqual(false);
+
+				done();
+			});
+		});
+
+		it("should call client publish", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.finalize().then(() => {
+				expect(client.publish).toHaveBeenCalledTimes(1);
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					units: createContextResponse.units,
+					exposures: [
+						{
+							name: "exp_test_ab",
+							exposedAt: 1611141535729,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+						},
+					],
+				});
+
+				expect(context.pending()).toEqual(0);
+				expect(context.isFinalized()).toEqual(true);
+
+				done();
+			});
+		});
+
+		it("should call event logger on error", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+			context.treatment("exp_test_ab");
+
+			client.publish.mockReturnValue(Promise.reject("test error"));
+
+			SDK.defaultEventLogger.mockClear();
+			context.finalize().catch((error) => {
+				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
+				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "error", error);
+				expect(context.isFinalized()).toEqual(false);
+
+				done();
+			});
+		});
+
+		it("should call event logger on success", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+			context.treatment("exp_test_ab");
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			SDK.defaultEventLogger.mockClear();
+			context.finalize().then(() => {
+				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(2);
+				expect(SDK.defaultEventLogger).toHaveBeenLastCalledWith(context, "finalize", undefined);
+				expect(context.isFinalized()).toEqual(true);
+
+				done();
+			});
+		});
+
+		it("should not call client publish when failed", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			context.ready().then(() => {
+				context.treatment("exp_test_ab");
+
+				expect(context.pending()).toEqual(1);
+
+				context.finalize().then(() => {
+					expect(client.publish).toHaveBeenCalledTimes(0);
+					expect(context.pending()).toEqual(0);
+					expect(context.isFinalized()).toEqual(true);
+
+					done();
+				});
+			});
+		});
+
+		it("should return current promise when called twice", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+			context.treatment("exp_test_ab");
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			const firstPromise = context.finalize();
+			const secondPromise = context.finalize();
+
+			expect(secondPromise).toBe(firstPromise);
+
+			secondPromise.then(() => {
+				expect(context.isFinalized()).toEqual(true);
+
+				done();
+			});
+		});
+
+		it("should return completed promise when already finalized", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+			context.treatment("exp_test_ab");
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.finalize().then(() => {
+				expect(context.isFinalized()).toEqual(true);
+
+				context.finalize().then(() => done());
+			});
 		});
 	});
 
