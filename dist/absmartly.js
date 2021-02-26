@@ -36,7 +36,7 @@ eval("/* module decorator */ module = __webpack_require__.nmd(module);\nvar __WE
   \************************/
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
-eval("\n\nObject.defineProperty(exports, \"__esModule\", ({\n  value: true\n}));\nexports.default = void 0;\n\nvar _sdk = _interopRequireDefault(__webpack_require__(/*! ./sdk */ \"./src/sdk.js\"));\n\nvar _config = __webpack_require__(/*! ./config */ \"./src/config.js\");\n\nfunction _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }\n\nvar _default = {\n  SDK: _sdk.default,\n  mergeConfig: _config.mergeConfig\n};\nexports.default = _default;\n\n//# sourceURL=webpack://absmartly/./src/browser.js?");
+eval("\n\nObject.defineProperty(exports, \"__esModule\", ({\n  value: true\n}));\nexports.default = void 0;\n\nvar _context = _interopRequireDefault(__webpack_require__(/*! ./context */ \"./src/context.js\"));\n\nvar _sdk = _interopRequireDefault(__webpack_require__(/*! ./sdk */ \"./src/sdk.js\"));\n\nvar _config = __webpack_require__(/*! ./config */ \"./src/config.js\");\n\nfunction _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }\n\nvar _default = {\n  Context: _context.default,\n  SDK: _sdk.default,\n  mergeConfig: _config.mergeConfig\n};\nexports.default = _default;\n\n//# sourceURL=webpack://absmartly/./src/browser.js?");
 
 /***/ }),
 
