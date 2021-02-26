@@ -1,4 +1,5 @@
 import SDK from "./sdk";
+import Context from "./context";
 import { mergeConfig } from "./config";
 
-export { SDK, mergeConfig };
+export { Context, SDK, mergeConfig };
