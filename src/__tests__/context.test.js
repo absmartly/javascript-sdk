@@ -344,15 +344,22 @@ describe("Context", () => {
 			});
 		});
 
-		it("should throw when finalized", (done) => {
+		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
-			expect(context.pending()).toEqual(0);
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
 				expect(() => context.refresh()).toThrow();
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.refresh()).toThrow(); // finalizing
 		});
 	});
 
@@ -415,15 +422,22 @@ describe("Context", () => {
 			done();
 		});
 
-		it("should throw when finalized", (done) => {
+		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
-			expect(context.pending()).toEqual(0);
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
 				expect(() => context.treatment("exp_test_ab")).toThrow();
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.treatment("exp_test_ab")).toThrow();
 		});
 	});
 
@@ -518,12 +532,86 @@ describe("Context", () => {
 			});
 		});
 
-		it("should throw when finalized", (done) => {
+		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
-			expect(context.pending()).toEqual(0);
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
 				expect(() => context.track("payment", 125.0)).toThrow();
+
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.track("payment", 125.0)).toThrow();
+		});
+
+		it("should queue when not ready", (done) => {
+			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			expect(context.pending()).toEqual(0);
+			expect(context.isReady()).toEqual(false);
+
+			context.track("goal1", 125.0);
+
+			expect(context.pending()).toEqual(1);
+			expect(context.isReady()).toEqual(false);
+
+			context.ready().then(() => {
+				expect(context.pending()).toEqual(1);
+
+				done();
+			});
+		});
+
+		it("should start timeout after ready if queue is not empty", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			jest.useFakeTimers();
+
+			const publishDelay = 100;
+			const context = new Context(
+				sdk,
+				client,
+				Object.assign(contextOptions, { publishDelay }),
+				Promise.resolve(createContextResponse)
+			);
+
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+
+			context.track("goal1", 125);
+
+			expect(context.pending()).toEqual(1);
+
+			context.ready().then(() => {
+				expect(setTimeout).toHaveBeenCalledTimes(1);
+				expect(setTimeout).toHaveBeenLastCalledWith(expect.anything(), publishDelay);
+
+				jest.advanceTimersByTime(publishDelay - 1);
+
+				expect(client.publish).not.toHaveBeenCalled();
+
+				client.publish.mockReturnValue(Promise.resolve({}));
+
+				jest.runAllTimers();
+
+				expect(client.publish).toHaveBeenCalledTimes(1);
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					units: createContextResponse.units,
+					goals: [
+						{
+							name: "goal1",
+							achievedAt: 1611141535729,
+							values: [125.0],
+						},
+					],
+				});
 
 				done();
 			});
@@ -934,15 +1022,22 @@ describe("Context", () => {
 			expect(client.publish).toHaveBeenCalledTimes(1);
 		});
 
-		it("should throw when finalized", (done) => {
+		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
-			expect(context.pending()).toEqual(0);
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
 				expect(() => context.publish()).toThrow();
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.publish()).toThrow();
 		});
 	});
 
@@ -955,9 +1050,13 @@ describe("Context", () => {
 
 			context.finalize().then(() => {
 				expect(client.publish).not.toHaveBeenCalled();
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(true);
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(false);
+			expect(context.isFinalized()).toEqual(true);
 		});
 
 		it("should propagate client error message", (done) => {
@@ -970,10 +1069,14 @@ describe("Context", () => {
 
 			context.finalize().catch((e) => {
 				expect(e).toEqual("test");
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(false);
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.isFinalized()).toEqual(false);
 		});
 
 		it("should call client publish", (done) => {
@@ -1005,10 +1108,14 @@ describe("Context", () => {
 				});
 
 				expect(context.pending()).toEqual(0);
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(true);
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.isFinalized()).toEqual(false);
 		});
 
 		it("should call event logger on error", (done) => {
@@ -1022,10 +1129,14 @@ describe("Context", () => {
 			context.finalize().catch((error) => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "error", error);
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(false);
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.isFinalized()).toEqual(false);
 		});
 
 		it("should call event logger on success", (done) => {
@@ -1039,10 +1150,14 @@ describe("Context", () => {
 			context.finalize().then(() => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(2);
 				expect(SDK.defaultEventLogger).toHaveBeenLastCalledWith(context, "finalize", undefined);
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(true);
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.isFinalized()).toEqual(false);
 		});
 
 		it("should not call client publish when failed", (done) => {
@@ -1058,10 +1173,14 @@ describe("Context", () => {
 				context.finalize().then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(0);
 					expect(context.pending()).toEqual(0);
+					expect(context.isFinalizing()).toEqual(false);
 					expect(context.isFinalized()).toEqual(true);
 
 					done();
 				});
+
+				expect(context.isFinalizing()).toEqual(true);
+				expect(context.isFinalized()).toEqual(false);
 			});
 		});
 
@@ -1078,10 +1197,14 @@ describe("Context", () => {
 			expect(secondPromise).toBe(firstPromise);
 
 			secondPromise.then(() => {
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(true);
 
 				done();
 			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.isFinalized()).toEqual(false);
 		});
 
 		it("should return completed promise when already finalized", (done) => {
@@ -1092,9 +1215,12 @@ describe("Context", () => {
 			client.publish.mockReturnValue(Promise.resolve());
 
 			context.finalize().then(() => {
+				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(true);
 
-				context.finalize().then(() => done());
+				context.finalize().then(() => {
+					done();
+				});
 			});
 		});
 	});

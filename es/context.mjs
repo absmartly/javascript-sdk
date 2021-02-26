@@ -7,6 +7,7 @@ export default class Context {
     this._failed = false;
     this._finalized = false;
     this._attrs = [];
+    this._goals = [];
     this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 
     if (promise instanceof Promise) {
@@ -16,6 +17,10 @@ export default class Context {
         delete this._promise;
 
         this._logEvent("ready", data);
+
+        if (this.pending() > 0) {
+          this._setTimeout();
+        }
       }).catch(error => {
         this._init({});
 
@@ -33,6 +38,10 @@ export default class Context {
 
   isReady() {
     return this._promise === undefined;
+  }
+
+  isFinalizing() {
+    return !this._finalized && this._finalizing != null;
   }
 
   isFinalized() {
@@ -142,7 +151,7 @@ export default class Context {
   }
 
   track(goalName, values, callback) {
-    this._checkReady(true);
+    this._checkNotFinalized();
 
     return this._track(goalName, values, callback);
   }
@@ -209,13 +218,21 @@ export default class Context {
     });
   }
 
+  _checkNotFinalized() {
+    if (this.isFinalized()) {
+      throw new Error("ABSmartly Context is finalized.");
+    } else if (this.isFinalizing()) {
+      throw new Error("ABSmartly Context is finalizing.");
+    }
+  }
+
   _checkReady(expectNotFinalized) {
     if (!this.isReady()) {
       throw new Error("ABSmartly Context is not yet ready.");
     }
 
-    if (expectNotFinalized && this.isFinalized()) {
-      throw new Error("ABSmartly Context is finalized.");
+    if (expectNotFinalized) {
+      this._checkNotFinalized();
     }
   }
 
@@ -276,10 +293,12 @@ export default class Context {
   }
 
   _setTimeout() {
-    if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
-      this._publishTimeout = setTimeout(() => {
-        this._flush();
-      }, this._opts.publishDelay);
+    if (this.isReady()) {
+      if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
+        this._publishTimeout = setTimeout(() => {
+          this._flush();
+        }, this._opts.publishDelay);
+      }
     }
   }
 
@@ -399,7 +418,6 @@ export default class Context {
     })));
     this._exposed = exposed;
     this._exposures = [];
-    this._goals = [];
   }
 
   _finalize() {
@@ -408,6 +426,8 @@ export default class Context {
         if (this.pending() > 0) {
           this._finalizing = new Promise((resolve, reject) => {
             this._flush(error => {
+              this._finalizing = null;
+
               if (error) {
                 reject(error);
               } else {
