@@ -401,7 +401,9 @@ export default class Context {
 		);
 		this._configs = Object.assign(
 			{},
-			...(data.assignments || []).map((experiment) => ({ [experiment.name]: experiment.config ? JSON.parse(experiment.config) : {} }))
+			...(data.assignments || []).map((experiment) => ({
+				[experiment.name]: experiment.config ? JSON.parse(experiment.config) : {},
+			}))
 		);
 		this._exposed = exposed;
 		this._exposures = [];

@@ -226,7 +226,9 @@ describe("Context", () => {
 		expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
 		for (const assignment of createContextResponse.assignments) {
 			expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-			expect(context.experimentConfig(assignment.name)).toEqual(assignment.config ? JSON.parse(assignment.config) : {});
+			expect(context.experimentConfig(assignment.name)).toEqual(
+				assignment.config ? JSON.parse(assignment.config) : {}
+			);
 		}
 		expect(context.data()).toEqual(createContextResponse);
 		expect(context.experimentConfig("not_found")).toEqual({});
@@ -250,7 +252,9 @@ describe("Context", () => {
 				expect(context.experiments()).toEqual(refreshContextResponse.assignments.map((x) => x.name));
 				for (const assignment of refreshContextResponse.assignments) {
 					expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-					expect(context.experimentConfig(assignment.name)).toEqual(assignment.config ? JSON.parse(assignment.config) : {});
+					expect(context.experimentConfig(assignment.name)).toEqual(
+						assignment.config ? JSON.parse(assignment.config) : {}
+					);
 				}
 				expect(context.data()).toEqual(refreshContextResponse);
 				expect(context.experimentConfig("not_found")).toEqual({});
@@ -1179,8 +1183,8 @@ describe("Context", () => {
 					done();
 				});
 
-				expect(context.isFinalizing()).toEqual(true);
-				expect(context.isFinalized()).toEqual(false);
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
 			});
 		});
 
