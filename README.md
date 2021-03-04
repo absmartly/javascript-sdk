@@ -152,7 +152,7 @@ await context.finalize().then(() => {
 For long-running single-page-applications (SPA), the context is usually created once when the application is first reached.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
 To mitigate this, we can call the `refresh()` method periodically, say, every 5 minutes.
-The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `treatment()` is called again. 
+The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `treatment()` is called again.
 ```javascript
 setTimeout(async () => {
     try {
@@ -201,4 +201,5 @@ A/B Smartly's real-time analytics helps engineering and product teams ensure tha
 
 ### Have a look at our growing list of clients and SDKs:
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
+- [Vue2 SDK](https://www.github.com/absmartly/vue2-sdk)
 - [PHP SDK](https://www.github.com/absmartly/php-sdk)
