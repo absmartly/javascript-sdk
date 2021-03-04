@@ -80,6 +80,7 @@ describe("SDK", () => {
 
 		const contextOptions = {
 			publishDelay: 1000,
+			refreshPeriod: 0,
 			eventLogger: testEventLogger,
 		};
 
@@ -110,6 +111,7 @@ describe("SDK", () => {
 
 		const contextOptions = {
 			publishDelay: 1000,
+			refreshPeriod: 0,
 			eventLogger: testEventLogger,
 		};
 
@@ -141,6 +143,7 @@ describe("SDK", () => {
 
 		const defaultOptions = {
 			publishDelay: -1,
+			refreshPeriod: 0,
 			eventLogger: sdkOptions.eventLogger,
 		};
 
@@ -167,6 +170,7 @@ describe("SDK", () => {
 
 		const defaultOptions = {
 			publishDelay: -1,
+			refreshPeriod: 0,
 			eventLogger: sdkOptions.eventLogger,
 		};
 

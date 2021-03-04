@@ -70,6 +70,7 @@ export default class SDK {
 		return Object.assign(
 			{
 				publishDelay: isBrowser ? 100 : -1,
+				refreshPeriod: 0,
 				eventLogger: this.getEventLogger(),
 			},
 			options || {}

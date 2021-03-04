@@ -60,100 +60,158 @@ describe("Context", () => {
 
 	const contextOptions = {
 		publishDelay: -1,
+		refreshPeriod: 0,
 		eventLogger: SDK.defaultEventLogger,
 	};
 
-	it("should be ready with data", (done) => {
-		const context = new Context(sdk, client, contextOptions, createContextResponse);
-		expect(context.isReady()).toEqual(true);
-		expect(context.isFailed()).toEqual(false);
-
-		context.ready().then(() => {
+	describe("Context", () => {
+		it("should be ready with data", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.isReady()).toEqual(true);
-			expect(context.data()).toStrictEqual(createContextResponse);
-			expect(context.client()).toBe(client);
+			expect(context.isFailed()).toEqual(false);
+
+			context.ready().then(() => {
+				expect(context.isReady()).toEqual(true);
+				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.client()).toBe(client);
+
+				done();
+			});
+		});
+
+		it("should become ready and call handler", (done) => {
+			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+
+			context.ready().then(() => {
+				expect(context.isReady()).toEqual(true);
+				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.client()).toBe(client);
+
+				done();
+			});
+		});
+
+		it("should become ready and failed, and call handler on failure", (done) => {
+			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+
+			context.ready().then(() => {
+				expect(context.isReady()).toEqual(true);
+				expect(context.isFailed()).toEqual(true);
+				expect(context.data()).toStrictEqual({});
+				expect(context.client()).toBe(client);
+
+				done();
+			});
+		});
+
+		it("should call event logger on error", (done) => {
+			SDK.defaultEventLogger.mockClear();
+
+			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			context.ready().then(() => {
+				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
+				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "error", "bad request error text");
+
+				done();
+			});
+		});
+
+		it("should call event logger on success", (done) => {
+			SDK.defaultEventLogger.mockClear();
+
+			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			context.ready().then(() => {
+				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
+				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", createContextResponse);
+
+				done();
+			});
+		});
+
+		it("should call event logger on pre-fetched experiment data", (done) => {
+			SDK.defaultEventLogger.mockClear();
+
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			context.ready().then(() => {
+				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
+				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", createContextResponse);
+
+				done();
+			});
+		});
+
+		it("should throw when not ready", (done) => {
+			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+			expect(context.isFinalized()).toEqual(false);
+
+			expect(() => context.data()).toThrow();
+			expect(() => context.treatment("test")).toThrow();
+			expect(() => context.experiments()).toThrow();
+			expect(() => context.experimentConfig("test")).toThrow();
 
 			done();
 		});
-	});
 
-	it("should become ready and call handler", (done) => {
-		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
-		expect(context.isReady()).toEqual(false);
-		expect(context.isFailed()).toEqual(false);
+		it("should load experiment data", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
 
-		context.ready().then(() => {
-			expect(context.isReady()).toEqual(true);
-			expect(context.data()).toStrictEqual(createContextResponse);
-			expect(context.client()).toBe(client);
-
-			done();
-		});
-	});
-
-	it("should become ready and failed, and call handler on failure", (done) => {
-		const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
-		expect(context.isReady()).toEqual(false);
-		expect(context.isFailed()).toEqual(false);
-
-		context.ready().then(() => {
-			expect(context.isReady()).toEqual(true);
-			expect(context.isFailed()).toEqual(true);
-			expect(context.data()).toStrictEqual({});
-			expect(context.client()).toBe(client);
+			expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
+			for (const assignment of createContextResponse.assignments) {
+				expect(context.treatment(assignment.name)).toEqual(assignment.variant);
+				expect(context.experimentConfig(assignment.name)).toEqual(
+					assignment.config ? JSON.parse(assignment.config) : {}
+				);
+			}
+			expect(context.data()).toEqual(createContextResponse);
+			expect(context.experimentConfig("not_found")).toEqual({});
 
 			done();
 		});
-	});
 
-	it("should call event logger on error", (done) => {
-		SDK.defaultEventLogger.mockClear();
+		it("should start refresh timer after ready", (done) => {
+			jest.useFakeTimers();
 
-		const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
-		context.ready().then(() => {
-			expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
-			expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "error", "bad request error text");
+			const refreshPeriod = 1000;
+			const context = new Context(
+				sdk,
+				client,
+				Object.assign(contextOptions, { refreshPeriod }),
+				Promise.resolve(createContextResponse)
+			);
 
-			done();
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+
+			expect(setInterval).not.toHaveBeenCalled();
+
+			context.ready().then(() => {
+				expect(setInterval).toHaveBeenCalledTimes(1);
+				expect(setInterval).toHaveBeenCalledWith(expect.anything(), refreshPeriod);
+
+				jest.advanceTimersByTime(refreshPeriod - 1);
+
+				expect(client.refreshContext).not.toHaveBeenCalled();
+
+				client.refreshContext.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+				jest.advanceTimersByTime(2);
+				jest.clearAllTimers();
+
+				expect(client.refreshContext).toHaveBeenCalledTimes(1);
+				expect(client.refreshContext).toHaveBeenCalledWith({
+					guid: createContextResponse.guid,
+					units: refreshContextResponse.units,
+				});
+
+				done();
+			});
 		});
-	});
-
-	it("should call event logger on success", (done) => {
-		SDK.defaultEventLogger.mockClear();
-
-		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
-		context.ready().then(() => {
-			expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
-			expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", createContextResponse);
-
-			done();
-		});
-	});
-
-	it("should call event logger on pre-fetched experiment data", (done) => {
-		SDK.defaultEventLogger.mockClear();
-
-		const context = new Context(sdk, client, contextOptions, createContextResponse);
-		context.ready().then(() => {
-			expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
-			expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", createContextResponse);
-
-			done();
-		});
-	});
-
-	it("should throw when not ready", (done) => {
-		const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
-		expect(context.isReady()).toEqual(false);
-		expect(context.isFailed()).toEqual(false);
-		expect(context.isFinalized()).toEqual(false);
-
-		expect(() => context.data()).toThrow();
-		expect(() => context.treatment("test")).toThrow();
-		expect(() => context.experiments()).toThrow();
-		expect(() => context.experimentConfig("test")).toThrow();
-
-		done();
 	});
 
 	describe("attribute()", () => {
@@ -218,22 +276,6 @@ describe("Context", () => {
 				});
 			});
 		});
-	});
-
-	it("constructor() should load experiment data", (done) => {
-		const context = new Context(sdk, client, contextOptions, createContextResponse);
-
-		expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
-		for (const assignment of createContextResponse.assignments) {
-			expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-			expect(context.experimentConfig(assignment.name)).toEqual(
-				assignment.config ? JSON.parse(assignment.config) : {}
-			);
-		}
-		expect(context.data()).toEqual(createContextResponse);
-		expect(context.experimentConfig("not_found")).toEqual({});
-
-		done();
 	});
 
 	describe("refresh()", () => {
@@ -602,7 +644,7 @@ describe("Context", () => {
 
 				client.publish.mockReturnValue(Promise.resolve({}));
 
-				jest.runAllTimers();
+				jest.advanceTimersByTime(2);
 
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
@@ -984,7 +1026,7 @@ describe("Context", () => {
 
 			client.publish.mockReturnValue(Promise.resolve({}));
 
-			jest.runAllTimers();
+			jest.advanceTimersByTime(2);
 
 			expect(client.publish).toHaveBeenCalledTimes(1);
 		});
@@ -1021,7 +1063,7 @@ describe("Context", () => {
 
 			client.publish.mockReturnValue(Promise.resolve({}));
 
-			jest.runAllTimers();
+			jest.advanceTimersByTime(2);
 
 			expect(client.publish).toHaveBeenCalledTimes(1);
 		});
@@ -1225,6 +1267,38 @@ describe("Context", () => {
 				context.finalize().then(() => {
 					done();
 				});
+			});
+		});
+
+		it("should cancel refresh timer", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			jest.useFakeTimers();
+
+			const refreshPeriod = 1000;
+			const context = new Context(
+				sdk,
+				client,
+				Object.assign(contextOptions, { refreshPeriod }),
+				createContextResponse
+			);
+
+			expect(context.isReady()).toEqual(true);
+			expect(context.isFailed()).toEqual(false);
+
+			expect(setInterval).toHaveBeenCalledTimes(1);
+			expect(setInterval).toHaveBeenCalledWith(expect.anything(), refreshPeriod);
+			const timerId = setInterval.mock.results[0].value;
+
+			context.finalize().then(() => {
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
+
+				expect(clearInterval).toHaveBeenCalledTimes(1);
+				expect(clearInterval).toHaveBeenCalledWith(timerId);
+
+				done();
 			});
 		});
 	});

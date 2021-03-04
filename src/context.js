@@ -407,11 +407,20 @@ export default class Context {
 		);
 		this._exposed = exposed;
 		this._exposures = [];
+
+		if (!this._failed && this._opts.refreshPeriod > 0) {
+			this._refreshInterval = setInterval(() => this._refresh(), this._opts.refreshPeriod);
+		}
 	}
 
 	_finalize() {
 		if (!this._finalized) {
 			if (!this._finalizing) {
+				if (this._refreshInterval !== undefined) {
+					clearInterval(this._refreshInterval);
+					delete this._refreshInterval;
+				}
+
 				if (this.pending() > 0) {
 					this._finalizing = new Promise((resolve, reject) => {
 						this._flush((error) => {
