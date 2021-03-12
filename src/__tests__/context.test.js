@@ -193,23 +193,42 @@ describe("Context", () => {
 			context.ready().then(() => {
 				expect(setInterval).toHaveBeenCalledTimes(1);
 				expect(setInterval).toHaveBeenCalledWith(expect.anything(), refreshPeriod);
+				setInterval.mockClear();
 
 				jest.advanceTimersByTime(refreshPeriod - 1);
 
 				expect(client.refreshContext).not.toHaveBeenCalled();
 
-				client.refreshContext.mockReturnValue(Promise.resolve(refreshContextResponse));
+				const refreshContextPromise = Promise.resolve(refreshContextResponse);
+				client.refreshContext.mockReturnValue(refreshContextPromise);
 
-				jest.advanceTimersByTime(2);
-				jest.clearAllTimers();
+				jest.advanceTimersByTime(refreshPeriod);
 
-				expect(client.refreshContext).toHaveBeenCalledTimes(1);
-				expect(client.refreshContext).toHaveBeenCalledWith({
-					guid: createContextResponse.guid,
-					units: refreshContextResponse.units,
+				refreshContextPromise.then(() => {
+					expect(setInterval).not.toHaveBeenCalled();
+					expect(client.refreshContext).toHaveBeenCalledTimes(1);
+					expect(client.refreshContext).toHaveBeenCalledWith({
+						guid: createContextResponse.guid,
+						units: refreshContextResponse.units,
+					});
+					client.refreshContext.mockClear();
+
+					// test another interval
+					const nextRefreshContextPromise = Promise.resolve(refreshContextResponse);
+					client.refreshContext.mockReturnValue(nextRefreshContextPromise);
+
+					jest.advanceTimersByTime(refreshPeriod);
+					refreshContextPromise.then(() => {
+						expect(setInterval).not.toHaveBeenCalled();
+						expect(client.refreshContext).toHaveBeenCalledTimes(1);
+						expect(client.refreshContext).toHaveBeenCalledWith({
+							guid: createContextResponse.guid,
+							units: refreshContextResponse.units,
+						});
+
+						done();
+					});
 				});
-
-				done();
 			});
 		});
 	});

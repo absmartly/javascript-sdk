@@ -408,7 +408,7 @@ export default class Context {
 		this._exposed = exposed;
 		this._exposures = [];
 
-		if (!this._failed && this._opts.refreshPeriod > 0) {
+		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {
 			this._refreshInterval = setInterval(() => this._refresh(), this._opts.refreshPeriod);
 		}
 	}
