@@ -293,6 +293,7 @@ export default class Context {
 				const request = {
 					guid: this._data.guid,
 					units: this._data.units,
+					publishedAt: Date.now(),
 				};
 
 				if (this._goals.length > 0) {

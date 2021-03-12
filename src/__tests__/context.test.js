@@ -258,11 +258,14 @@ describe("Context", () => {
 
 				client.publish.mockReturnValue(Promise.resolve());
 
+				jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 				context.publish().then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
 						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
+						publishedAt: 1611141535829,
 						exposures: [
 							{
 								name: "exp_test_ab",
@@ -577,10 +580,13 @@ describe("Context", () => {
 
 			client.publish.mockReturnValue(Promise.resolve());
 
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					publishedAt: 1611141535829,
 					units: createContextResponse.units,
 					goals: [
 						{
@@ -663,12 +669,15 @@ describe("Context", () => {
 
 				client.publish.mockReturnValue(Promise.resolve({}));
 
+				jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 				jest.advanceTimersByTime(2);
 
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
+					publishedAt: 1611141535829,
 					goals: [
 						{
 							name: "goal1",
@@ -744,11 +753,14 @@ describe("Context", () => {
 
 			client.publish.mockReturnValue(Promise.resolve());
 
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
+					publishedAt: 1611141535829,
 					exposures: [
 						{
 							name: "exp_test_ab",
@@ -855,28 +867,34 @@ describe("Context", () => {
 		});
 
 		it("should call event logger on success", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 
 			context.track("goal1", [125.0, 245]);
 
 			client.publish.mockReturnValue(Promise.resolve());
 
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 			SDK.defaultEventLogger.mockClear();
 			context.publish().then(() => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "publish", {
-					goals: [
-						{
-							achievedAt: 1611141535732,
-							name: "goal1",
-							values: [125, 245],
-						},
-					],
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					publishedAt: 1611141535829,
 					units: [
 						{
 							type: "session_id",
 							uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+						},
+					],
+					goals: [
+						{
+							achievedAt: 1611141535729,
+							name: "goal1",
+							values: [125, 245],
 						},
 					],
 				});
@@ -938,6 +956,8 @@ describe("Context", () => {
 
 			client.publish.mockReturnValue(Promise.resolve({}));
 
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 			context
 				.publish()
 				.then(() => {
@@ -945,6 +965,7 @@ describe("Context", () => {
 					expect(client.publish).toHaveBeenCalledWith({
 						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
+						publishedAt: 1611141535829,
 						exposures: [
 							{
 								name: "exp_test_ab",
@@ -991,10 +1012,11 @@ describe("Context", () => {
 					expect(client.publish).toHaveBeenCalledWith({
 						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
+						publishedAt: 1611141535829,
 						goals: [
 							{
 								name: "goal2",
-								achievedAt: 1611141535729,
+								achievedAt: 1611141535829,
 								values: [999],
 							},
 						],
@@ -1156,11 +1178,14 @@ describe("Context", () => {
 
 			client.publish.mockReturnValue(Promise.resolve());
 
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
 			context.finalize().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
 					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
+					publishedAt: 1611141535829,
 					exposures: [
 						{
 							name: "exp_test_ab",
