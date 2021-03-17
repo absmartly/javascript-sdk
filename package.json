@@ -1,6 +1,6 @@
 {
 	"name": "@absmartly/javascript-sdk",
-	"version": "1.2.7",
+	"version": "1.2.8",
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
@@ -30,11 +30,11 @@
 		"build": "npm run -s format && npm run -s lint && npm run -s test && npm run -s build-mjs && npm run -s build-cjs && npm run -s build-browser",
 		"lint": "eslint -f stylish 'src/**/*.{js,mjs,jsx}'",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json}'",
-		"prepack": "npm run -s build",
+		"prepack": "npm -s upgrade && npm run -s build",
 		"test": "jest --coverage"
 	},
 	"dependencies": {
-		"@absmartly/javascript-client": "^1.0.6",
+		"@absmartly/javascript-client": "^1.0.10",
 		"rfdc": "^1.2.0"
 	},
 	"devDependencies": {
