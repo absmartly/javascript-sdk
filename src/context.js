@@ -141,10 +141,16 @@ export default class Context {
 		}
 	}
 
-	treatment(experimentName, callback) {
+	peek(experimentName) {
 		this._checkReady(true);
 
-		return this._treatment(experimentName, callback);
+		return this._peek(experimentName);
+	}
+
+	treatment(experimentName) {
+		this._checkReady(true);
+
+		return this._treatment(experimentName);
 	}
 
 	track(goalName, values, callback) {
@@ -225,6 +231,12 @@ export default class Context {
 		if (expectNotFinalized) {
 			this._checkNotFinalized();
 		}
+	}
+
+	_peek(experimentName) {
+		const assigned = experimentName in this._assignments;
+		const assignment = assigned ? this._data.assignments[this._assignments[experimentName]] : undefined;
+		return assigned ? assignment.variant : 0;
 	}
 
 	_treatment(experimentName) {

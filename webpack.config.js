@@ -31,7 +31,7 @@ module.exports = function () {
 		config.output.filename = `[name].min.js`;
 		config.performance = {
 			hints: "error",
-			maxAssetSize: 25600,
+			maxAssetSize: 30720,
 		};
 	} else {
 		config.output.filename = `[name].js`;

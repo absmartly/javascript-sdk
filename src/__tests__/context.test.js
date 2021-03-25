@@ -156,6 +156,7 @@ describe("Context", () => {
 
 			expect(() => context.data()).toThrow();
 			expect(() => context.treatment("test")).toThrow();
+			expect(() => context.peek("test")).toThrow();
 			expect(() => context.experiments()).toThrow();
 			expect(() => context.experimentConfig("test")).toThrow();
 
@@ -168,6 +169,7 @@ describe("Context", () => {
 			expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
 			for (const assignment of createContextResponse.assignments) {
 				expect(context.treatment(assignment.name)).toEqual(assignment.variant);
+				expect(context.peek(assignment.name)).toEqual(assignment.variant);
 				expect(context.experimentConfig(assignment.name)).toEqual(
 					assignment.config ? JSON.parse(assignment.config) : {}
 				);
@@ -433,6 +435,22 @@ describe("Context", () => {
 
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.refresh()).toThrow(); // finalizing
+		});
+	});
+
+	describe("peek()", () => {
+		it("should not queue exposures", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			for (const assignment of createContextResponse.assignments) {
+				const actual = context.peek(assignment.name);
+				expect(actual).toEqual(assignment.variant);
+			}
+
+			expect(context.pending()).toEqual(0);
+
+			done();
 		});
 	});
 
