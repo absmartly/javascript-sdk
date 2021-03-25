@@ -46,7 +46,7 @@ This example assumes an Api Key, an Application, and an Environment have been cr
 ```javascript
 // somewhere in your application initialization code
 const sdk = new absmartly.SDK({
-    endpoint: 'https://sandbox-api.absmartly.com/v1',
+    endpoint: 'https://sandbox.absmartly.io/v1',
     apiKey: process.env.ABSMARTLY_API_KEY,
     environment: process.env.NODE_ENV,
     application: process.env.APPLICATION_NAME,
@@ -107,6 +107,7 @@ Then we can initialize the A/B Smartly context on the client-side directly with 
 ```
 
 #### Setting context attributes
+The `attribute()` and `attributes()` methods can be called before the context is ready.
 ```javascript
 context.attribute('user_agent', navigator.userAgent);
 
@@ -120,7 +121,7 @@ context.attributes({
 if (context.treament("exp_test_experiment") == 0) {
     // user is in control group (variant 0)
 } else {
-    // user is in treatment group (variant 1)
+    // user is in treatment group
 }
 ```
 
@@ -151,7 +152,21 @@ await context.finalize().then(() => {
 #### Refreshing the context with fresh experiment data
 For long-running single-page-applications (SPA), the context is usually created once when the application is first reached.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can call the `refresh()` method periodically, say, every 5 minutes.
+To mitigate this, we can use the `refreshInterval` option when creating the context.
+
+```javascript
+const request = {
+    units: {
+        session_id: '5ebf06d8cb5d8137290c4abb64155584fbdb64d8',
+    },
+};
+
+const context = sdk.createContext(request, {
+    refreshInterval: 5 * 60 * 1000
+});
+```
+
+Alternatively, the `refresh()` method can be called manually.
 The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `treatment()` is called again.
 ```javascript
 setTimeout(async () => {
@@ -194,6 +209,29 @@ Currently, the SDK logs the following events:
 | `"goal"` | `Context.track()` method succeeds | goal data enqueued for publishing |
 | `"finalize"` | `Context.finalize()` method succeeds the first time | undefined |
 
+
+#### Peek at treatment variants
+Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure.
+The A/B Smartly SDK provides a `peek()` method for that.
+
+```javascript
+if (context.peek("exp_test_experiment") == 0) {
+    // user is in control group (variant 0)
+} else {
+    // user is in treatment group
+}
+```
+
+#### Overriding treatment variants
+During development, for example, it is useful to force a treatment for an experiment. This can be achieved with the `override()` and/or `overrides()` methods.
+The `override()` and `overrides()` methods can be called before the context is ready.
+```javascript
+    context.override("exp_test_experiment", 1); // force variant 1 of treatment
+    context.overrides({
+        exp_test_experiment: 1,
+        exp_another_experiment: 0,
+    });
+```
 
 ## About A/B Smartly
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
