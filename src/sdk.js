@@ -43,6 +43,19 @@ export default class SDK {
 			}
 		);
 
+		for (const unit of transformed.units) {
+			const type = typeof unit.uid;
+			if (type !== "string") {
+				if (type === "number") {
+					unit.uid = (unit.uid | 0).toString();
+				} else {
+					throw new Error(
+						`Unit '${unit.type}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
+					);
+				}
+			}
+		}
+
 		options = this._contextOptions(options);
 		const data = this._client.createContext(transformed);
 		return new Context(this, this._client, options, data);

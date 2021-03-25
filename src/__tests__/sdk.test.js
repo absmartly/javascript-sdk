@@ -17,6 +17,19 @@ const sdkOptions = {
 };
 
 describe("SDK", () => {
+	it("constructor should try to create a client with no options", (done) => {
+		const sdk = new SDK();
+
+		expect(sdk).toBeInstanceOf(SDK);
+		expect(sdk.getEventLogger()).toBe(SDK.defaultEventLogger);
+		expect(Client).toHaveBeenCalledTimes(1);
+		expect(Client).toHaveBeenCalledWith({
+			agent: "absmartly-javascript-sdk",
+		});
+
+		done();
+	});
+
 	it("constructor should create a client with specified options", (done) => {
 		const sdk = new SDK(sdkOptions);
 
@@ -104,6 +117,80 @@ describe("SDK", () => {
 		done();
 	});
 
+	it("createContext() should coerce unit uid to string", (done) => {
+		const sdk = new SDK(sdkOptions);
+
+		const promise = Promise.resolve({});
+		sdk.getClient().createContext.mockReturnValue(promise);
+
+		const contextOptions = {
+			publishDelay: 1000,
+			refreshPeriod: 0,
+			eventLogger: testEventLogger,
+		};
+
+		const request = {
+			units: {
+				session_id: "ab",
+				user_id: 125,
+				float_id: 125.75,
+			},
+		};
+
+		const context = sdk.createContext(request, contextOptions);
+
+		expect(context).toBeInstanceOf(Context);
+		expect(sdk.getClient().createContext).toHaveBeenCalledTimes(1);
+		expect(sdk.getClient().createContext).toHaveBeenCalledWith({
+			units: [
+				{
+					type: "session_id",
+					uid: "ab",
+				},
+				{
+					type: "user_id",
+					uid: "125",
+				},
+				{
+					type: "float_id",
+					uid: "125",
+				},
+			],
+		});
+
+		expect(Context).toHaveBeenCalledTimes(1);
+		expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), contextOptions, promise);
+
+		done();
+	});
+
+	it("createContext() should throw on unsupported unit uid type", (done) => {
+		const sdk = new SDK(sdkOptions);
+
+		const promise = Promise.resolve({});
+		sdk.getClient().createContext.mockReturnValue(promise);
+
+		const contextOptions = {
+			publishDelay: 1000,
+			refreshPeriod: 0,
+			eventLogger: testEventLogger,
+		};
+
+		const request = {
+			units: {
+				session_id: true,
+			},
+		};
+
+		expect(() => sdk.createContext(request, contextOptions)).toThrow(
+			new Error("Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']")
+		);
+		expect(sdk.getClient().createContext).not.toHaveBeenCalled();
+		expect(Context).not.toHaveBeenCalled();
+
+		done();
+	});
+
 	it("createContextWith() should not call client createContext", (done) => {
 		const data = {
 			guid: "test",
@@ -127,7 +214,7 @@ describe("SDK", () => {
 		done();
 	});
 
-	it("createContext() should initialize context with default options", (done) => {
+	it("createContext() should initialize context with default options for nodejs", (done) => {
 		const sdk = new SDK(sdkOptions);
 
 		const promise = Promise.resolve({});
@@ -143,6 +230,46 @@ describe("SDK", () => {
 
 		const defaultOptions = {
 			publishDelay: -1,
+			refreshPeriod: 0,
+			eventLogger: sdkOptions.eventLogger,
+		};
+
+		expect(context).toBeInstanceOf(Context);
+		expect(sdk.getClient().createContext).toHaveBeenCalledTimes(1);
+		expect(sdk.getClient().createContext).toHaveBeenCalledWith({
+			units: [{ type: "session_id", uid: "ab" }],
+		});
+
+		expect(context).toBeInstanceOf(Context);
+		expect(Context).toHaveBeenCalledTimes(1);
+		expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), defaultOptions, promise);
+
+		done();
+	});
+
+	it("createContext() should initialize context with default options for browser", (done) => {
+		const sdk = new SDK(sdkOptions);
+
+		const promise = Promise.resolve({});
+		sdk.getClient().createContext.mockReturnValue(promise);
+
+		const request = {
+			units: {
+				session_id: "ab",
+			},
+		};
+
+		// fake browser environment
+		const previousWindow = global.window;
+		global.window = { navigator: {} };
+
+		const context = sdk.createContext(request);
+
+		// restore environment
+		global.window = previousWindow;
+
+		const defaultOptions = {
+			publishDelay: 100,
 			refreshPeriod: 0,
 			eventLogger: sdkOptions.eventLogger,
 		};
