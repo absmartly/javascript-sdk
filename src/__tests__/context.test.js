@@ -20,7 +20,6 @@ describe("Context", () => {
 				unit: "session_id",
 				variant: 1,
 				eligible: true,
-				overriden: false,
 				originalVariant: 1,
 				config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
 			},
@@ -29,7 +28,6 @@ describe("Context", () => {
 				unit: "session_id",
 				variant: 2,
 				eligible: true,
-				overriden: false,
 				originalVariant: 2,
 				config: '{"a":"2","b.c.a":"3","a.c.b":{"test":2}}',
 			},
@@ -38,7 +36,6 @@ describe("Context", () => {
 				unit: "user_id",
 				variant: 0,
 				eligible: false,
-				overriden: false,
 				originalVariant: 2,
 				config: "{}",
 			},
@@ -52,7 +49,6 @@ describe("Context", () => {
 				unit: "session_id",
 				variant: 2,
 				eligible: true,
-				overriden: false,
 				originalVariant: 2,
 				config: '{"c":"5"}',
 			},
@@ -280,6 +276,7 @@ describe("Context", () => {
 								variant: 1,
 								assigned: true,
 								eligible: true,
+								overridden: false,
 							},
 						],
 						attributes: [
@@ -436,6 +433,21 @@ describe("Context", () => {
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.refresh()).toThrow(); // finalizing
 		});
+
+		it("should keep overrides", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+
+			client.refreshContext.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+			context.override("not_found", 3);
+			expect(context.peek("not_found")).toEqual(3);
+
+			context.refresh().then(() => {
+				expect(context.peek("not_found")).toEqual(3);
+
+				done();
+			});
+		});
 	});
 
 	describe("peek()", () => {
@@ -452,9 +464,90 @@ describe("Context", () => {
 
 			done();
 		});
+
+		it("should return override variant", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			for (const assignment of createContextResponse.assignments) {
+				context.override(assignment.name, assignment.variant + 10);
+			}
+			context.override("not_found", 3);
+
+			for (const assignment of createContextResponse.assignments) {
+				expect(context.peek(assignment.name)).toEqual(assignment.variant + 10);
+			}
+
+			expect(context.peek("not_found")).toEqual(3);
+
+			expect(context.pending()).toEqual(0);
+
+			done();
+		});
 	});
 
 	describe("treatment()", () => {
+		it("should queue exposures", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			for (const assignment of createContextResponse.assignments) {
+				context.treatment(assignment.name);
+			}
+
+			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+
+			for (const assignment of createContextResponse.assignments) {
+				context.treatment(assignment.name);
+			}
+
+			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					publishedAt: 1611141535729,
+					units: createContextResponse.units,
+					exposures: [
+						{
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_ab",
+							overridden: false,
+							unit: "session_id",
+							variant: 1,
+						},
+						{
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_abc",
+							overridden: false,
+							unit: "session_id",
+							variant: 2,
+						},
+						{
+							assigned: true,
+							eligible: false,
+							exposedAt: 1611141535729,
+							name: "exp_test_not_eligible",
+							overridden: false,
+							unit: "user_id",
+							variant: 0,
+						},
+					],
+				});
+
+				done();
+			});
+		});
+
 		it("should queue exposures only once", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
@@ -487,6 +580,7 @@ describe("Context", () => {
 					exposedAt: timeOrigin,
 					eligible: assignment.eligible,
 					assigned: true,
+					overridden: false,
 					name: assignment.name,
 					unit: assignment.unit,
 					variant: assignment.variant,
@@ -504,6 +598,9 @@ describe("Context", () => {
 		});
 
 		it("should queue exposure with base variant on unknown experiment", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -511,7 +608,76 @@ describe("Context", () => {
 
 			expect(context.pending()).toEqual(1);
 
-			done();
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					publishedAt: 1611141535729,
+					units: createContextResponse.units,
+					exposures: [
+						{
+							assigned: false,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "not_found",
+							overridden: false,
+							unit: null,
+							variant: 0,
+						},
+					],
+				});
+
+				done();
+			});
+		});
+
+		it("should queue exposure with override variant", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.override("exp_test_ab", 5);
+			context.override("not_found", 3);
+
+			expect(context.treatment("exp_test_ab")).toEqual(5);
+			expect(context.treatment("not_found")).toEqual(3);
+
+			expect(context.pending()).toEqual(2);
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					publishedAt: 1611141535729,
+					units: createContextResponse.units,
+					exposures: [
+						{
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_ab",
+							overridden: true,
+							unit: "session_id",
+							variant: 5,
+						},
+						{
+							assigned: false,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "not_found",
+							overridden: true,
+							unit: null,
+							variant: 3,
+						},
+					],
+				});
+
+				done();
+			});
 		});
 
 		it("should throw after finalized() call", (done) => {
@@ -535,6 +701,9 @@ describe("Context", () => {
 
 	describe("track()", () => {
 		it("should queue goals", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -547,7 +716,34 @@ describe("Context", () => {
 
 			expect(context.pending()).toEqual(3);
 
-			done();
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(client.publish).toHaveBeenCalledWith({
+					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+					publishedAt: 1611141535729,
+					units: createContextResponse.units,
+					goals: [
+						{
+							achievedAt: 1611141535729,
+							name: "goal1",
+							values: [125, 245],
+						},
+						{
+							achievedAt: 1611141535729,
+							name: "goal2",
+							values: [256],
+						},
+						{
+							achievedAt: 1611141535729,
+							name: "goal2",
+							values: [12],
+						},
+					],
+				});
+
+				done();
+			});
 		});
 
 		it("should call event logger", (done) => {
@@ -793,6 +989,7 @@ describe("Context", () => {
 							variant: 1,
 							assigned: true,
 							eligible: true,
+							overridden: false,
 						},
 						{
 							name: "exp_test_not_eligible",
@@ -801,6 +998,7 @@ describe("Context", () => {
 							variant: 0,
 							assigned: true,
 							eligible: false,
+							overridden: false,
 						},
 					],
 					goals: [
@@ -967,7 +1165,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should reset internal queues and keep attributes", (done) => {
+		it("should reset internal queues and keep attributes and overrides", (done) => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
@@ -977,6 +1175,9 @@ describe("Context", () => {
 			context.treatment("not_found");
 			context.track("goal1", [125.0, 245]);
 			context.attribute("attr1", "value1");
+
+			context.override("not_found", 3);
+			expect(context.peek("not_found")).toEqual(3);
 
 			expect(context.pending()).toEqual(3);
 
@@ -1000,6 +1201,7 @@ describe("Context", () => {
 								variant: 1,
 								assigned: true,
 								eligible: true,
+								overridden: false,
 							},
 							{
 								name: "not_found",
@@ -1008,6 +1210,7 @@ describe("Context", () => {
 								variant: 0,
 								assigned: false,
 								eligible: true,
+								overridden: false,
 							},
 						],
 						goals: [
@@ -1058,6 +1261,8 @@ describe("Context", () => {
 					});
 
 					expect(context.pending()).toEqual(0);
+
+					expect(context.peek("not_found")).toEqual(3);
 
 					done();
 				});
@@ -1222,6 +1427,7 @@ describe("Context", () => {
 							variant: 1,
 							assigned: true,
 							eligible: true,
+							overridden: false,
 						},
 					],
 				});
@@ -1376,143 +1582,65 @@ describe("Context", () => {
 		});
 	});
 
-	describe("createVariantOverride()", () => {
-		it("should call client", () => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+	describe("override()", () => {
+		it("should be callable before ready()", (done) => {
+			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+			expect(context.isFinalized()).toEqual(false);
 
-			client.createVariantOverride.mockReturnValue(Promise.resolve({}));
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			context.createVariantOverride("exp_test", 2);
-
-			expect(client.createVariantOverride).toHaveBeenCalledTimes(1);
-			expect(client.createVariantOverride).toHaveBeenCalledWith({
-				overrides: [
-					{
-						name: "exp_test",
-						variant: 2,
-					},
-				],
-				units: [
-					{
-						type: "session_id",
-						uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-					},
-				],
-			});
-		});
-	});
-
-	describe("createVariantOverrides()", () => {
-		it("should call client", () => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
-
-			client.createVariantOverride.mockReturnValue(Promise.resolve({}));
-
-			context.createVariantOverrides({
-				exp_test: 2,
-				exp_test_another: 1,
+			context.override("exp_test_ab", 1);
+			context.overrides({
+				exp_test_ab: 2,
+				exp_test_abc: 2,
+				not_found: 3,
 			});
 
-			expect(client.createVariantOverride).toHaveBeenCalledTimes(1);
-			expect(client.createVariantOverride).toHaveBeenCalledWith({
-				overrides: [
-					{
-						name: "exp_test",
-						variant: 2,
-					},
-					{
-						name: "exp_test_another",
-						variant: 1,
-					},
-				],
-				units: [
-					{
-						type: "session_id",
-						uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-					},
-				],
-			});
-		});
-	});
+			context.ready().then(() => {
+				expect(context.isReady()).toEqual(true);
+				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.client()).toBe(client);
 
-	describe("createVariantOverrides()", () => {
-		it("should call client", () => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+				context.treatment("exp_test_ab");
+				context.treatment("exp_test_abc");
 
-			client.createVariantOverride.mockReturnValue(Promise.resolve({}));
+				client.publish.mockReturnValue(Promise.resolve());
 
-			context.removeVariantOverride("exp_test");
+				jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
 
-			expect(client.removeVariantOverride).toHaveBeenCalledTimes(1);
-			expect(client.removeVariantOverride).toHaveBeenCalledWith({
-				units: [
-					{
-						type: "session_id",
-						uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-					},
-				],
-				experiment: "exp_test",
-			});
-		});
-	});
+				context.publish().then(() => {
+					expect(client.publish).toHaveBeenCalledTimes(1);
+					expect(client.publish).toHaveBeenCalledWith({
+						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
+						units: createContextResponse.units,
+						publishedAt: 1611141535829,
+						exposures: [
+							{
+								name: "exp_test_ab",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 2,
+								assigned: true,
+								eligible: true,
+								overridden: true,
+							},
+							{
+								name: "exp_test_abc",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 2,
+								assigned: true,
+								eligible: true,
+								overridden: true,
+							},
+						],
+					});
 
-	describe("removeVariantOverrides()", () => {
-		it("should call client", () => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
-
-			client.createVariantOverride.mockReturnValue(Promise.resolve({}));
-
-			context.removeVariantOverrides("session_id", createContextResponse.units.session_id);
-
-			expect(client.removeVariantOverride).toHaveBeenCalledTimes(1);
-			expect(client.removeVariantOverride).toHaveBeenCalledWith({
-				units: [
-					{
-						type: "session_id",
-						uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-					},
-				],
-			});
-		});
-	});
-
-	describe("getVariantOverride()", () => {
-		it("should call client", () => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
-
-			client.getVariantOverride.mockReturnValue(Promise.resolve({}));
-
-			context.getVariantOverride("exp_test");
-
-			expect(client.getVariantOverride).toHaveBeenCalledTimes(1);
-			expect(client.getVariantOverride).toHaveBeenCalledWith({
-				units: [
-					{
-						type: "session_id",
-						uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-					},
-				],
-				experiment: "exp_test",
-			});
-		});
-	});
-
-	describe("getVariantOverrides()", () => {
-		it("should call client", () => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
-
-			client.getVariantOverride.mockReturnValue(Promise.resolve({}));
-
-			context.getVariantOverrides("session_id", createContextResponse.units.session_id);
-
-			expect(client.getVariantOverride).toHaveBeenCalledTimes(1);
-			expect(client.getVariantOverride).toHaveBeenCalledWith({
-				units: [
-					{
-						type: "session_id",
-						uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-					},
-				],
+					done();
+				});
 			});
 		});
 	});

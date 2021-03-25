@@ -8,6 +8,7 @@ export default class Context {
 		this._finalized = false;
 		this._attrs = [];
 		this._goals = [];
+		this._overrides = {};
 		this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 
 		if (promise instanceof Promise) {
@@ -175,44 +176,14 @@ export default class Context {
 		return this._configs[experimentName] || {};
 	}
 
-	createVariantOverride(experimentName, variant) {
-		return this.createVariantOverrides({ [experimentName]: variant });
+	override(experimentName, variant) {
+		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
-	createVariantOverrides(overrides) {
-		return this._cli.createVariantOverride({
-			units: this._data.units,
-			overrides: Object.entries(overrides).map((entry) => ({
-				name: entry[0],
-				variant: entry[1],
-			})),
-		});
-	}
-
-	getVariantOverride(experimentName) {
-		return this._cli.getVariantOverride({
-			units: this._data.units,
-			experiment: experimentName,
-		});
-	}
-
-	getVariantOverrides() {
-		return this._cli.getVariantOverride({
-			units: this._data.units,
-		});
-	}
-
-	removeVariantOverride(experimentName) {
-		return this._cli.removeVariantOverride({
-			units: this._data.units,
-			experiment: experimentName,
-		});
-	}
-
-	removeVariantOverrides() {
-		return this._cli.removeVariantOverride({
-			units: this._data.units,
-		});
+	overrides(experimentVariants) {
+		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
+			this.override(experimentName, variant);
+		}
 	}
 
 	_checkNotFinalized() {
@@ -234,6 +205,10 @@ export default class Context {
 	}
 
 	_peek(experimentName) {
+		if (experimentName in this._overrides) {
+			return this._overrides[experimentName];
+		}
+
 		const assigned = experimentName in this._assignments;
 		const assignment = assigned ? this._data.assignments[this._assignments[experimentName]] : undefined;
 		return assigned ? assignment.variant : 0;
@@ -242,13 +217,22 @@ export default class Context {
 	_treatment(experimentName) {
 		const assigned = experimentName in this._assignments;
 		const assignment = assigned ? this._data.assignments[this._assignments[experimentName]] : undefined;
-		const variant = assigned ? assignment.variant : 0;
-		const eligible = assigned ? assignment.eligible : true;
-		const unit = assigned ? assignment.unit : null;
+		const overridden = experimentName in this._overrides;
 		const exposed = experimentName in this._exposed;
+		const variant = overridden ? this._overrides[experimentName] : assigned ? assignment.variant : 0;
 
 		if (!exposed) {
-			const exposureEvent = { name: experimentName, unit, variant, exposedAt: Date.now(), assigned, eligible };
+			const unit = assigned ? assignment.unit : null;
+			const eligible = assigned ? assignment.eligible : true;
+			const exposureEvent = {
+				name: experimentName,
+				unit,
+				variant,
+				exposedAt: Date.now(),
+				assigned,
+				eligible,
+				overridden,
+			};
 			this._logEvent("exposure", exposureEvent);
 
 			this._exposures.push(exposureEvent);
@@ -257,6 +241,7 @@ export default class Context {
 
 			this._setTimeout();
 		}
+
 		return variant;
 	}
 
@@ -326,6 +311,7 @@ export default class Context {
 						variant: x.variant,
 						assigned: x.assigned,
 						eligible: x.eligible,
+						overridden: x.overridden,
 					}));
 				}
 
