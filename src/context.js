@@ -229,12 +229,14 @@ export default class Context {
 
 	_treatment(experimentName) {
 		const assigned = experimentName in this._assignments;
-		const variant = assigned ? this._data.assignments[this._assignments[experimentName]].variant : 0;
-		const eligible = assigned ? this._data.assignments[this._assignments[experimentName]].eligible : true;
+		const assignment = assigned ? this._data.assignments[this._assignments[experimentName]] : undefined;
+		const variant = assigned ? assignment.variant : 0;
+		const eligible = assigned ? assignment.eligible : true;
+		const unit = assigned ? assignment.unit : null;
 		const exposed = experimentName in this._exposed;
 
 		if (!exposed) {
-			const exposureEvent = { name: experimentName, variant, exposedAt: Date.now(), assigned, eligible };
+			const exposureEvent = { name: experimentName, unit, variant, exposedAt: Date.now(), assigned, eligible };
 			this._logEvent("exposure", exposureEvent);
 
 			this._exposures.push(exposureEvent);
@@ -307,6 +309,7 @@ export default class Context {
 				if (this._exposures.length > 0) {
 					request.exposures = this._exposures.map((x) => ({
 						name: x.name,
+						unit: x.unit,
 						exposedAt: x.exposedAt,
 						variant: x.variant,
 						assigned: x.assigned,

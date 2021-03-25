@@ -17,6 +17,7 @@ describe("Context", () => {
 		assignments: [
 			{
 				name: "exp_test_ab",
+				unit: "session_id",
 				variant: 1,
 				eligible: true,
 				overriden: false,
@@ -25,6 +26,7 @@ describe("Context", () => {
 			},
 			{
 				name: "exp_test_abc",
+				unit: "session_id",
 				variant: 2,
 				eligible: true,
 				overriden: false,
@@ -33,6 +35,7 @@ describe("Context", () => {
 			},
 			{
 				name: "exp_test_not_eligible",
+				unit: "user_id",
 				variant: 0,
 				eligible: false,
 				overriden: false,
@@ -46,6 +49,7 @@ describe("Context", () => {
 		assignments: [
 			{
 				name: "exp_test_refreshed",
+				unit: "session_id",
 				variant: 2,
 				eligible: true,
 				overriden: false,
@@ -269,6 +273,7 @@ describe("Context", () => {
 						exposures: [
 							{
 								name: "exp_test_ab",
+								unit: "session_id",
 								exposedAt: 1611141535729,
 								variant: 1,
 								assigned: true,
@@ -465,6 +470,7 @@ describe("Context", () => {
 					eligible: assignment.eligible,
 					assigned: true,
 					name: assignment.name,
+					unit: assignment.unit,
 					variant: assignment.variant,
 				});
 			}
@@ -764,6 +770,7 @@ describe("Context", () => {
 					exposures: [
 						{
 							name: "exp_test_ab",
+							unit: "session_id",
 							exposedAt: 1611141535729,
 							variant: 1,
 							assigned: true,
@@ -771,6 +778,7 @@ describe("Context", () => {
 						},
 						{
 							name: "exp_test_not_eligible",
+							unit: "user_id",
 							exposedAt: 1611141535729,
 							variant: 0,
 							assigned: true,
@@ -969,6 +977,7 @@ describe("Context", () => {
 						exposures: [
 							{
 								name: "exp_test_ab",
+								unit: "session_id",
 								exposedAt: 1611141535729,
 								variant: 1,
 								assigned: true,
@@ -976,6 +985,7 @@ describe("Context", () => {
 							},
 							{
 								name: "not_found",
+								unit: null,
 								exposedAt: 1611141535729,
 								variant: 0,
 								assigned: false,
@@ -1189,6 +1199,7 @@ describe("Context", () => {
 					exposures: [
 						{
 							name: "exp_test_ab",
+							unit: "session_id",
 							exposedAt: 1611141535729,
 							variant: 1,
 							assigned: true,
