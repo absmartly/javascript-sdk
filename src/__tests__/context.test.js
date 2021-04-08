@@ -210,7 +210,6 @@ describe("Context", () => {
 					expect(setInterval).not.toHaveBeenCalled();
 					expect(client.refreshContext).toHaveBeenCalledTimes(1);
 					expect(client.refreshContext).toHaveBeenCalledWith({
-						guid: createContextResponse.guid,
 						units: refreshContextResponse.units,
 					});
 					client.refreshContext.mockClear();
@@ -224,7 +223,6 @@ describe("Context", () => {
 						expect(setInterval).not.toHaveBeenCalled();
 						expect(client.refreshContext).toHaveBeenCalledTimes(1);
 						expect(client.refreshContext).toHaveBeenCalledWith({
-							guid: createContextResponse.guid,
 							units: refreshContextResponse.units,
 						});
 
@@ -265,7 +263,6 @@ describe("Context", () => {
 				context.publish().then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
 						publishedAt: 1611141535829,
 						exposures: [
@@ -313,7 +310,6 @@ describe("Context", () => {
 			context.refresh().then(() => {
 				expect(client.refreshContext).toHaveBeenCalledTimes(1);
 				expect(client.refreshContext).toHaveBeenCalledWith({
-					guid: createContextResponse.guid,
 					units: refreshContextResponse.units,
 				});
 
@@ -356,7 +352,6 @@ describe("Context", () => {
 
 				expect(client.refreshContext).toHaveBeenCalledTimes(1);
 				expect(client.refreshContext).toHaveBeenCalledWith({
-					guid: createContextResponse.guid,
 					units: refreshContextResponse.units,
 				});
 
@@ -510,7 +505,6 @@ describe("Context", () => {
 
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					publishedAt: 1611141535729,
 					units: createContextResponse.units,
 					exposures: [
@@ -612,7 +606,6 @@ describe("Context", () => {
 
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					publishedAt: 1611141535729,
 					units: createContextResponse.units,
 					exposures: [
@@ -651,7 +644,6 @@ describe("Context", () => {
 
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					publishedAt: 1611141535729,
 					units: createContextResponse.units,
 					exposures: [
@@ -707,12 +699,12 @@ describe("Context", () => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			context.track("goal1", [125, 245]);
-			context.track("goal2", [256]);
+			context.track("goal1", { amount: 125, hours: 245 });
+			context.track("goal2", { tries: 7 });
 
 			expect(context.pending()).toEqual(2);
 
-			context.track("goal2", 12);
+			context.track("goal2", { tests: 12 });
 
 			expect(context.pending()).toEqual(3);
 
@@ -720,24 +712,23 @@ describe("Context", () => {
 
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					publishedAt: 1611141535729,
 					units: createContextResponse.units,
 					goals: [
 						{
 							achievedAt: 1611141535729,
 							name: "goal1",
-							values: [125, 245],
+							properties: { amount: 125, hours: 245 },
 						},
 						{
 							achievedAt: 1611141535729,
 							name: "goal2",
-							values: [256],
+							properties: { tries: 7 },
 						},
 						{
 							achievedAt: 1611141535729,
 							name: "goal2",
-							values: [12],
+							properties: { tests: 12 },
 						},
 					],
 				});
@@ -753,36 +744,45 @@ describe("Context", () => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 
 			SDK.defaultEventLogger.mockClear();
-			context.track("goal1", [125, 245]);
+			context.track("goal1", { amount: 125, hours: 245 });
 			expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 			expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "goal", {
 				achievedAt: timeOrigin,
 				name: "goal1",
-				values: [125, 245],
+				properties: { amount: 125, hours: 245 },
 			});
 
 			done();
 		});
 
-		it("should throw when too many goal values", (done) => {
+		it("should throw when goal properties values not integers", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			expect(() => context.track("goal1", [125, 245, 999])).toThrow();
+			expect(() => context.track("goal1", { test: 125.5 })).toThrowError(
+				"Goal properties values must be integers."
+			);
+			expect(() => context.track("goal1", { test: true })).toThrowError(
+				"Goal properties values must be integers."
+			);
+			expect(() => context.track("goal1", { test: "testy" })).toThrowError(
+				"Goal properties values must be integers."
+			);
+			expect(() => context.track("goal1", { test: [] })).toThrowError("Goal properties values must be integers.");
+			expect(() => context.track("goal1", { test: {} })).toThrowError("Goal properties values must be integers.");
 			expect(context.pending()).toEqual(0);
 
 			done();
 		});
 
-		it("should throw when goal values not integers", (done) => {
+		it("should throw when goal properties not object", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			expect(() => context.track("goal1", 125.125)).toThrowError();
-			expect(() => context.track("goal1", [125.125, 245])).toThrowError();
-			expect(() => context.track("goal1", 125.125)).toThrowError();
-			expect(() => context.track("goal1", "abs")).toThrowError();
-			expect(context.pending()).toEqual(0);
+			expect(() => context.track("goal1", 125.0)).toThrowError("Goal properties must be an object.");
+			expect(() => context.track("goal1", true)).toThrowError("Goal properties must be an object.");
+			expect(() => context.track("goal1", "testy")).toThrowError("Goal properties must be an object.");
+			expect(() => context.track("goal1", [])).toThrowError("Goal properties must be an object.");
 
 			done();
 		});
@@ -794,7 +794,7 @@ describe("Context", () => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			context.track("goal1", 125.0);
+			context.track("goal1", { amount: 125 });
 
 			expect(context.pending()).toEqual(1);
 
@@ -805,14 +805,13 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					publishedAt: 1611141535829,
 					units: createContextResponse.units,
 					goals: [
 						{
 							name: "goal1",
 							achievedAt: 1611141535729,
-							values: [125.0],
+							properties: { amount: 125 },
 						},
 					],
 				});
@@ -832,13 +831,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.track("payment", 125.0)).toThrow();
+				expect(() => context.track("payment", { amount: 125 })).toThrow();
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.track("payment", 125.0)).toThrow();
+			expect(() => context.track("payment", { amount: 125 })).toThrow();
 		});
 
 		it("should queue when not ready", (done) => {
@@ -846,7 +845,7 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(0);
 			expect(context.isReady()).toEqual(false);
 
-			context.track("goal1", 125.0);
+			context.track("goal1", { amount: 125 });
 
 			expect(context.pending()).toEqual(1);
 			expect(context.isReady()).toEqual(false);
@@ -875,7 +874,7 @@ describe("Context", () => {
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 
-			context.track("goal1", 125);
+			context.track("goal1", { amount: 125 });
 
 			expect(context.pending()).toEqual(1);
 
@@ -895,14 +894,13 @@ describe("Context", () => {
 
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
 					publishedAt: 1611141535829,
 					goals: [
 						{
 							name: "goal1",
 							achievedAt: 1611141535729,
-							values: [125.0],
+							properties: { amount: 125 },
 						},
 					],
 				});
@@ -929,7 +927,7 @@ describe("Context", () => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			context.track("goal1", [125.0, 245]);
+			context.track("goal1", { amount: 125 });
 
 			client.publish.mockReturnValue(Promise.reject("test"));
 
@@ -950,7 +948,7 @@ describe("Context", () => {
 			context.treatment("exp_test_not_eligible");
 
 			Date.now.mockImplementation(() => timeOrigin + 1); // ensure that time is kept separately per event
-			context.track("goal1", [125.0, 245]);
+			context.track("goal1", { amount: 125, hours: 245 });
 
 			Date.now.mockImplementation(() => timeOrigin + 2);
 			context.attribute("attr1", "value1");
@@ -978,7 +976,6 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
 					publishedAt: 1611141535829,
 					exposures: [
@@ -1005,7 +1002,7 @@ describe("Context", () => {
 						{
 							name: "goal1",
 							achievedAt: 1611141535730,
-							values: [125, 245],
+							properties: { amount: 125, hours: 245 },
 						},
 					],
 					attributes: [
@@ -1077,7 +1074,7 @@ describe("Context", () => {
 		it("should call event logger on error", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 
-			context.track("goal1", [125.0, 245]);
+			context.track("goal1", { amount: 125, hours: 245 });
 
 			client.publish.mockReturnValue(Promise.reject("test error"));
 
@@ -1096,7 +1093,7 @@ describe("Context", () => {
 
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 
-			context.track("goal1", [125.0, 245]);
+			context.track("goal1", { amount: 125, hours: 245 });
 
 			client.publish.mockReturnValue(Promise.resolve());
 
@@ -1106,7 +1103,6 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "publish", {
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					publishedAt: 1611141535829,
 					units: [
 						{
@@ -1118,7 +1114,7 @@ describe("Context", () => {
 						{
 							achievedAt: 1611141535729,
 							name: "goal1",
-							values: [125, 245],
+							properties: { amount: 125, hours: 245 },
 						},
 					],
 				});
@@ -1152,7 +1148,7 @@ describe("Context", () => {
 				context.treatment("exp_test_ab");
 
 				Date.now.mockImplementation(() => timeOrigin + 1); // ensure that time is kept separately per event
-				context.track("goal1", [125.0, 245]);
+				context.track("goal1", { amount: 125, hours: 245 });
 
 				expect(context.pending()).toEqual(2);
 
@@ -1173,7 +1169,7 @@ describe("Context", () => {
 
 			context.treatment("exp_test_ab");
 			context.treatment("not_found");
-			context.track("goal1", [125.0, 245]);
+			context.track("goal1", { amount: 125, hours: 245 });
 			context.attribute("attr1", "value1");
 
 			context.override("not_found", 3);
@@ -1190,7 +1186,6 @@ describe("Context", () => {
 				.then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
 						publishedAt: 1611141535829,
 						exposures: [
@@ -1217,7 +1212,7 @@ describe("Context", () => {
 							{
 								name: "goal1",
 								achievedAt: 1611141535729,
-								values: [125, 245],
+								properties: { amount: 125, hours: 245 },
 							},
 						],
 						attributes: [
@@ -1234,21 +1229,20 @@ describe("Context", () => {
 					client.publish.mockClear();
 				})
 				.then(() => {
-					context.track("goal2", [999]);
+					context.track("goal2", { test: 999 });
 
 					return context.publish();
 				})
 				.then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
 						publishedAt: 1611141535829,
 						goals: [
 							{
 								name: "goal2",
 								achievedAt: 1611141535829,
-								values: [999],
+								properties: { test: 999 },
 							},
 						],
 						attributes: [
@@ -1288,7 +1282,7 @@ describe("Context", () => {
 			expect(setTimeout).toHaveBeenCalledTimes(1);
 			expect(setTimeout).toHaveBeenLastCalledWith(expect.anything(), publishDelay);
 
-			context.track("goal1", 125);
+			context.track("goal1", { amount: 125 });
 
 			expect(context.pending()).toEqual(2);
 			expect(setTimeout).toHaveBeenCalledTimes(1); // no new calls
@@ -1319,7 +1313,7 @@ describe("Context", () => {
 			expect(context.isReady()).toEqual(true);
 			expect(context.isFailed()).toEqual(false);
 
-			context.track("goal1", 125);
+			context.track("goal1", { amount: 125 });
 
 			expect(context.pending()).toEqual(1);
 			expect(setTimeout).toHaveBeenCalledTimes(1);
@@ -1416,7 +1410,6 @@ describe("Context", () => {
 			context.finalize().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 					units: createContextResponse.units,
 					publishedAt: 1611141535829,
 					exposures: [
@@ -1614,7 +1607,6 @@ describe("Context", () => {
 				context.publish().then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
 						units: createContextResponse.units,
 						publishedAt: 1611141535829,
 						exposures: [

@@ -154,10 +154,10 @@ export default class Context {
 		return this._treatment(experimentName);
 	}
 
-	track(goalName, values, callback) {
+	track(goalName, properties) {
 		this._checkNotFinalized();
 
-		return this._track(goalName, values, callback);
+		return this._track(goalName, properties);
 	}
 
 	finalize() {
@@ -245,20 +245,18 @@ export default class Context {
 		return variant;
 	}
 
-	_track(goalName, values = null) {
-		if (values !== null && values !== undefined) {
-			if (!Array.isArray(values)) {
-				values = [values];
-			} else if (values.length > 2) {
-				throw new Error("Goal values array length must be <= 2.");
-			}
-
-			if (values.some((x) => !Number.isInteger(x))) {
-				throw new Error("Goal values must be integers");
+	_track(goalName, properties) {
+		if (properties !== null && properties !== undefined) {
+			if (properties instanceof Object && properties.constructor === Object) {
+				if (Object.values(properties).some((x) => !Number.isInteger(x))) {
+					throw new Error("Goal properties values must be integers.");
+				}
+			} else {
+				throw new Error("Goal properties must be an object.");
 			}
 		}
 
-		const goalEvent = { name: goalName, values, achievedAt: Date.now() };
+		const goalEvent = { name: goalName, properties, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
 
 		this._goals.push(goalEvent);
@@ -290,7 +288,6 @@ export default class Context {
 		} else {
 			if (!this._failed) {
 				const request = {
-					guid: this._data.guid,
 					units: this._data.units,
 					publishedAt: Date.now(),
 				};
@@ -299,7 +296,7 @@ export default class Context {
 					request.goals = this._goals.map((x) => ({
 						name: x.name,
 						achievedAt: x.achievedAt,
-						values: x.values,
+						properties: x.properties,
 					}));
 				}
 
@@ -354,7 +351,6 @@ export default class Context {
 	_refresh(callback) {
 		if (!this._failed) {
 			const request = {
-				guid: this._data.guid,
 				units: this._data.units,
 			};
 

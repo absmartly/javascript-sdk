@@ -128,7 +128,7 @@ if (context.treament("exp_test_experiment") == 0) {
 #### Tracking a goal achievement
 Goals are created in the A/B Smartly web console.
 ```javascript
-context.track("payment", 1000);
+context.track("payment", { amount: 1000 });
 ```
 
 #### Publishing pending data
