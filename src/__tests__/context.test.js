@@ -755,22 +755,49 @@ describe("Context", () => {
 			done();
 		});
 
-		it("should throw when goal properties values not integers", (done) => {
+		it("should not throw when goal property values are numbers or objects with number values", (done) => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			expect(() => context.track("goal1", { test: 125.5 })).toThrowError(
-				"Goal properties values must be integers."
-			);
+			expect(() => context.track("goal1", { test: { flt: 1.5, int: 2 } })).not.toThrowError();
+			expect(() => context.track("goal1", { test: {} })).not.toThrowError();
+			expect(() => context.track("goal1", { test: null })).not.toThrowError();
+
+			expect(context.pending()).toEqual(3);
+
+			done();
+		});
+
+		it("should throw when goal property values not numbers", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
 			expect(() => context.track("goal1", { test: true })).toThrowError(
-				"Goal properties values must be integers."
+				"Goal 'goal1' property value type must be one of [number, object]."
 			);
 			expect(() => context.track("goal1", { test: "testy" })).toThrowError(
-				"Goal properties values must be integers."
+				"Goal 'goal1' property value type must be one of [number, object]."
 			);
-			expect(() => context.track("goal1", { test: [] })).toThrowError("Goal properties values must be integers.");
-			expect(() => context.track("goal1", { test: {} })).toThrowError("Goal properties values must be integers.");
+			expect(() => context.track("goal1", { test: [] })).toThrowError(
+				"Goal 'goal1' property value type must be one of [number, object]."
+			);
+			expect(() => context.track("goal1", { test: { test: "testy" } })).toThrowError(
+				"Goal 'goal1' property value type must be one of [number, object]."
+			);
 			expect(context.pending()).toEqual(0);
+
+			done();
+		});
+
+		it("should not throw when goal properties is null or undefined", (done) => {
+			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(() => context.track("goal1")).not.toThrowError();
+			expect(() => context.track("goal1", null)).not.toThrowError();
+			expect(() => context.track("goal1", undefined)).not.toThrowError();
+
+			expect(context.pending()).toEqual(3);
 
 			done();
 		});
@@ -779,47 +806,14 @@ describe("Context", () => {
 			const context = new Context(sdk, client, contextOptions, createContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			expect(() => context.track("goal1", 125.0)).toThrowError("Goal properties must be an object.");
-			expect(() => context.track("goal1", true)).toThrowError("Goal properties must be an object.");
-			expect(() => context.track("goal1", "testy")).toThrowError("Goal properties must be an object.");
-			expect(() => context.track("goal1", [])).toThrowError("Goal properties must be an object.");
+			expect(() => context.track("goal1", 125.0)).toThrowError("Goal 'goal1' properties must be of type object.");
+			expect(() => context.track("goal1", true)).toThrowError("Goal 'goal1' properties must be of type object.");
+			expect(() => context.track("goal1", "testy")).toThrowError(
+				"Goal 'goal1' properties must be of type object."
+			);
+			expect(() => context.track("goal1", [])).toThrowError("Goal 'goal1' properties must be of type object.");
 
 			done();
-		});
-
-		it("should convert single goal value to array", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
-			expect(context.pending()).toEqual(0);
-
-			context.track("goal1", { amount: 125 });
-
-			expect(context.pending()).toEqual(1);
-
-			client.publish.mockReturnValue(Promise.resolve());
-
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
-
-			context.publish().then(() => {
-				expect(client.publish).toHaveBeenCalledTimes(1);
-				expect(client.publish).toHaveBeenCalledWith({
-					publishedAt: 1611141535829,
-					units: createContextResponse.units,
-					goals: [
-						{
-							name: "goal1",
-							achievedAt: 1611141535729,
-							properties: { amount: 125 },
-						},
-					],
-				});
-
-				expect(context.pending()).toEqual(0);
-
-				done();
-			});
 		});
 
 		it("should throw after finalized() call", (done) => {

@@ -1,3 +1,5 @@
+import { isObject, isNumeric } from "./utils";
+
 export default class Context {
 	constructor(sdk, client, options, promise) {
 		this._sdk = sdk;
@@ -245,18 +247,39 @@ export default class Context {
 		return variant;
 	}
 
-	_track(goalName, properties) {
+	_validateGoal(goalName, properties) {
 		if (properties !== null && properties !== undefined) {
-			if (properties instanceof Object && properties.constructor === Object) {
-				if (Object.values(properties).some((x) => !Number.isInteger(x))) {
-					throw new Error("Goal properties values must be integers.");
-				}
-			} else {
-				throw new Error("Goal properties must be an object.");
+			if (!isObject(properties)) {
+				throw new Error(`Goal '${goalName}' properties must be of type object.`);
 			}
+
+			return Object.assign(
+				{},
+				...Object.entries(properties).map((entry) => {
+					const key = entry[0];
+					const value = entry[1];
+
+					if (isNumeric(value)) {
+						return { [key]: value };
+					} else if (isObject(value)) {
+						const filtered = this._validateGoal(goalName, value);
+						if (Object.keys(filtered).length > 0) {
+							return { [key]: filtered };
+						}
+					} else if (value !== null) {
+						throw new Error(`Goal '${goalName}' property value type must be one of [number, object].`);
+					}
+					return undefined;
+				})
+			);
 		}
 
-		const goalEvent = { name: goalName, properties, achievedAt: Date.now() };
+		return null;
+	}
+
+	_track(goalName, properties) {
+		const props = this._validateGoal(goalName, properties);
+		const goalEvent = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
 
 		this._goals.push(goalEvent);
