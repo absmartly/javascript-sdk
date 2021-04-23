@@ -1,7 +1,8 @@
-import { isObject, isNumeric } from "./utils";
+import { arrayEqualsShallow, hashUnit, isObject, isNumeric } from "./utils";
+import { VariantAssigner } from "./assigner";
 
 export default class Context {
-	constructor(sdk, client, options, promise) {
+	constructor(sdk, client, options, params, promise) {
 		this._sdk = sdk;
 		this._cli = client;
 		this._opts = options;
@@ -10,7 +11,10 @@ export default class Context {
 		this._finalized = false;
 		this._attrs = [];
 		this._goals = [];
+		this._exposures = [];
 		this._overrides = {};
+		this._params = params;
+		this._assigners = {};
 		this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 
 		if (promise instanceof Promise) {
@@ -147,13 +151,13 @@ export default class Context {
 	peek(experimentName) {
 		this._checkReady(true);
 
-		return this._peek(experimentName);
+		return this._peek(experimentName).variant;
 	}
 
 	treatment(experimentName) {
 		this._checkReady(true);
 
-		return this._treatment(experimentName);
+		return this._treatment(experimentName).variant;
 	}
 
 	track(goalName, properties) {
@@ -169,13 +173,21 @@ export default class Context {
 	experiments() {
 		this._checkReady();
 
-		return Object.keys(this._assignments);
+		return this._data.experiments.map((x) => x.name);
 	}
 
 	experimentConfig(experimentName) {
 		this._checkReady();
 
-		return this._configs[experimentName] || {};
+		if (experimentName in this._index) {
+			const experiment = this._data.experiments[this._index[experimentName]];
+			const config = experiment.variants[this._peek(experimentName).variant].config;
+			if (config !== null && config !== undefined && config !== "") {
+				return JSON.parse(config);
+			}
+		}
+
+		return {};
 	}
 
 	override(experimentName, variant) {
@@ -206,45 +218,138 @@ export default class Context {
 		}
 	}
 
-	_peek(experimentName) {
-		if (experimentName in this._overrides) {
-			return this._overrides[experimentName];
+	_assign(experimentName) {
+		const experimentMatches = (experiment, assignment) => {
+			return (
+				experiment.id === assignment.id &&
+				experiment.unitType === assignment.unitType &&
+				experiment.iteration === assignment.iteration &&
+				experiment.fullOnVariant === assignment.fullOnVariant &&
+				arrayEqualsShallow(experiment.trafficSplit, assignment.trafficSplit)
+			);
+		};
+
+		const hasOverride = experimentName in this._overrides;
+
+		if (experimentName in this._assignments) {
+			const assignment = this._assignments[experimentName];
+			if (hasOverride) {
+				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
+					// override up-to-date
+					return assignment;
+				}
+			} else if (!(experimentName in this._index)) {
+				if (!assignment.assigned) {
+					// previously not-running experiment
+					return assignment;
+				}
+			} else {
+				const experiment = this._data.experiments[this._index[experimentName]];
+				if (experimentMatches(experiment, assignment)) {
+					// assignment up-to-date
+					return assignment;
+				}
+			}
 		}
 
-		const assigned = experimentName in this._assignments;
-		const assignment = assigned ? this._data.assignments[this._assignments[experimentName]] : undefined;
-		return assigned ? assignment.variant : 0;
+		const assignment = {
+			id: 0,
+			iteration: 0,
+			fullOnVariant: 0,
+			unitType: null,
+			variant: 0,
+			overridden: false,
+			assigned: false,
+			exposed: false,
+			eligible: true,
+			fullOn: false,
+		};
+
+		this._assignments[experimentName] = assignment;
+
+		if (hasOverride) {
+			if (experimentName in this._index) {
+				const experiment = this._data.experiments[this._index[experimentName]];
+				assignment.unitType = experiment.unitType;
+				assignment.assigned = experiment.unitType in this._params.units;
+			}
+
+			assignment.overridden = true;
+			assignment.variant = this._overrides[experimentName];
+		} else {
+			if (experimentName in this._index) {
+				const experiment = this._data.experiments[this._index[experimentName]];
+				const unitType = experiment.unitType;
+
+				if (experiment.fullOnVariant === 0) {
+					if (unitType in this._params.units) {
+						const unit = this._unitHash(unitType);
+						const assigner =
+							unitType in this._assigners
+								? this._assigners[unitType]
+								: (this._assigners[unitType] = new VariantAssigner(unit));
+						const eligible =
+							assigner.assign(
+								experiment.trafficSplit,
+								experiment.trafficSeedHi,
+								experiment.trafficSeedLo
+							) === 1;
+						const variant = eligible
+							? assigner.assign(experiment.split, experiment.seedHi, experiment.seedLo)
+							: 0;
+						assignment.assigned = true;
+						assignment.eligible = eligible;
+						assignment.variant = variant;
+					}
+				} else {
+					assignment.assigned = true;
+					assignment.eligible = true;
+					assignment.variant = experiment.fullOnVariant;
+					assignment.fullOn = true;
+				}
+
+				// store these so we can detect changes to running experiment
+				assignment.unitType = unitType;
+				assignment.id = experiment.id;
+				assignment.iteration = experiment.iteration;
+				assignment.trafficSplit = experiment.trafficSplit;
+				assignment.fullOnVariant = experiment.fullOnVariant;
+			}
+		}
+
+		return assignment;
+	}
+
+	_peek(experimentName) {
+		return this._assign(experimentName);
 	}
 
 	_treatment(experimentName) {
-		const assigned = experimentName in this._assignments;
-		const assignment = assigned ? this._data.assignments[this._assignments[experimentName]] : undefined;
-		const overridden = experimentName in this._overrides;
-		const exposed = experimentName in this._exposed;
-		const variant = overridden ? this._overrides[experimentName] : assigned ? assignment.variant : 0;
+		const assignment = this._assign(experimentName);
 
-		if (!exposed) {
-			const unit = assigned ? assignment.unit : null;
-			const eligible = assigned ? assignment.eligible : true;
+		if (!assignment.exposed) {
+			assignment.exposed = true;
+
 			const exposureEvent = {
+				id: assignment.id,
 				name: experimentName,
-				unit,
-				variant,
 				exposedAt: Date.now(),
-				assigned,
-				eligible,
-				overridden,
+				unit: assignment.unitType,
+				variant: assignment.variant,
+				assigned: assignment.assigned,
+				eligible: assignment.eligible,
+				overridden: assignment.overridden,
+				fullOn: assignment.fullOn,
 			};
 			this._logEvent("exposure", exposureEvent);
 
 			this._exposures.push(exposureEvent);
 			this._pending++;
-			this._exposed[experimentName] = true;
 
 			this._setTimeout();
 		}
 
-		return variant;
+		return assignment;
 	}
 
 	_validateGoal(goalName, properties) {
@@ -310,9 +415,17 @@ export default class Context {
 			}
 		} else {
 			if (!this._failed) {
+				if (!this._units) {
+					this._units = Object.entries(this._params.units).map((entry) => ({
+						type: entry[0],
+						uid: this._unitHash(entry[0]),
+					}));
+				}
+
 				const request = {
-					units: this._data.units,
 					publishedAt: Date.now(),
+					units: this._units,
+					hashed: true,
 				};
 
 				if (this._goals.length > 0) {
@@ -325,6 +438,7 @@ export default class Context {
 
 				if (this._exposures.length > 0) {
 					request.exposures = this._exposures.map((x) => ({
+						id: x.id,
 						name: x.name,
 						unit: x.unit,
 						exposedAt: x.exposedAt,
@@ -332,6 +446,7 @@ export default class Context {
 						assigned: x.assigned,
 						eligible: x.eligible,
 						overridden: x.overridden,
+						fullOn: x.fullOn,
 					}));
 				}
 
@@ -373,14 +488,10 @@ export default class Context {
 
 	_refresh(callback) {
 		if (!this._failed) {
-			const request = {
-				units: this._data.units,
-			};
-
 			this._cli
-				.refreshContext(request)
+				.getContext()
 				.then((data) => {
-					this._init(data, this._exposed);
+					this._init(data, this._assignments);
 
 					this._logEvent("refresh", data);
 
@@ -414,20 +525,27 @@ export default class Context {
 		}
 	}
 
-	_init(data, exposed = {}) {
+	_unitHash(unitType) {
+		if (!this._hashes) {
+			this._hashes = {};
+		}
+
+		if (!(unitType in this._hashes)) {
+			const hash = unitType in this._params.units ? hashUnit(this._params.units[unitType]) : null;
+			this._hashes[unitType] = hash;
+			return hash;
+		}
+
+		return this._hashes[unitType];
+	}
+
+	_init(data, assignments = {}) {
 		this._data = data;
-		this._assignments = Object.assign(
+		this._index = Object.assign(
 			{},
-			...(data.assignments || []).map((experiment, index) => ({ [experiment.name]: index }))
+			...(data.experiments || []).map((experiment, index) => ({ [experiment.name]: index }))
 		);
-		this._configs = Object.assign(
-			{},
-			...(data.assignments || []).map((experiment) => ({
-				[experiment.name]: experiment.config ? JSON.parse(experiment.config) : {},
-			}))
-		);
-		this._exposed = exposed;
-		this._exposures = [];
+		this._assignments = assignments;
 
 		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {
 			this._refreshInterval = setInterval(() => this._refresh(), this._opts.refreshPeriod);

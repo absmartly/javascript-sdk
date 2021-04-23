@@ -1,59 +1,195 @@
-import { Client } from "@absmartly/javascript-client";
+import Client from "../client";
 import SDK from "../sdk";
 import Context from "../context";
+import { hashUnit } from "../utils";
+import clone from "rfdc/default";
 
-jest.mock("@absmartly/javascript-client");
+jest.mock("../client");
 jest.mock("../sdk");
 
 describe("Context", () => {
-	const createContextResponse = {
-		guid: "8cbcf4da566d8689dd48c13e1ac11d7113d074ec",
-		units: [
+	const contextParams = {
+		units: {
+			session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+			user_id: 12317303,
+		},
+	};
+
+	const publishUnits = Object.entries(contextParams.units).map((x) => ({ type: x[0], uid: hashUnit(x[1]) }));
+
+	const getContextResponse = {
+		experiments: [
 			{
-				type: "session_id",
-				uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-			},
-		],
-		assignments: [
-			{
+				id: 1,
 				name: "exp_test_ab",
-				unit: "session_id",
-				variant: 1,
-				eligible: true,
-				originalVariant: 1,
-				config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 3603515,
+				seedLo: 9233373850,
+				split: [0.5, 0.5],
+				trafficSeedHi: 449867249,
+				trafficSeedLo: 455443629,
+				trafficSplit: [0.0, 1.0],
+				fullOnVariant: 0,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+					},
+				],
 			},
 			{
+				id: 2,
 				name: "exp_test_abc",
-				unit: "session_id",
-				variant: 2,
-				eligible: true,
-				originalVariant: 2,
-				config: '{"a":"2","b.c.a":"3","a.c.b":{"test":2}}',
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 55006150,
+				seedLo: 47189152,
+				split: [0.34, 0.33, 0.33],
+				trafficSeedHi: 705671872,
+				trafficSeedLo: 212903484,
+				trafficSplit: [0.0, 1.0],
+				fullOnVariant: 0,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"a":"0","b.c.a":"1","a.c.b":{"test":2}}',
+					},
+					{
+						name: "C",
+						config: '{"a":"3","b.c.a":"4","a.c.b":{"test":5}}',
+					},
+				],
 			},
 			{
+				id: 3,
 				name: "exp_test_not_eligible",
-				unit: "user_id",
-				variant: 0,
-				eligible: false,
-				originalVariant: 2,
-				config: "{}",
+				iteration: 1,
+				unitType: "user_id",
+				seedHi: 503266407,
+				seedLo: 144942754,
+				split: [0.34, 0.33, 0.33],
+				trafficSeedHi: 87768905,
+				trafficSeedLo: 511357582,
+				trafficSplit: [0.99, 0.01],
+				fullOnVariant: 0,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+					},
+					{
+						name: "C",
+						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+					},
+				],
+			},
+			{
+				id: 4,
+				name: "exp_test_fullon",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 856061641,
+				seedLo: 990838475,
+				split: [0.25, 0.25, 0.25, 0.25],
+				trafficSeedHi: 360868579,
+				trafficSeedLo: 330937933,
+				trafficSplit: [0.0, 1.0],
+				fullOnVariant: 2,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+					},
+					{
+						name: "C",
+						config: '{"a":"10","b.c.a":"11","a.c.b":{"test":15}}',
+					},
+					{
+						name: "D",
+						config: '{"a":"20","b.c.a":"21","a.c.b":{"test":25}}',
+					},
+				],
 			},
 		],
 	};
 
-	const refreshContextResponse = Object.assign({}, createContextResponse, {
-		assignments: [
+	const refreshContextResponse = Object.assign({}, getContextResponse, {
+		experiments: [
 			{
-				name: "exp_test_refreshed",
-				unit: "session_id",
-				variant: 2,
-				eligible: true,
-				originalVariant: 2,
-				config: '{"c":"5"}',
+				id: 5,
+				name: "exp_test_new",
+				iteration: 2,
+				unitType: "session_id",
+				seedHi: 934590467,
+				seedLo: 714771373,
+				split: [0.5, 0.5],
+				trafficSeedHi: 940553836,
+				trafficSeedLo: 270705624,
+				trafficSplit: [0.0, 1.0],
+				fullOnVariant: 1,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"a":"9","b.c.a":"9","a.c.b":{"test":9}}',
+					},
+				],
 			},
-		].concat(createContextResponse.assignments),
+		].concat(getContextResponse.experiments),
 	});
+
+	const expectedVariants = {
+		exp_test_ab: 1,
+		exp_test_abc: 2,
+		exp_test_not_eligible: 0,
+		exp_test_fullon: 2,
+		exp_test_new: 1,
+	};
 
 	const sdk = new SDK();
 	const client = new Client();
@@ -66,13 +202,13 @@ describe("Context", () => {
 
 	describe("Context", () => {
 		it("should be ready with data", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.isReady()).toEqual(true);
 			expect(context.isFailed()).toEqual(false);
 
 			context.ready().then(() => {
 				expect(context.isReady()).toEqual(true);
-				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.data()).toStrictEqual(getContextResponse);
 				expect(context.client()).toBe(client);
 
 				done();
@@ -80,13 +216,19 @@ describe("Context", () => {
 		});
 
 		it("should become ready and call handler", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 
 			context.ready().then(() => {
 				expect(context.isReady()).toEqual(true);
-				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.data()).toStrictEqual(getContextResponse);
 				expect(context.client()).toBe(client);
 
 				done();
@@ -94,7 +236,13 @@ describe("Context", () => {
 		});
 
 		it("should become ready and failed, and call handler on failure", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.reject("bad request error text")
+			);
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 
@@ -111,7 +259,13 @@ describe("Context", () => {
 		it("should call event logger on error", (done) => {
 			SDK.defaultEventLogger.mockClear();
 
-			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.reject("bad request error text")
+			);
 			context.ready().then(() => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "error", "bad request error text");
@@ -123,10 +277,16 @@ describe("Context", () => {
 		it("should call event logger on success", (done) => {
 			SDK.defaultEventLogger.mockClear();
 
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			context.ready().then(() => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
-				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", createContextResponse);
+				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", getContextResponse);
 
 				done();
 			});
@@ -135,17 +295,23 @@ describe("Context", () => {
 		it("should call event logger on pre-fetched experiment data", (done) => {
 			SDK.defaultEventLogger.mockClear();
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			context.ready().then(() => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
-				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", createContextResponse);
+				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "ready", getContextResponse);
 
 				done();
 			});
 		});
 
 		it("should throw when not ready", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 			expect(context.isFinalized()).toEqual(false);
@@ -160,17 +326,17 @@ describe("Context", () => {
 		});
 
 		it("should load experiment data", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
-			expect(context.experiments()).toEqual(createContextResponse.assignments.map((x) => x.name));
-			for (const assignment of createContextResponse.assignments) {
-				expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-				expect(context.peek(assignment.name)).toEqual(assignment.variant);
-				expect(context.experimentConfig(assignment.name)).toEqual(
-					assignment.config ? JSON.parse(assignment.config) : {}
+			expect(context.experiments()).toEqual(getContextResponse.experiments.map((x) => x.name));
+			for (const experiment of getContextResponse.experiments) {
+				expect(context.peek(experiment.name)).toEqual(expectedVariants[experiment.name]);
+				expect(context.treatment(experiment.name)).toEqual(expectedVariants[experiment.name]);
+				expect(context.experimentConfig(experiment.name)).toEqual(
+					JSON.parse(experiment.variants[context.peek(experiment.name)].config || "{}")
 				);
 			}
-			expect(context.data()).toEqual(createContextResponse);
+			expect(context.data()).toEqual(getContextResponse);
 			expect(context.experimentConfig("not_found")).toEqual({});
 
 			done();
@@ -184,7 +350,8 @@ describe("Context", () => {
 				sdk,
 				client,
 				Object.assign(contextOptions, { refreshPeriod }),
-				Promise.resolve(createContextResponse)
+				contextParams,
+				Promise.resolve(getContextResponse)
 			);
 
 			expect(context.isReady()).toEqual(false);
@@ -199,32 +366,28 @@ describe("Context", () => {
 
 				jest.advanceTimersByTime(refreshPeriod - 1);
 
-				expect(client.refreshContext).not.toHaveBeenCalled();
+				expect(client.getContext).not.toHaveBeenCalled();
 
-				const refreshContextPromise = Promise.resolve(refreshContextResponse);
-				client.refreshContext.mockReturnValue(refreshContextPromise);
+				const getContextPromise = Promise.resolve(refreshContextResponse);
+				client.getContext.mockReturnValue(getContextPromise);
 
 				jest.advanceTimersByTime(refreshPeriod);
 
-				refreshContextPromise.then(() => {
+				getContextPromise.then(() => {
 					expect(setInterval).not.toHaveBeenCalled();
-					expect(client.refreshContext).toHaveBeenCalledTimes(1);
-					expect(client.refreshContext).toHaveBeenCalledWith({
-						units: refreshContextResponse.units,
-					});
-					client.refreshContext.mockClear();
+					expect(client.getContext).toHaveBeenCalledTimes(1);
+					expect(client.getContext).toHaveBeenCalledWith();
+					client.getContext.mockClear();
 
 					// test another interval
-					const nextRefreshContextPromise = Promise.resolve(refreshContextResponse);
-					client.refreshContext.mockReturnValue(nextRefreshContextPromise);
+					const nextGetContextPromise = Promise.resolve(refreshContextResponse);
+					client.getContext.mockReturnValue(nextGetContextPromise);
 
 					jest.advanceTimersByTime(refreshPeriod);
-					refreshContextPromise.then(() => {
+					nextGetContextPromise.then(() => {
 						expect(setInterval).not.toHaveBeenCalled();
-						expect(client.refreshContext).toHaveBeenCalledTimes(1);
-						expect(client.refreshContext).toHaveBeenCalledWith({
-							units: refreshContextResponse.units,
-						});
+						expect(client.getContext).toHaveBeenCalledTimes(1);
+						expect(client.getContext).toHaveBeenCalledWith();
 
 						done();
 					});
@@ -235,7 +398,13 @@ describe("Context", () => {
 
 	describe("attribute()", () => {
 		it("should be callable before ready()", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 			expect(context.isFinalized()).toEqual(false);
@@ -251,7 +420,7 @@ describe("Context", () => {
 
 			context.ready().then(() => {
 				expect(context.isReady()).toEqual(true);
-				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.data()).toStrictEqual(getContextResponse);
 				expect(context.client()).toBe(client);
 
 				context.treatment("exp_test_ab");
@@ -263,10 +432,12 @@ describe("Context", () => {
 				context.publish().then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						units: createContextResponse.units,
 						publishedAt: 1611141535829,
+						units: publishUnits,
+						hashed: true,
 						exposures: [
 							{
+								id: 1,
 								name: "exp_test_ab",
 								unit: "session_id",
 								exposedAt: 1611141535729,
@@ -274,6 +445,7 @@ describe("Context", () => {
 								assigned: true,
 								eligible: true,
 								overridden: false,
+								fullOn: false,
 							},
 						],
 						attributes: [
@@ -302,22 +474,20 @@ describe("Context", () => {
 	});
 
 	describe("refresh()", () => {
-		it("should call client refresh and load new data", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+		it("should call client and load new data", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
-			client.refreshContext.mockReturnValue(Promise.resolve(refreshContextResponse));
+			client.getContext.mockReturnValue(Promise.resolve(refreshContextResponse));
 
 			context.refresh().then(() => {
-				expect(client.refreshContext).toHaveBeenCalledTimes(1);
-				expect(client.refreshContext).toHaveBeenCalledWith({
-					units: refreshContextResponse.units,
-				});
+				expect(client.getContext).toHaveBeenCalledTimes(1);
+				expect(client.getContext).toHaveBeenCalledWith();
 
-				expect(context.experiments()).toEqual(refreshContextResponse.assignments.map((x) => x.name));
-				for (const assignment of refreshContextResponse.assignments) {
-					expect(context.treatment(assignment.name)).toEqual(assignment.variant);
-					expect(context.experimentConfig(assignment.name)).toEqual(
-						assignment.config ? JSON.parse(assignment.config) : {}
+				expect(context.experiments()).toEqual(refreshContextResponse.experiments.map((x) => x.name));
+				for (const experiment of refreshContextResponse.experiments) {
+					expect(context.treatment(experiment.name)).toEqual(expectedVariants[experiment.name]);
+					expect(context.experimentConfig(experiment.name)).toEqual(
+						JSON.parse(experiment.variants[context.peek(experiment.name)].config || "{}")
 					);
 				}
 				expect(context.data()).toEqual(refreshContextResponse);
@@ -328,9 +498,9 @@ describe("Context", () => {
 		});
 
 		it("should reject promise on error", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
-			client.refreshContext.mockReturnValueOnce(Promise.reject(new Error("test error")));
+			client.getContext.mockReturnValueOnce(Promise.reject(new Error("test error")));
 
 			context.refresh().catch((error) => {
 				expect(error.message).toEqual("test error");
@@ -339,44 +509,50 @@ describe("Context", () => {
 		});
 
 		it("should not re-queue exposures after refresh", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
-			for (const assignment of createContextResponse.assignments) {
-				context.treatment(assignment.name);
+			for (const experiment of getContextResponse.experiments) {
+				context.treatment(experiment.name);
 			}
 
-			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			client.getContext.mockReturnValue(Promise.resolve(refreshContextResponse));
 
 			context.refresh().then(() => {
-				expect(context.pending()).toEqual(createContextResponse.assignments.length);
+				expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
-				expect(client.refreshContext).toHaveBeenCalledTimes(1);
-				expect(client.refreshContext).toHaveBeenCalledWith({
-					units: refreshContextResponse.units,
-				});
+				expect(client.getContext).toHaveBeenCalledTimes(1);
+				expect(client.getContext).toHaveBeenCalledWith();
 
-				for (const assignment of createContextResponse.assignments) {
-					context.treatment(assignment.name);
+				for (const experiment of getContextResponse.experiments) {
+					context.treatment(experiment.name);
 				}
 
-				expect(context.pending()).toEqual(createContextResponse.assignments.length);
+				expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
-				for (const assignment of refreshContextResponse.assignments) {
-					context.treatment(assignment.name);
+				for (const experiment of refreshContextResponse.experiments) {
+					context.treatment(experiment.name);
 				}
 
-				expect(context.pending()).toEqual(refreshContextResponse.assignments.length);
+				expect(context.pending()).toEqual(refreshContextResponse.experiments.length);
 
 				done();
 			});
 		});
 
 		it("should not call client publish when failed", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.reject("bad request error text")
+			);
 
 			context.ready().then(() => {
 				context.refresh().then(() => {
-					expect(client.refreshContext).toHaveBeenCalledTimes(0);
+					expect(client.getContext).toHaveBeenCalledTimes(0);
 
 					done();
 				});
@@ -384,9 +560,15 @@ describe("Context", () => {
 		});
 
 		it("should call event logger when failed", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			context.ready().then(() => {
-				client.refreshContext.mockReturnValueOnce(Promise.reject(new Error("test error")));
+				client.getContext.mockReturnValueOnce(Promise.reject(new Error("test error")));
 
 				SDK.defaultEventLogger.mockClear();
 				context.refresh().catch((error) => {
@@ -399,7 +581,16 @@ describe("Context", () => {
 		});
 
 		it("should call event logger on success", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(refreshContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
+
+			client.getContext.mockReturnValueOnce(Promise.resolve(refreshContextResponse));
+
 			context.ready().then(() => {
 				SDK.defaultEventLogger.mockClear();
 				context.refresh().then(() => {
@@ -412,7 +603,7 @@ describe("Context", () => {
 		});
 
 		it("should throw after finalized() call", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			client.publish.mockReturnValue(Promise.resolve());
 
 			context.treatment("exp_test_ab");
@@ -430,9 +621,9 @@ describe("Context", () => {
 		});
 
 		it("should keep overrides", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
-			client.refreshContext.mockReturnValue(Promise.resolve(refreshContextResponse));
+			client.getContext.mockReturnValue(Promise.resolve(refreshContextResponse));
 
 			context.override("not_found", 3);
 			expect(context.peek("not_found")).toEqual(3);
@@ -443,16 +634,143 @@ describe("Context", () => {
 				done();
 			});
 		});
+
+		it("should pick up changes in experiment stopped", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			const experimentName = "exp_test_abc";
+
+			expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
+			expect(context.pending()).toEqual(1);
+
+			const stoppedRefreshContextResponse = clone(getContextResponse);
+			stoppedRefreshContextResponse.experiments = stoppedRefreshContextResponse.experiments.filter(
+				(x) => x.name !== experimentName
+			);
+
+			client.getContext.mockReturnValue(Promise.resolve(stoppedRefreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment(experimentName)).toEqual(0);
+				expect(context.pending()).toEqual(2); // exposure before the change + exposure after stopped
+
+				done();
+			});
+		});
+
+		it("should pick up changes in experiment fullon", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			const experimentName = "exp_test_abc";
+
+			expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
+			expect(context.pending()).toEqual(1);
+
+			const fullOnRefreshContextResponse = clone(getContextResponse);
+			for (const experiment of fullOnRefreshContextResponse.experiments) {
+				if (experiment.name === experimentName) {
+					expect(experiment.fullOnVariant).toEqual(0);
+					experiment.fullOnVariant = 1;
+					expect(expectedVariants[experimentName]).not.toEqual(experiment.fullOnVariant);
+				}
+			}
+
+			client.getContext.mockReturnValue(Promise.resolve(fullOnRefreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment(experimentName)).toEqual(1);
+				expect(context.pending()).toEqual(2); // exposure before the change + exposure after fullon
+
+				done();
+			});
+		});
+
+		it("should pick up changes in experiment traffic split", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			const experimentName = "exp_test_not_eligible";
+
+			expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
+			expect(context.pending()).toEqual(1);
+
+			const scaledUpRefreshContextResponse = clone(getContextResponse);
+			for (const experiment of scaledUpRefreshContextResponse.experiments) {
+				if (experiment.name === experimentName) {
+					experiment.trafficSplit = [0.0, 1.0];
+				}
+			}
+
+			client.getContext.mockReturnValue(Promise.resolve(scaledUpRefreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment(experimentName)).toEqual(2);
+				expect(context.pending()).toEqual(2); // exposure before the change + exposure after fullon
+
+				done();
+			});
+		});
+
+		it("should pick up changes in experiment iteration", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			const experimentName = "exp_test_abc";
+
+			expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
+			expect(context.pending()).toEqual(1);
+
+			const iteratedRefreshContextResponse = clone(getContextResponse);
+			for (const experiment of iteratedRefreshContextResponse.experiments) {
+				if (experiment.name === experimentName) {
+					experiment.iteration = 2;
+					experiment.trafficSeedHi = 54870830;
+					experiment.trafficSeedHi = 398724581;
+					experiment.seedHi = 77498863;
+					experiment.seedHi = 34737352;
+				}
+			}
+
+			client.getContext.mockReturnValue(Promise.resolve(iteratedRefreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment(experimentName)).toEqual(1);
+				expect(context.pending()).toEqual(2); // exposure before the change + exposure after fullon
+
+				done();
+			});
+		});
+	});
+
+	it("should pick up changes in experiment id", (done) => {
+		const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+		const experimentName = "exp_test_abc";
+
+		expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
+		expect(context.pending()).toEqual(1);
+
+		const iteratedRefreshContextResponse = clone(getContextResponse);
+		for (const experiment of iteratedRefreshContextResponse.experiments) {
+			if (experiment.name === experimentName) {
+				experiment.id = 11;
+				experiment.trafficSeedHi = 54870830;
+				experiment.trafficSeedHi = 398724581;
+				experiment.seedHi = 77498863;
+				experiment.seedHi = 34737352;
+			}
+		}
+
+		client.getContext.mockReturnValue(Promise.resolve(iteratedRefreshContextResponse));
+
+		context.refresh().then(() => {
+			expect(context.treatment(experimentName)).toEqual(1);
+			expect(context.pending()).toEqual(2); // exposure before the change + exposure after fullon
+
+			done();
+		});
 	});
 
 	describe("peek()", () => {
 		it("should not queue exposures", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			for (const assignment of createContextResponse.assignments) {
-				const actual = context.peek(assignment.name);
-				expect(actual).toEqual(assignment.variant);
+			for (const experiment of getContextResponse.experiments) {
+				expect(context.peek(experiment.name)).toEqual(expectedVariants[experiment.name]);
 			}
 
 			expect(context.pending()).toEqual(0);
@@ -461,16 +779,16 @@ describe("Context", () => {
 		});
 
 		it("should return override variant", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			for (const assignment of createContextResponse.assignments) {
-				context.override(assignment.name, assignment.variant + 10);
+			for (const experiment of getContextResponse.experiments) {
+				context.override(experiment.name, expectedVariants[experiment.name] + 11);
 			}
 			context.override("not_found", 3);
 
-			for (const assignment of createContextResponse.assignments) {
-				expect(context.peek(assignment.name)).toEqual(assignment.variant + 10);
+			for (const experiment of getContextResponse.experiments) {
+				expect(context.peek(experiment.name)).toEqual(expectedVariants[experiment.name] + 11);
 			}
 
 			expect(context.peek("not_found")).toEqual(3);
@@ -486,29 +804,31 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			for (const assignment of createContextResponse.assignments) {
-				context.treatment(assignment.name);
+			for (const experiment of getContextResponse.experiments) {
+				context.treatment(experiment.name);
 			}
 
-			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
-			for (const assignment of createContextResponse.assignments) {
-				context.treatment(assignment.name);
+			for (const experiment of getContextResponse.experiments) {
+				context.treatment(experiment.name);
 			}
 
-			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
 			client.publish.mockReturnValue(Promise.resolve());
 
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
 					publishedAt: 1611141535729,
-					units: createContextResponse.units,
+					units: publishUnits,
+					hashed: true,
 					exposures: [
 						{
+							id: 1,
 							assigned: true,
 							eligible: true,
 							exposedAt: 1611141535729,
@@ -516,8 +836,10 @@ describe("Context", () => {
 							overridden: false,
 							unit: "session_id",
 							variant: 1,
+							fullOn: false,
 						},
 						{
+							id: 2,
 							assigned: true,
 							eligible: true,
 							exposedAt: 1611141535729,
@@ -525,8 +847,10 @@ describe("Context", () => {
 							overridden: false,
 							unit: "session_id",
 							variant: 2,
+							fullOn: false,
 						},
 						{
+							id: 3,
 							assigned: true,
 							eligible: false,
 							exposedAt: 1611141535729,
@@ -534,6 +858,18 @@ describe("Context", () => {
 							overridden: false,
 							unit: "user_id",
 							variant: 0,
+							fullOn: false,
+						},
+						{
+							id: 4,
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_fullon",
+							overridden: false,
+							unit: "session_id",
+							variant: 2,
+							fullOn: true,
 						},
 					],
 				});
@@ -542,21 +878,43 @@ describe("Context", () => {
 			});
 		});
 
-		it("should queue exposures only once", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+		it("should queue exposures after peek()", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
-			for (const assignment of createContextResponse.assignments) {
-				context.treatment(assignment.name);
+			for (const experiment of getContextResponse.experiments) {
+				context.peek(experiment.name);
 			}
 
-			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+			expect(context.pending()).toEqual(0);
 
-			for (const assignment of createContextResponse.assignments) {
-				context.treatment(assignment.name);
+			for (const experiment of getContextResponse.experiments) {
+				context.treatment(experiment.name);
 			}
 
-			expect(context.pending()).toEqual(createContextResponse.assignments.length);
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			done();
+		});
+
+		it("should queue exposures only once", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			for (const experiment of getContextResponse.experiments) {
+				context.treatment(experiment.name);
+			}
+
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			for (const experiment of getContextResponse.experiments) {
+				context.treatment(experiment.name);
+			}
+
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
 			done();
 		});
@@ -565,37 +923,39 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
-			for (const assignment of createContextResponse.assignments) {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			for (const experiment of getContextResponse.experiments) {
 				SDK.defaultEventLogger.mockClear();
-				context.treatment(assignment.name);
+				context.treatment(experiment.name);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "exposure", {
 					exposedAt: timeOrigin,
-					eligible: assignment.eligible,
+					eligible: experiment.name !== "exp_test_not_eligible",
 					assigned: true,
 					overridden: false,
-					name: assignment.name,
-					unit: assignment.unit,
-					variant: assignment.variant,
+					id: experiment.id,
+					name: experiment.name,
+					unit: experiment.unitType,
+					variant: expectedVariants[experiment.name],
+					fullOn: experiment.name === "exp_test_fullon",
 				});
 			}
 
 			// check it calls logger only once
-			for (const assignment of createContextResponse.assignments) {
+			for (const experiment of getContextResponse.experiments) {
 				SDK.defaultEventLogger.mockClear();
-				context.treatment(assignment.name);
+				context.treatment(experiment.name);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
 			}
 
 			done();
 		});
 
-		it("should queue exposure with base variant on unknown experiment", (done) => {
+		it("should queue exposure with base variant on unknown/stopped experiment", (done) => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.treatment("not_found")).toEqual(0);
@@ -607,9 +967,11 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
 					publishedAt: 1611141535729,
-					units: createContextResponse.units,
+					units: publishUnits,
+					hashed: true,
 					exposures: [
 						{
+							id: 0,
 							assigned: false,
 							eligible: true,
 							exposedAt: 1611141535729,
@@ -617,6 +979,7 @@ describe("Context", () => {
 							overridden: false,
 							unit: null,
 							variant: 0,
+							fullOn: false,
 						},
 					],
 				});
@@ -625,11 +988,27 @@ describe("Context", () => {
 			});
 		});
 
+		it("should not re-queue exposure on unknown experiment", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+
+			expect(context.pending()).toEqual(0);
+
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(1);
+
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
 		it("should queue exposure with override variant", (done) => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			context.override("exp_test_ab", 5);
@@ -645,9 +1024,11 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
 					publishedAt: 1611141535729,
-					units: createContextResponse.units,
+					units: publishUnits,
+					hashed: true,
 					exposures: [
 						{
+							id: 0,
 							assigned: true,
 							eligible: true,
 							exposedAt: 1611141535729,
@@ -655,8 +1036,10 @@ describe("Context", () => {
 							overridden: true,
 							unit: "session_id",
 							variant: 5,
+							fullOn: false,
 						},
 						{
+							id: 0,
 							assigned: false,
 							eligible: true,
 							exposedAt: 1611141535729,
@@ -664,6 +1047,7 @@ describe("Context", () => {
 							overridden: true,
 							unit: null,
 							variant: 3,
+							fullOn: false,
 						},
 					],
 				});
@@ -673,7 +1057,7 @@ describe("Context", () => {
 		});
 
 		it("should throw after finalized() call", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			client.publish.mockReturnValue(Promise.resolve());
 
 			context.treatment("exp_test_ab");
@@ -696,7 +1080,7 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			context.track("goal1", { amount: 125, hours: 245 });
@@ -713,7 +1097,8 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledWith({
 					publishedAt: 1611141535729,
-					units: createContextResponse.units,
+					units: publishUnits,
+					hashed: true,
 					goals: [
 						{
 							achievedAt: 1611141535729,
@@ -741,7 +1126,7 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			SDK.defaultEventLogger.mockClear();
 			context.track("goal1", { amount: 125, hours: 245 });
@@ -756,7 +1141,7 @@ describe("Context", () => {
 		});
 
 		it("should not throw when goal property values are numbers or objects with number values", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(() => context.track("goal1", { test: { flt: 1.5, int: 2 } })).not.toThrowError();
@@ -769,7 +1154,7 @@ describe("Context", () => {
 		});
 
 		it("should throw when goal property values not numbers", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(() => context.track("goal1", { test: true })).toThrowError(
@@ -790,7 +1175,7 @@ describe("Context", () => {
 		});
 
 		it("should not throw when goal properties is null or undefined", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(() => context.track("goal1")).not.toThrowError();
@@ -803,7 +1188,7 @@ describe("Context", () => {
 		});
 
 		it("should throw when goal properties not object", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(() => context.track("goal1", 125.0)).toThrowError("Goal 'goal1' properties must be of type object.");
@@ -817,7 +1202,7 @@ describe("Context", () => {
 		});
 
 		it("should throw after finalized() call", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			client.publish.mockReturnValue(Promise.resolve());
 
 			context.treatment("exp_test_ab");
@@ -835,7 +1220,13 @@ describe("Context", () => {
 		});
 
 		it("should queue when not ready", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			expect(context.pending()).toEqual(0);
 			expect(context.isReady()).toEqual(false);
 
@@ -862,7 +1253,8 @@ describe("Context", () => {
 				sdk,
 				client,
 				Object.assign(contextOptions, { publishDelay }),
-				Promise.resolve(createContextResponse)
+				contextParams,
+				Promise.resolve(getContextResponse)
 			);
 
 			expect(context.isReady()).toEqual(false);
@@ -888,8 +1280,9 @@ describe("Context", () => {
 
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					units: createContextResponse.units,
 					publishedAt: 1611141535829,
+					units: publishUnits,
+					hashed: true,
 					goals: [
 						{
 							name: "goal1",
@@ -906,7 +1299,7 @@ describe("Context", () => {
 
 	describe("publish()", () => {
 		it("should not call client publish when queue is empty", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			client.publish.mockReturnValue(Promise.resolve());
@@ -918,7 +1311,7 @@ describe("Context", () => {
 		});
 
 		it("should propagate client error message", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			context.track("goal1", { amount: 125 });
@@ -936,7 +1329,7 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 			context.treatment("exp_test_not_eligible");
@@ -970,10 +1363,12 @@ describe("Context", () => {
 			context.publish().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					units: createContextResponse.units,
 					publishedAt: 1611141535829,
+					units: publishUnits,
+					hashed: true,
 					exposures: [
 						{
+							id: 1,
 							name: "exp_test_ab",
 							unit: "session_id",
 							exposedAt: 1611141535729,
@@ -981,8 +1376,10 @@ describe("Context", () => {
 							assigned: true,
 							eligible: true,
 							overridden: false,
+							fullOn: false,
 						},
 						{
+							id: 3,
 							name: "exp_test_not_eligible",
 							unit: "user_id",
 							exposedAt: 1611141535729,
@@ -990,6 +1387,7 @@ describe("Context", () => {
 							assigned: true,
 							eligible: false,
 							overridden: false,
+							fullOn: false,
 						},
 					],
 					goals: [
@@ -1066,7 +1464,7 @@ describe("Context", () => {
 		});
 
 		it("should call event logger on error", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.track("goal1", { amount: 125, hours: 245 });
 
@@ -1085,7 +1483,7 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.track("goal1", { amount: 125, hours: 245 });
 
@@ -1098,12 +1496,8 @@ describe("Context", () => {
 				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
 				expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "publish", {
 					publishedAt: 1611141535829,
-					units: [
-						{
-							type: "session_id",
-							uid: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
-						},
-					],
+					units: publishUnits,
+					hashed: true,
 					goals: [
 						{
 							achievedAt: 1611141535729,
@@ -1118,7 +1512,7 @@ describe("Context", () => {
 		});
 
 		it("should throw on unsupported attribute type", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			expect(() => context.attribute("attr1", {})).toThrow(
 				new Error("Attribute 'attr1' is of unsupported type 'object'")
@@ -1137,7 +1531,13 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.reject("bad request error text")
+			);
 			context.ready().then(() => {
 				context.treatment("exp_test_ab");
 
@@ -1159,7 +1559,7 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 			context.treatment("not_found");
@@ -1180,10 +1580,12 @@ describe("Context", () => {
 				.then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						units: createContextResponse.units,
 						publishedAt: 1611141535829,
+						units: publishUnits,
+						hashed: true,
 						exposures: [
 							{
+								id: 1,
 								name: "exp_test_ab",
 								unit: "session_id",
 								exposedAt: 1611141535729,
@@ -1191,8 +1593,10 @@ describe("Context", () => {
 								assigned: true,
 								eligible: true,
 								overridden: false,
+								fullOn: false,
 							},
 							{
+								id: 0,
 								name: "not_found",
 								unit: null,
 								exposedAt: 1611141535729,
@@ -1200,6 +1604,7 @@ describe("Context", () => {
 								assigned: false,
 								eligible: true,
 								overridden: false,
+								fullOn: false,
 							},
 						],
 						goals: [
@@ -1230,8 +1635,9 @@ describe("Context", () => {
 				.then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						units: createContextResponse.units,
 						publishedAt: 1611141535829,
+						units: publishUnits,
+						hashed: true,
 						goals: [
 							{
 								name: "goal2",
@@ -1264,7 +1670,8 @@ describe("Context", () => {
 				sdk,
 				client,
 				Object.assign(contextOptions, { publishDelay }),
-				createContextResponse
+				contextParams,
+				getContextResponse
 			);
 
 			expect(context.isReady()).toEqual(true);
@@ -1301,7 +1708,8 @@ describe("Context", () => {
 				sdk,
 				client,
 				Object.assign(contextOptions, { publishDelay }),
-				createContextResponse
+				contextParams,
+				getContextResponse
 			);
 
 			expect(context.isReady()).toEqual(true);
@@ -1331,7 +1739,7 @@ describe("Context", () => {
 		});
 
 		it("should throw after finalized() call", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			client.publish.mockReturnValue(Promise.resolve());
 
 			context.treatment("exp_test_ab");
@@ -1351,7 +1759,7 @@ describe("Context", () => {
 
 	describe("finalize()", () => {
 		it("should not call client publish when queue is empty", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			client.publish.mockReturnValue(Promise.resolve());
@@ -1368,7 +1776,7 @@ describe("Context", () => {
 		});
 
 		it("should propagate client error message", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			context.treatment("exp_test_ab");
@@ -1391,7 +1799,7 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 
@@ -1404,10 +1812,12 @@ describe("Context", () => {
 			context.finalize().then(() => {
 				expect(client.publish).toHaveBeenCalledTimes(1);
 				expect(client.publish).toHaveBeenCalledWith({
-					units: createContextResponse.units,
 					publishedAt: 1611141535829,
+					units: publishUnits,
+					hashed: true,
 					exposures: [
 						{
+							id: 1,
 							name: "exp_test_ab",
 							unit: "session_id",
 							exposedAt: 1611141535729,
@@ -1415,6 +1825,7 @@ describe("Context", () => {
 							assigned: true,
 							eligible: true,
 							overridden: false,
+							fullOn: false,
 						},
 					],
 				});
@@ -1431,7 +1842,7 @@ describe("Context", () => {
 		});
 
 		it("should call event logger on error", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 
@@ -1452,7 +1863,7 @@ describe("Context", () => {
 		});
 
 		it("should call event logger on success", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 
@@ -1476,7 +1887,13 @@ describe("Context", () => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
-			const context = new Context(sdk, client, contextOptions, Promise.reject("bad request error text"));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.reject("bad request error text")
+			);
 			context.ready().then(() => {
 				context.treatment("exp_test_ab");
 
@@ -1497,7 +1914,7 @@ describe("Context", () => {
 		});
 
 		it("should return current promise when called twice", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 
@@ -1520,7 +1937,7 @@ describe("Context", () => {
 		});
 
 		it("should return completed promise when already finalized", (done) => {
-			const context = new Context(sdk, client, contextOptions, createContextResponse);
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
 
@@ -1547,7 +1964,8 @@ describe("Context", () => {
 				sdk,
 				client,
 				Object.assign(contextOptions, { refreshPeriod }),
-				createContextResponse
+				contextParams,
+				getContextResponse
 			);
 
 			expect(context.isReady()).toEqual(true);
@@ -1571,7 +1989,13 @@ describe("Context", () => {
 
 	describe("override()", () => {
 		it("should be callable before ready()", (done) => {
-			const context = new Context(sdk, client, contextOptions, Promise.resolve(createContextResponse));
+			const context = new Context(
+				sdk,
+				client,
+				contextOptions,
+				contextParams,
+				Promise.resolve(getContextResponse)
+			);
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 			expect(context.isFinalized()).toEqual(false);
@@ -1588,7 +2012,7 @@ describe("Context", () => {
 
 			context.ready().then(() => {
 				expect(context.isReady()).toEqual(true);
-				expect(context.data()).toStrictEqual(createContextResponse);
+				expect(context.data()).toStrictEqual(getContextResponse);
 				expect(context.client()).toBe(client);
 
 				context.treatment("exp_test_ab");
@@ -1601,10 +2025,12 @@ describe("Context", () => {
 				context.publish().then(() => {
 					expect(client.publish).toHaveBeenCalledTimes(1);
 					expect(client.publish).toHaveBeenCalledWith({
-						units: createContextResponse.units,
 						publishedAt: 1611141535829,
+						units: publishUnits,
+						hashed: true,
 						exposures: [
 							{
+								id: 0,
 								name: "exp_test_ab",
 								unit: "session_id",
 								exposedAt: 1611141535729,
@@ -1612,8 +2038,10 @@ describe("Context", () => {
 								assigned: true,
 								eligible: true,
 								overridden: true,
+								fullOn: false,
 							},
 							{
+								id: 0,
 								name: "exp_test_abc",
 								unit: "session_id",
 								exposedAt: 1611141535729,
@@ -1621,6 +2049,7 @@ describe("Context", () => {
 								assigned: true,
 								eligible: true,
 								overridden: true,
+								fullOn: false,
 							},
 						],
 					});

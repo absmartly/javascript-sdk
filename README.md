@@ -101,7 +101,13 @@ Then we can initialize the A/B Smartly context on the client-side directly with 
 ```html
     <head>
         <script type="javascript">
-            const context = sdk.createContextWith({{ serverSideContext.data() }});
+            const request = {
+                units: {
+                    session_id: '5ebf06d8cb5d8137290c4abb64155584fbdb64d8',
+                },
+            };
+
+            const context = sdk.createContextWith(request, {{ serverSideContext.data() }});
         </script>
     </head>
 ```
