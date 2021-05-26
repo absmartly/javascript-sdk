@@ -25,7 +25,7 @@ describe("Context", () => {
 				iteration: 1,
 				unitType: "session_id",
 				seedHi: 3603515,
-				seedLo: 9233373850,
+				seedLo: 233373850,
 				split: [0.5, 0.5],
 				trafficSeedHi: 449867249,
 				trafficSeedLo: 455443629,
@@ -43,7 +43,7 @@ describe("Context", () => {
 					},
 					{
 						name: "B",
-						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+						config: "{\"banner.border\":1,\"banner.size\":\"large\"}",
 					},
 				],
 			},
@@ -71,11 +71,11 @@ describe("Context", () => {
 					},
 					{
 						name: "B",
-						config: '{"a":"0","b.c.a":"1","a.c.b":{"test":2}}',
+						config: "{\"button.color\":\"blue\"}",
 					},
 					{
 						name: "C",
-						config: '{"a":"3","b.c.a":"4","a.c.b":{"test":5}}',
+						config: "{\"button.color\":\"red\"}",
 					},
 				],
 			},
@@ -103,11 +103,11 @@ describe("Context", () => {
 					},
 					{
 						name: "B",
-						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+						config: "{\"card.width\":\"80%\"}",
 					},
 					{
 						name: "C",
-						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+						config: "{\"card.width\":\"75%\"}",
 					},
 				],
 			},
@@ -135,15 +135,15 @@ describe("Context", () => {
 					},
 					{
 						name: "B",
-						config: '{"a":"1","b.c.a":"2","a.c.b":{"test":5}}',
+						config: "{\"submit.color\":\"red\",\"submit.shape\":\"circle\"}",
 					},
 					{
 						name: "C",
-						config: '{"a":"10","b.c.a":"11","a.c.b":{"test":15}}',
+						config: "{\"submit.color\":\"blue\",\"submit.shape\":\"rect\"}",
 					},
 					{
 						name: "D",
-						config: '{"a":"20","b.c.a":"21","a.c.b":{"test":25}}',
+						config: "{\"submit.color\":\"green\",\"submit.shape\":\"square\"}",
 					},
 				],
 			},
@@ -176,7 +176,7 @@ describe("Context", () => {
 					},
 					{
 						name: "B",
-						config: '{"a":"9","b.c.a":"9","a.c.b":{"test":9}}',
+						config: "{\"show-modal\":true}",
 					},
 				],
 			},
@@ -189,6 +189,25 @@ describe("Context", () => {
 		exp_test_not_eligible: 0,
 		exp_test_fullon: 2,
 		exp_test_new: 1,
+	};
+
+	const expectedVariables = {
+		"banner.border": 1,
+		"banner.size": "large",
+		"button.color": "red",
+		"submit.color": "blue",
+		"submit.shape": "rect",
+		"show-modal": true
+	};
+
+	const variableExperiments = {
+		"banner.border": "exp_test_ab",
+		"banner.size": "exp_test_ab",
+		"button.color": "exp_test_abc",
+		"card.width": "exp_test_not_eligible",
+		"submit.color": "exp_test_fullon",
+		"submit.shape": "exp_test_fullon",
+		"show-modal": "exp_test_new"
 	};
 
 	const sdk = new SDK();
@@ -320,7 +339,9 @@ describe("Context", () => {
 			expect(() => context.treatment("test")).toThrow();
 			expect(() => context.peek("test")).toThrow();
 			expect(() => context.experiments()).toThrow();
-			expect(() => context.experimentConfig("test")).toThrow();
+			expect(() => context.variableKeys()).toThrow();
+			expect(() => context.variableValue("a", 17)).toThrow();
+			expect(() => context.peekVariableValue("a", 17)).toThrow();
 
 			done();
 		});
@@ -332,12 +353,8 @@ describe("Context", () => {
 			for (const experiment of getContextResponse.experiments) {
 				expect(context.peek(experiment.name)).toEqual(expectedVariants[experiment.name]);
 				expect(context.treatment(experiment.name)).toEqual(expectedVariants[experiment.name]);
-				expect(context.experimentConfig(experiment.name)).toEqual(
-					JSON.parse(experiment.variants[context.peek(experiment.name)].config || "{}")
-				);
 			}
 			expect(context.data()).toEqual(getContextResponse);
-			expect(context.experimentConfig("not_found")).toEqual({});
 
 			done();
 		});
@@ -471,6 +488,22 @@ describe("Context", () => {
 				});
 			});
 		});
+
+		it("should throw on unsupported attribute type", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+
+			expect(() => context.attribute("attr1", {})).toThrow(
+				new Error("Attribute 'attr1' is of unsupported type 'object'")
+			);
+			expect(() => context.attribute("attr1", [1, {}])).toThrow(
+				new Error("Attribute 'attr1' element at index 1 is of unsupported type 'object'")
+			);
+			expect(() => context.attribute("attr1", [1, "two"])).toThrow(
+				new Error("Attribute 'attr1' has elements of different types")
+			);
+
+			done();
+		});
 	});
 
 	describe("refresh()", () => {
@@ -486,12 +519,8 @@ describe("Context", () => {
 				expect(context.experiments()).toEqual(refreshContextResponse.experiments.map((x) => x.name));
 				for (const experiment of refreshContextResponse.experiments) {
 					expect(context.treatment(experiment.name)).toEqual(expectedVariants[experiment.name]);
-					expect(context.experimentConfig(experiment.name)).toEqual(
-						JSON.parse(experiment.variants[context.peek(experiment.name)].config || "{}")
-					);
 				}
 				expect(context.data()).toEqual(refreshContextResponse);
-				expect(context.experimentConfig("not_found")).toEqual({});
 
 				done();
 			});
@@ -879,9 +908,6 @@ describe("Context", () => {
 		});
 
 		it("should queue exposures after peek()", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -1072,6 +1098,288 @@ describe("Context", () => {
 
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.treatment("exp_test_ab")).toThrow();
+		});
+	});
+
+	describe("variableValue()", () => {
+		it("should queue exposures", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			const experiments = context.experiments();
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				const actual = context.variableValue(key, 17);
+				const eligible = experimentName !== "exp_test_not_eligible";
+
+				if (eligible && (experiments.indexOf(experimentName) !== -1)) {
+					expect(actual).toEqual(expectedVariables[key]);
+				} else {
+					expect(actual).toBe(17);
+				}
+			}
+
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(client.publish).toHaveBeenCalledWith({
+					publishedAt: 1611141535729,
+					units: publishUnits,
+					hashed: true,
+					exposures: [
+						{
+							id: 1,
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_ab",
+							overridden: false,
+							unit: "session_id",
+							variant: 1,
+							fullOn: false,
+						},
+						{
+							id: 2,
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_abc",
+							overridden: false,
+							unit: "session_id",
+							variant: 2,
+							fullOn: false,
+						},
+						{
+							id: 3,
+							assigned: true,
+							eligible: false,
+							exposedAt: 1611141535729,
+							name: "exp_test_not_eligible",
+							overridden: false,
+							unit: "user_id",
+							variant: 0,
+							fullOn: false,
+						},
+						{
+							id: 4,
+							assigned: true,
+							eligible: true,
+							exposedAt: 1611141535729,
+							name: "exp_test_fullon",
+							overridden: false,
+							unit: "session_id",
+							variant: 2,
+							fullOn: true,
+						},
+					],
+				});
+
+				done();
+			});
+		});
+
+		it("should queue exposures after peekVariable()", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			const experiments = context.experiments();
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				const actual = context.peekVariableValue(key, 17);
+				const eligible = experimentName !== "exp_test_not_eligible";
+
+				if (eligible && (experiments.indexOf(experimentName) !== -1)) {
+					expect(actual).toEqual(expectedVariables[key]);
+				} else {
+					expect(actual).toBe(17);
+				}
+			}
+
+			expect(context.pending()).toEqual(0);
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				const actual = context.variableValue(key, 17);
+				const eligible = experimentName !== "exp_test_not_eligible";
+
+				if (eligible && (experiments.indexOf(experimentName) !== -1)) {
+					expect(actual).toEqual(expectedVariables[key]);
+				} else {
+					expect(actual).toBe(17);
+				}
+			}
+
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			done();
+		});
+
+		it("should queue exposures only once", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			const experiments = context.experiments();
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				const actual = context.variableValue(key, 17);
+				const eligible = experimentName !== "exp_test_not_eligible";
+
+				if (eligible && (experiments.indexOf(experimentName) !== -1)) {
+					expect(actual).toEqual(expectedVariables[key]);
+				} else {
+					expect(actual).toBe(17);
+				}
+			}
+
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				const actual = context.variableValue(key, 17);
+				const eligible = experimentName !== "exp_test_not_eligible";
+
+				if (eligible && (experiments.indexOf(experimentName) !== -1)) {
+					expect(actual).toEqual(expectedVariables[key]);
+				} else {
+					expect(actual).toBe(17);
+				}
+			}
+
+			expect(context.pending()).toEqual(getContextResponse.experiments.length);
+
+			done();
+		});
+
+		it("should call event logger", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			const experiments = context.experiments();
+			const exposed = {}
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				SDK.defaultEventLogger.mockClear();
+				context.variableValue(key, 17);
+
+				if (experiments.indexOf(experimentName) !== -1) {
+					const experiment = getContextResponse.experiments.filter(x => x.name === experimentName)[0];
+					if (!(experimentName in exposed)) {
+						exposed[experimentName] = true;
+						expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(1);
+						expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "exposure", {
+							exposedAt: timeOrigin,
+							eligible: experiment.name !== "exp_test_not_eligible",
+							assigned: true,
+							overridden: false,
+							id: experiment.id,
+							name: experiment.name,
+							unit: experiment.unitType,
+							variant: expectedVariants[experiment.name],
+							fullOn: experiment.name === "exp_test_fullon",
+						});
+					} else {
+						expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
+					}
+				}
+			}
+
+			// check it calls logger only once
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				SDK.defaultEventLogger.mockClear();
+				context.variableValue(key, 17);
+				if (experiments.indexOf(experimentName) !== -1) {
+					expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
+				}
+			}
+
+			done();
+		});
+
+		it("should return defaultValue on unknown variable", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.variableValue("not.found", 17)).toBe(17);
+
+			done();
+		});
+
+		it("should throw after finalized() call", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			client.publish.mockReturnValue(Promise.resolve());
+
+			context.variableValue("button.color", 17);
+
+			expect(context.pending()).toEqual(1);
+
+			context.finalize().then(() => {
+				expect(() => context.variableValue("button.color", 17)).toThrow();
+
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.variableValue("button.color", 17)).toThrow();
+		});
+	});
+
+	describe("peekVariableValue()", () => {
+		it("should not queue exposures", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			const experiments = context.experiments();
+
+			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+				const actual = context.peekVariableValue(key, 17);
+				const eligible = experimentName !== "exp_test_not_eligible";
+
+				if (eligible && (experiments.indexOf(experimentName) !== -1)) {
+					expect(actual).toEqual(expectedVariables[key]);
+				} else {
+					expect(actual).toBe(17);
+				}
+			}
+
+			expect(context.pending()).toEqual(0);
+
+			done();
+		});
+
+		it("should return defaultValue on unknown override variant", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			for (const experiment of getContextResponse.experiments) {
+				context.override(experiment.name, expectedVariants[experiment.name] + 11);
+			}
+			context.override("not_found", 3);
+
+			for (const key of Object.keys(variableExperiments)) {
+				const actual = context.peekVariableValue(key, 17);
+				expect(actual).toBe(17);
+			}
+
+			expect(context.pending()).toEqual(0);
+
+			done();
+		});
+	});
+
+	describe("variableKeys()", () => {
+		it("should return all active keys", (done) => {
+			const context = new Context(sdk, client, contextOptions, contextParams, refreshContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.variableKeys()).toMatchObject(variableExperiments);
+
+			expect(context.pending()).toEqual(0);
+
+			done();
 		});
 	});
 
@@ -1511,22 +1819,6 @@ describe("Context", () => {
 			});
 		});
 
-		it("should throw on unsupported attribute type", (done) => {
-			const context = new Context(sdk, client, contextOptions, contextParams, getContextResponse);
-
-			expect(() => context.attribute("attr1", {})).toThrow(
-				new Error("Attribute 'attr1' is of unsupported type 'object'")
-			);
-			expect(() => context.attribute("attr1", [1, {}])).toThrow(
-				new Error("Attribute 'attr1' element at index 1 is of unsupported type 'object'")
-			);
-			expect(() => context.attribute("attr1", [1, "two"])).toThrow(
-				new Error("Attribute 'attr1' has elements of different types")
-			);
-
-			done();
-		});
-
 		it("should not call client publish when failed", (done) => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
@@ -1884,9 +2176,6 @@ describe("Context", () => {
 		});
 
 		it("should not call client publish when failed", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(
 				sdk,
 				client,
@@ -1954,9 +2243,6 @@ describe("Context", () => {
 		});
 
 		it("should cancel refresh timer", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			jest.useFakeTimers();
 
 			const refreshPeriod = 1000;

@@ -5,87 +5,82 @@ jest.mock("../context");
 
 describe("Config", () => {
 	describe("mergeConfig()", () => {
-		it("should create getters that call treatment", (done) => {
+		it("should create getters that call context.variable()", (done) => {
 			const context = new Context();
 
-			const mockConfig = {
-				d: 5,
-				e: 5,
+			const variableKeys = {
+				"button": "exp_test_abc",
+				"banner.border": "exp_test_ab",
+				"banner.size": "exp_test_ab",
+				"home.arrow.direction": "exp_test_arrow"
 			};
 
-			context.experiments.mockReturnValue(["exp_test"]);
-			context.experimentConfig.mockReturnValue(mockConfig);
+			const expectedValues = {
+				"button": true,
+				"banner.border": 10,
+				"banner.size": 812,
+				"home.arrow.direction": "up"
+			};
+
+			context.variableKeys.mockReturnValue(variableKeys);
+			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
-				a: 1,
-				b: 2,
-				c: {
-					d: 3,
+				"button": false,
+				"banner": {
+					"size": 420,
+					"border": 0,
 				},
+				"home": {
+					"arrow": {
+						"direction": "down"
+					}
+				},
+				"other": "unused"
+			};
+
+			const expectedConfig = {
+				"button": true,
+				"banner": {
+					"size": 812,
+					"border": 10,
+				},
+				"home": {
+					"arrow": {
+						"direction": "up"
+					}
+				},
+				"other": "unused"
 			};
 
 			const actual = mergeConfig(context, previousConfig);
 			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
-			expect(actual).toStrictEqual(previousConfig);
+			expect(actual).toMatchObject(expectedConfig);
+			expect(context.variableValue).toHaveBeenCalledTimes(4); // called during equality check above
+			context.variableValue.mockClear();
 
-			expect(actual.d).toEqual(mockConfig["d"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
+			expect(actual.button).toEqual(expectedConfig.button);
+			expect(context.variableValue).toHaveBeenCalledTimes(1);
+			expect(context.variableValue).toHaveBeenCalledWith("button", previousConfig.button);
+			context.variableValue.mockClear();
 
-			expect(actual.e).toEqual(mockConfig["e"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
+			expect(actual.banner.border).toEqual(expectedConfig.banner.border);
+			expect(context.variableValue).toHaveBeenCalledTimes(1);
+			expect(context.variableValue).toHaveBeenCalledWith("banner.border", previousConfig.banner.border);
+			context.variableValue.mockClear();
 
-			done();
-		});
+			expect(actual.banner.size).toEqual(expectedConfig.banner.size);
+			expect(context.variableValue).toHaveBeenCalledTimes(1);
+			expect(context.variableValue).toHaveBeenCalledWith("banner.size", previousConfig.banner.size);
+			context.variableValue.mockClear();
 
-		it("should merge dotted keys", (done) => {
-			const context = new Context();
+			expect(actual.home.arrow.direction).toEqual(expectedConfig.home.arrow.direction);
+			expect(context.variableValue).toHaveBeenCalledTimes(1);
+			expect(context.variableValue).toHaveBeenCalledWith("home.arrow.direction", previousConfig.home.arrow.direction);
+			context.variableValue.mockClear();
 
-			const mockConfig = {
-				"c.d": 5,
-				"e.f": 5,
-			};
-
-			context.experiments.mockReturnValue(["exp_test"]);
-			context.experimentConfig.mockReturnValue(mockConfig);
-
-			const previousConfig = {
-				a: 1,
-				b: 2,
-				c: {
-					d: 3,
-				},
-				d: 6,
-			};
-
-			const expected = {
-				a: 1,
-				b: 2,
-				c: {
-					d: 5,
-				},
-				d: 6,
-				e: {
-					//f: 5,
-				},
-			};
-
-			const actual = mergeConfig(context, previousConfig);
-			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
-			expect(actual).toStrictEqual(expected);
-			context.treatment.mockClear();
-
-			expect(actual.c.d).toEqual(mockConfig["c.d"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
-
-			expect(actual.e.f).toEqual(mockConfig["e.f"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
+			expect(actual.other).toEqual(expectedConfig.other);
+			expect(context.variableValue).toHaveBeenCalledTimes(0);
 
 			done();
 		});
@@ -95,88 +90,74 @@ describe("Config", () => {
 
 			const context = new Context();
 
-			const mockConfig = {
-				"b.c.d": 5,
-				"c.d": 5,
-				"d.e": 5,
-				e: {
-					f: 5,
-				},
+			const variableKeys = {
+				"button.active": "exp_test_abc",
+				"banner.border": "exp_test_ab",
+				"banner.size": "exp_test_ab",
+				"home.arrow.direction": "exp_test_arrow"
 			};
 
-			context.experiments.mockReturnValue(["exp_test"]);
-			context.experimentConfig.mockReturnValue(mockConfig);
+			const expectedValues = {
+				"button.active": true,
+				"banner.border": 10,
+				"banner.size": 812,
+				"home.arrow.direction": "up"
+			};
+
+			context.variableKeys.mockReturnValue(variableKeys);
+			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
-				a: 1,
-				b: {
-					c: 3,
+				"button": true,
+				"banner": {
+					"size": 420,
+					"border": 0,
 				},
-				c: 2,
-				d: {
-					e: {
-						f: 3,
-					},
+				"home": {
+					"arrow": "down"
 				},
-				e: 1,
+				"other": "unused"
 			};
 
-			const expected = {
-				a: 1,
-				b: {
-					c: {
-						// d: 5
-					},
+			const expectedConfig = {
+				"button": {
+					"active": true,
 				},
-				c: {
-					//d: 5,
+				"banner": {
+					"size": 812,
+					"border": 10,
 				},
-				d: {
-					e: 5,
+				"home": {
+					"arrow": {
+						"direction": "up",
+					}
 				},
-				e: {
-					f: 5,
-				},
+				"other": "unused"
 			};
 
 			const actual = mergeConfig(context, previousConfig);
 			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
-			expect(actual).toStrictEqual(expected);
-			context.treatment.mockClear();
+			expect(actual).toMatchObject(expectedConfig);
+			expect(context.variableValue).toHaveBeenCalledTimes(4); // called during equality check above
+			context.variableValue.mockClear();
 
-			expect(actual.b.c.d).toEqual(mockConfig["b.c.d"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
-
-			expect(actual.c.d).toEqual(mockConfig["c.d"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
-
-			expect(actual.d.e).toEqual(mockConfig["d.e"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
-
-			expect(actual.e).toEqual(mockConfig["e"]);
-			expect(context.treatment).toHaveBeenCalledTimes(1);
-			expect(context.treatment).toHaveBeenCalledWith("exp_test");
-			context.treatment.mockClear();
-
-			expect(console.warn).toHaveBeenCalledTimes(4);
+			expect(console.warn).toHaveBeenCalledTimes(2);
 			expect(console.warn).toHaveBeenCalledWith(
-				"Config key 'b.c.d' for experiment 'exp_test' is overriding non-object value at 'b.c' with an object."
+				"Config key 'button.active' for experiment 'exp_test_abc' is overriding non-object value at 'button' with an object."
 			);
 			expect(console.warn).toHaveBeenCalledWith(
-				"Config key 'c.d' for experiment 'exp_test' is overriding non-object value at 'c' with an object."
+				"Config key 'home.arrow.direction' for experiment 'exp_test_arrow' is overriding non-object value at 'home.arrow' with an object."
 			);
-			expect(console.warn).toHaveBeenCalledWith(
-				"Config key 'd.e' for experiment 'exp_test' is overriding object with non-object value."
-			);
-			expect(console.warn).toHaveBeenCalledWith(
-				"Config key 'e' for experiment 'exp_test' is overriding non-object value with object."
-			);
+
+			expect(actual.button.active).toEqual(expectedConfig.button.active);
+			expect(context.variableValue).toHaveBeenCalledTimes(1);
+			expect(context.variableValue).toHaveBeenCalledWith("button.active", undefined);
+			context.variableValue.mockClear();
+
+			expect(actual.home.arrow.direction).toEqual(expectedConfig.home.arrow.direction);
+			expect(context.variableValue).toHaveBeenCalledTimes(1);
+			expect(context.variableValue).toHaveBeenCalledWith("home.arrow.direction", undefined);
+			context.variableValue.mockClear();
 
 			done();
 		});
@@ -184,47 +165,65 @@ describe("Config", () => {
 		it("should error with multiple experiments overriding key", (done) => {
 			jest.spyOn(console, "error").mockImplementation(() => {});
 
+			jest.spyOn(console, "warn").mockImplementation(() => {});
+
 			const context = new Context();
 
-			const mockConfig = {
-				a: 5,
-				"b.c.d": 5,
+			const variableKeys = {
+				"button.active": true,
+				"banner.border": "exp_test_ab",
+				"banner.size": "exp_test_abc",
+				"home.arrow": "exp_test_arrow",
+				"home.arrow.direction": "exp_test_arrow_direction"
 			};
 
-			const mockConfigOverride = {
-				a: 4,
-				"b.c.d": 4,
+			const expectedValues = {
+				"button.active": true,
+				"banner.border": 10,
+				"banner.size": 812,
+				"home.arrow": "up",
+				"home.arrow.direction": "up"
 			};
 
-			context.experiments.mockReturnValue(["exp_test", "exp_test_override"]);
-			context.experimentConfig.mockReturnValueOnce(mockConfig);
-			context.experimentConfig.mockReturnValueOnce(mockConfigOverride);
+			context.variableKeys.mockReturnValue(variableKeys);
+			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
-				a: 1,
-				b: {
-					c: {
-						d: 1,
-					},
+				"button": {
+					"active": false
 				},
+				"banner": {
+					"size": 420,
+					"border": 0,
+				},
+				"home": {
+					"arrow": "down"
+				},
+				"other": "unused"
 			};
 
-			const expected = {
-				a: 5,
-				b: {
-					c: {
-						d: 5,
-					},
+			const expectedConfig = {
+				"button": {
+					"active": true,
 				},
+				"banner": {
+					"size": 812,
+					"border": 10,
+				},
+				"home": {
+					"arrow": "up"
+				},
+				"other": "unused"
 			};
 
 			const actual = mergeConfig(context, previousConfig);
 			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
-			expect(actual).toStrictEqual(expected);
+			expect(actual).toMatchObject(expectedConfig);
+			expect(context.variableValue).toHaveBeenCalledTimes(4); // called during equality check above
+			context.variableValue.mockClear();
 
-			expect(console.error).toHaveBeenCalledTimes(2);
-			expect(console.error).toHaveBeenCalledWith("Config key 'a' already set by experiment 'exp_test'.");
-			expect(console.error).toHaveBeenCalledWith("Config key 'b.c.d' already set by experiment 'exp_test'.");
+			expect(console.error).toHaveBeenCalledTimes(1);
+			expect(console.error).toHaveBeenCalledWith("Config key 'home.arrow' already set by experiment 'exp_test_arrow'.");
 
 			done();
 		});

@@ -115,9 +115,9 @@ export function md5(key) {
 		md5cycle(state, block);
 	}
 
-	let w;
+	let w = 0;
 	const m = l & ~3;
-	for (w = 0; i < m; i += 4) {
+	for (; i < m; i += 4) {
 		block[w++] = key.getUint32(i, true);
 	}
 
@@ -146,7 +146,7 @@ export function md5(key) {
 		w = 0;
 	}
 
-	for (w; w < 16; ++w) {
+	for (; w < 16; ++w) {
 		block[w] = 0;
 	}
 

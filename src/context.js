@@ -176,18 +176,22 @@ export default class Context {
 		return this._data.experiments.map((x) => x.name);
 	}
 
-	experimentConfig(experimentName) {
-		this._checkReady();
+	variableValue(key, defaultValue) {
+		this._checkReady(true);
 
-		if (experimentName in this._index) {
-			const experiment = this._data.experiments[this._index[experimentName]];
-			const config = experiment.variants[this._peek(experimentName).variant].config;
-			if (config !== null && config !== undefined && config !== "") {
-				return JSON.parse(config);
-			}
-		}
+		return this._variableValue(key, defaultValue);
+	}
 
-		return {};
+	peekVariableValue(key, defaultValue) {
+		this._checkReady(true);
+
+		return this._peekVariable(key, defaultValue);
+	}
+
+	variableKeys() {
+		this._checkReady(true);
+
+		return Object.assign({}, ...Object.entries(this._indexVariables).map(x => ({[x[0]]: x[1].data.name})));
 	}
 
 	override(experimentName, variant) {
@@ -230,6 +234,7 @@ export default class Context {
 		};
 
 		const hasOverride = experimentName in this._overrides;
+		const experiment = (experimentName in this._index) ? this._index[experimentName] : null;
 
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
@@ -238,14 +243,13 @@ export default class Context {
 					// override up-to-date
 					return assignment;
 				}
-			} else if (!(experimentName in this._index)) {
+			} else if (experiment == null) {
 				if (!assignment.assigned) {
 					// previously not-running experiment
 					return assignment;
 				}
 			} else {
-				const experiment = this._data.experiments[this._index[experimentName]];
-				if (experimentMatches(experiment, assignment)) {
+				if (experimentMatches(experiment.data, assignment)) {
 					// assignment up-to-date
 					return assignment;
 				}
@@ -268,20 +272,18 @@ export default class Context {
 		this._assignments[experimentName] = assignment;
 
 		if (hasOverride) {
-			if (experimentName in this._index) {
-				const experiment = this._data.experiments[this._index[experimentName]];
-				assignment.unitType = experiment.unitType;
-				assignment.assigned = experiment.unitType in this._params.units;
+			if (experiment != null) {
+				assignment.unitType = experiment.data.unitType;
+				assignment.assigned = experiment.data.unitType in this._params.units;
 			}
 
 			assignment.overridden = true;
 			assignment.variant = this._overrides[experimentName];
 		} else {
-			if (experimentName in this._index) {
-				const experiment = this._data.experiments[this._index[experimentName]];
-				const unitType = experiment.unitType;
+			if (experiment != null) {
+				const unitType = experiment.data.unitType;
 
-				if (experiment.fullOnVariant === 0) {
+				if (experiment.data.fullOnVariant === 0) {
 					if (unitType in this._params.units) {
 						const unit = this._unitHash(unitType);
 						const assigner =
@@ -290,12 +292,12 @@ export default class Context {
 								: (this._assigners[unitType] = new VariantAssigner(unit));
 						const eligible =
 							assigner.assign(
-								experiment.trafficSplit,
-								experiment.trafficSeedHi,
-								experiment.trafficSeedLo
+								experiment.data.trafficSplit,
+								experiment.data.trafficSeedHi,
+								experiment.data.trafficSeedLo
 							) === 1;
 						const variant = eligible
-							? assigner.assign(experiment.split, experiment.seedHi, experiment.seedLo)
+							? assigner.assign(experiment.data.split, experiment.data.seedHi, experiment.data.seedLo)
 							: 0;
 						assignment.assigned = true;
 						assignment.eligible = eligible;
@@ -304,17 +306,21 @@ export default class Context {
 				} else {
 					assignment.assigned = true;
 					assignment.eligible = true;
-					assignment.variant = experiment.fullOnVariant;
+					assignment.variant = experiment.data.fullOnVariant;
 					assignment.fullOn = true;
 				}
 
 				// store these so we can detect changes to running experiment
 				assignment.unitType = unitType;
-				assignment.id = experiment.id;
-				assignment.iteration = experiment.iteration;
-				assignment.trafficSplit = experiment.trafficSplit;
-				assignment.fullOnVariant = experiment.fullOnVariant;
+				assignment.id = experiment.data.id;
+				assignment.iteration = experiment.data.iteration;
+				assignment.trafficSplit = experiment.data.trafficSplit;
+				assignment.fullOnVariant = experiment.data.fullOnVariant;
 			}
+		}
+
+		if ((experiment != null) && (assignment.variant < experiment.data.variants.length)) {
+			assignment.variables = experiment.variables[assignment.variant];
 		}
 
 		return assignment;
@@ -330,26 +336,64 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			const exposureEvent = {
-				id: assignment.id,
-				name: experimentName,
-				exposedAt: Date.now(),
-				unit: assignment.unitType,
-				variant: assignment.variant,
-				assigned: assignment.assigned,
-				eligible: assignment.eligible,
-				overridden: assignment.overridden,
-				fullOn: assignment.fullOn,
-			};
-			this._logEvent("exposure", exposureEvent);
-
-			this._exposures.push(exposureEvent);
-			this._pending++;
-
-			this._setTimeout();
+			this._queueExposure(experimentName, assignment);
 		}
 
 		return assignment;
+	}
+
+	_queueExposure(experimentName, assignment) {
+		const exposureEvent = {
+			id: assignment.id,
+			name: experimentName,
+			exposedAt: Date.now(),
+			unit: assignment.unitType,
+			variant: assignment.variant,
+			assigned: assignment.assigned,
+			eligible: assignment.eligible,
+			overridden: assignment.overridden,
+			fullOn: assignment.fullOn,
+		};
+		this._logEvent("exposure", exposureEvent);
+
+		this._exposures.push(exposureEvent);
+		this._pending++;
+
+		this._setTimeout();
+	}
+
+	_variableValue(key, defaultValue) {
+		if (key in this._indexVariables) {
+			const experimentName = this._indexVariables[key].data.name;
+			const assignment = this._assign(experimentName);
+			if (assignment.variables !== undefined) {
+				if (!assignment.exposed) {
+					assignment.exposed = true;
+
+					this._queueExposure(experimentName, assignment);
+				}
+
+				if (key in assignment.variables) {
+					return assignment.variables[key];
+				}
+			}
+		}
+
+		return defaultValue;
+	}
+
+	_peekVariable(key, defaultValue) {
+		if (key in this._indexVariables) {
+			const experimentName = this._indexVariables[key].data.name;
+			const assignment = this._assign(experimentName);
+			if (assignment.variables !== undefined) {
+				if (key in assignment.variables) {
+					return assignment.variables[key];
+				}
+			}
+		}
+
+		return defaultValue;
 	}
 
 	_validateGoal(goalName, properties) {
@@ -541,10 +585,34 @@ export default class Context {
 
 	_init(data, assignments = {}) {
 		this._data = data;
-		this._index = Object.assign(
-			{},
-			...(data.experiments || []).map((experiment, index) => ({ [experiment.name]: index }))
-		);
+
+		const index = {};
+		const indexVariables = {};
+
+		for (const experiment of (data.experiments || [])) {
+			const variables = [];
+			const entry = {
+				data: experiment,
+				variables
+			};
+
+			index[experiment.name] = entry;
+
+			for (let i = 0; i < experiment.variants.length; ++i) {
+				const variant = experiment.variants[i];
+				const config = variant.config;
+				const parsed = ((config != null) && (config.length > 0)) ? JSON.parse(config) : {};
+
+				for (const key of Object.keys(parsed)) {
+					indexVariables[key] = entry;
+				}
+
+				variables[i] = parsed;
+			}
+		}
+
+		this._index = index;
+		this._indexVariables = indexVariables;
 		this._assignments = assignments;
 
 		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {

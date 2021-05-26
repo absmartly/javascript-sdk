@@ -244,6 +244,7 @@ The `override()` and `overrides()` methods can be called before the context is r
 A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
 
 ### Have a look at our growing list of clients and SDKs:
+- [Java SDK](https://www.github.com/absmartly/java-sdk)
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
-- [Vue2 SDK](https://www.github.com/absmartly/vue2-sdk)
 - [PHP SDK](https://www.github.com/absmartly/php-sdk)
+- [Vue2 SDK](https://www.github.com/absmartly/vue2-sdk)

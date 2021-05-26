@@ -3,63 +3,51 @@ import { isObject } from "./utils";
 
 export function mergeConfig(context, previousConfig) {
 	const merged = clone(previousConfig);
-	const experiments = context.experiments();
+	const keys = context.variableKeys();
 
-	for (const experimentName of experiments) {
-		const experimentConfig = context.experimentConfig(experimentName);
-		for (const [configKey, configValue] of Object.entries(experimentConfig)) {
-			let target = merged;
-			let key = configKey;
+	for (const [variableKey, experimentName] of Object.entries(keys)) {
+		let target = merged;
+		const frags = variableKey.split(".");
 
-			if (key.indexOf(".") !== -1) {
-				const frags = key.split(".");
-				key = frags.pop();
+		for (let index = 0; index < frags.length; ++index) {
+			const frag = frags[index];
 
-				for (const index in frags) {
-					const frag = frags[index];
+			if (`_${frag}_setter` in target) {
+				console.error(`Config key '${frags
+					.slice(0, index + 1)
+					.join(".")}' already set by experiment '${target[`_${frag}_setter`]}'.`);
 
-					if (frag in target) {
-						if (isObject(target[frag])) {
-							target = target[frag];
-						} else {
-							console.warn(
-								`Config key '${configKey}' for experiment '${experimentName}' is overriding non-object value at '${frags
-									.slice(0, index + 1)
-									.join(".")}' with an object.`
-							);
+				target = undefined;
+				break;
+			}
 
-							target = target[frag] = {};
-						}
-					} else {
+			if (frag in target) {
+				if (index < frags.length - 1) {
+					if (!isObject(target[frag])) {
+						console.warn(
+							`Config key '${variableKey}' for experiment '${experimentName}' is overriding non-object value at '${frags
+								.slice(0, index + 1)
+								.join(".")}' with an object.`
+						);
+
 						target = target[frag] = {};
+					} else {
+						target = target[frag];
 					}
 				}
 			}
 
-			if (key in target && `_${key}_setter` in target) {
-				console.error(`Config key '${configKey}' already set by experiment '${target[`_${key}_setter`]}'.`);
-			} else {
-				Object.defineProperty(target, `_${key}_setter`, {
+			if (index === frags.length - 1) {
+				const defaultValue = target[frag];
+
+				Object.defineProperty(target, `_${frag}_setter`, {
 					value: experimentName,
 					writable: false,
 				});
 
-				if (key in target) {
-					if (isObject(target[key]) && !isObject(configValue)) {
-						console.warn(
-							`Config key '${configKey}' for experiment '${experimentName}' is overriding object with non-object value.`
-						);
-					} else if (!isObject(target[key]) && isObject(configValue)) {
-						console.warn(
-							`Config key '${configKey}' for experiment '${experimentName}' is overriding non-object value with object.`
-						);
-					}
-				}
-
-				Object.defineProperty(target, key, {
+				Object.defineProperty(target, frag, {
 					get: () => {
-						context.treatment(experimentName);
-						return configValue;
+						return context.variableValue(variableKey, defaultValue);
 					},
 				});
 			}
