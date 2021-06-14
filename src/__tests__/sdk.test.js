@@ -1,9 +1,13 @@
 import Client from "../client";
 import SDK from "../sdk";
 import Context from "../context";
+import { ContextPublisher } from "../publisher";
+import { ContextDataProvider } from "../provider";
 
 jest.mock("../client");
 jest.mock("../context");
+jest.mock("../publisher");
+jest.mock("../provider");
 
 describe("SDK", () => {
 	const contextParams = {
@@ -13,6 +17,9 @@ describe("SDK", () => {
 	};
 
 	const testEventLogger = jest.fn();
+	const testContextDataProvider = new ContextDataProvider();
+	const testContextPublisher = new ContextPublisher();
+
 	const sdkOptions = {
 		agent: "javascript-sdk",
 		apiKey: "apikey",
@@ -20,6 +27,8 @@ describe("SDK", () => {
 		endpoint: "localhost:8080",
 		environment: "test",
 		eventLogger: testEventLogger,
+		publisher: testContextPublisher,
+		provider: testContextDataProvider,
 		timeout: 1000,
 	};
 
@@ -34,6 +43,16 @@ describe("SDK", () => {
 				agent: "absmartly-javascript-sdk",
 			});
 
+			expect(ContextDataProvider).toHaveBeenCalledTimes(1);
+			expect(ContextDataProvider).toHaveBeenCalledWith();
+
+			expect(ContextPublisher).toHaveBeenCalledTimes(1);
+			expect(ContextPublisher).toHaveBeenCalledWith();
+
+			expect(sdk.getClient()).toBeInstanceOf(Client);
+			expect(sdk.getContextDataProvider()).toBeInstanceOf(ContextDataProvider);
+			expect(sdk.getContextPublisher()).toBeInstanceOf(ContextPublisher);
+
 			done();
 		});
 
@@ -42,6 +61,8 @@ describe("SDK", () => {
 
 			expect(sdk).toBeInstanceOf(SDK);
 			expect(sdk.getEventLogger()).toBe(testEventLogger);
+			expect(sdk.getContextDataProvider()).toBe(testContextDataProvider);
+			expect(sdk.getContextPublisher()).toBe(testContextPublisher);
 			expect(Client).toHaveBeenCalledTimes(1);
 			expect(Client).toHaveBeenCalledWith({
 				agent: "javascript-sdk",
@@ -51,6 +72,10 @@ describe("SDK", () => {
 				environment: "test",
 				timeout: 1000,
 			});
+
+			expect(sdk.getClient()).toBeInstanceOf(Client);
+			expect(sdk.getContextDataProvider()).toBe(testContextDataProvider);
+			expect(sdk.getContextPublisher()).toBe(testContextPublisher);
 
 			done();
 		});
@@ -82,17 +107,17 @@ describe("SDK", () => {
 		});
 	});
 
-	describe("getContext()", () => {
+	describe("getContextData()", () => {
 		it("should call client getContext and return data promise", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
-			sdk.getClient().getContext.mockReturnValue(promise);
+			testContextDataProvider.getContextData.mockReturnValue(promise);
 
-			const data = sdk.getContextData();
+			const data = sdk.getContextData(sdk);
 
-			expect(sdk.getClient().getContext).toHaveBeenCalledTimes(1);
-			expect(sdk.getClient().getContext).toHaveBeenCalledWith();
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
 			expect(data).toBe(promise);
 
 			expect(Context).not.toHaveBeenCalled();
@@ -106,22 +131,21 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
-			sdk.getClient().getContext.mockReturnValue(promise);
+			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
 				publishDelay: 1000,
 				refreshPeriod: 0,
-				eventLogger: testEventLogger,
 			};
 
 			const context = sdk.createContext(contextParams, contextOptions);
 
 			expect(context).toBeInstanceOf(Context);
-			expect(sdk.getClient().getContext).toHaveBeenCalledTimes(1);
-			expect(sdk.getClient().getContext).toHaveBeenCalledWith();
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
 
 			expect(Context).toHaveBeenCalledTimes(1);
-			expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), contextOptions, contextParams, promise);
+			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, promise);
 
 			done();
 		});
@@ -130,12 +154,11 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
-			sdk.getClient().getContext.mockReturnValue(promise);
+			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
 				publishDelay: 1000,
 				refreshPeriod: 0,
-				eventLogger: testEventLogger,
 			};
 
 			const params = {
@@ -149,11 +172,11 @@ describe("SDK", () => {
 			const context = sdk.createContext(params, contextOptions);
 
 			expect(context).toBeInstanceOf(Context);
-			expect(sdk.getClient().getContext).toHaveBeenCalledTimes(1);
-			expect(sdk.getClient().getContext).toHaveBeenCalledWith();
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
 
 			expect(Context).toHaveBeenCalledTimes(1);
-			expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), contextOptions, params, promise);
+			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, params, promise);
 
 			done();
 		});
@@ -162,7 +185,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
-			sdk.getClient().getContext.mockReturnValue(promise);
+			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
 				publishDelay: 1000,
@@ -181,7 +204,7 @@ describe("SDK", () => {
 					"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
 				)
 			);
-			expect(sdk.getClient().getContext).not.toHaveBeenCalled();
+			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();
 
 			done();
@@ -191,23 +214,22 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
-			sdk.getClient().getContext.mockReturnValue(promise);
+			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const context = sdk.createContext(contextParams);
 
 			const defaultOptions = {
 				publishDelay: -1,
 				refreshPeriod: 0,
-				eventLogger: sdkOptions.eventLogger,
 			};
 
 			expect(context).toBeInstanceOf(Context);
-			expect(sdk.getClient().getContext).toHaveBeenCalledTimes(1);
-			expect(sdk.getClient().getContext).toHaveBeenCalledWith();
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
 
 			expect(context).toBeInstanceOf(Context);
 			expect(Context).toHaveBeenCalledTimes(1);
-			expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), defaultOptions, contextParams, promise);
+			expect(Context).toHaveBeenCalledWith(sdk, defaultOptions, contextParams, promise);
 
 			done();
 		});
@@ -216,7 +238,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
-			sdk.getClient().getContext.mockReturnValue(promise);
+			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			// fake browser environment
 			const previousWindow = global.window;
@@ -230,16 +252,15 @@ describe("SDK", () => {
 			const defaultOptions = {
 				publishDelay: 100,
 				refreshPeriod: 0,
-				eventLogger: sdkOptions.eventLogger,
 			};
 
 			expect(context).toBeInstanceOf(Context);
-			expect(sdk.getClient().getContext).toHaveBeenCalledTimes(1);
-			expect(sdk.getClient().getContext).toHaveBeenCalledWith();
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
 
 			expect(context).toBeInstanceOf(Context);
 			expect(Context).toHaveBeenCalledTimes(1);
-			expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), defaultOptions, contextParams, promise);
+			expect(Context).toHaveBeenCalledWith(sdk, defaultOptions, contextParams, promise);
 
 			done();
 		});
@@ -261,10 +282,10 @@ describe("SDK", () => {
 			const context = sdk.createContextWith(contextParams, data, contextOptions);
 
 			expect(context).toBeInstanceOf(Context);
-			expect(sdk.getClient().getContext).not.toHaveBeenCalled();
+			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 
 			expect(Context).toHaveBeenCalledTimes(1);
-			expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), contextOptions, contextParams, data);
+			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, data);
 
 			done();
 		});
@@ -289,7 +310,7 @@ describe("SDK", () => {
 					"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
 				)
 			);
-			expect(sdk.getClient().getContext).not.toHaveBeenCalled();
+			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();
 
 			done();
@@ -303,7 +324,6 @@ describe("SDK", () => {
 			const defaultOptions = {
 				publishDelay: -1,
 				refreshPeriod: 0,
-				eventLogger: sdkOptions.eventLogger,
 			};
 
 			const sdk = new SDK(sdkOptions);
@@ -311,13 +331,13 @@ describe("SDK", () => {
 
 			expect(context).toBeInstanceOf(Context);
 			expect(Context).toHaveBeenCalledTimes(1);
-			expect(Context).toHaveBeenCalledWith(sdk, sdk.getClient(), defaultOptions, contextParams, data);
+			expect(Context).toHaveBeenCalledWith(sdk, defaultOptions, contextParams, data);
 
 			done();
 		});
 	});
 
-	describe("setLogger()", () => {
+	describe("setEventLogger()", () => {
 		it("should override the current logger", (done) => {
 			const sdk = new SDK(sdkOptions);
 			expect(sdk.getEventLogger()).toBe(testEventLogger);
@@ -325,6 +345,32 @@ describe("SDK", () => {
 			const newLogger = jest.fn();
 			sdk.setEventLogger(newLogger);
 			expect(sdk.getEventLogger()).toBe(newLogger);
+
+			done();
+		});
+	});
+
+	describe("setContextDataProvider()", () => {
+		it("should override the current provider", (done) => {
+			const sdk = new SDK(sdkOptions);
+			expect(sdk.getContextDataProvider()).toBe(testContextDataProvider);
+
+			const newProvider = new ContextDataProvider();
+			sdk.setContextDataProvider(newProvider);
+			expect(sdk.getContextDataProvider()).toBe(newProvider);
+
+			done();
+		});
+	});
+
+	describe("setContextPublisher()", () => {
+		it("should override the current publisher", (done) => {
+			const sdk = new SDK(sdkOptions);
+			expect(sdk.getContextPublisher()).toBe(testContextPublisher);
+
+			const newPublisher = new ContextPublisher();
+			sdk.setContextPublisher(newPublisher);
+			expect(sdk.getContextPublisher()).toBe(newPublisher);
 
 			done();
 		});

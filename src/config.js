@@ -13,9 +13,11 @@ export function mergeConfig(context, previousConfig) {
 			const frag = frags[index];
 
 			if (`_${frag}_setter` in target) {
-				console.error(`Config key '${frags
-					.slice(0, index + 1)
-					.join(".")}' already set by experiment '${target[`_${frag}_setter`]}'.`);
+				console.error(
+					`Config key '${frags.slice(0, index + 1).join(".")}' already set by experiment '${
+						target[`_${frag}_setter`]
+					}'.`
+				);
 
 				target = undefined;
 				break;

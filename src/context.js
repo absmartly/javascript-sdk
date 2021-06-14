@@ -2,9 +2,11 @@ import { arrayEqualsShallow, hashUnit, isObject, isNumeric } from "./utils";
 import { VariantAssigner } from "./assigner";
 
 export default class Context {
-	constructor(sdk, client, options, params, promise) {
+	constructor(sdk, options, params, promise) {
 		this._sdk = sdk;
-		this._cli = client;
+		this._publisher = options.publisher || this._sdk.getContextPublisher();
+		this._dataProvider = options.dataProvider || this._sdk.getContextDataProvider();
+		this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 		this._opts = options;
 		this._pending = 0;
 		this._failed = false;
@@ -15,7 +17,6 @@ export default class Context {
 		this._overrides = {};
 		this._params = params;
 		this._assigners = {};
-		this._eventLogger = options.eventLogger || this._sdk.getEventLogger();
 
 		if (promise instanceof Promise) {
 			this._promise = promise
@@ -80,8 +81,16 @@ export default class Context {
 		return this._data;
 	}
 
-	client() {
-		return this._cli;
+	eventLogger() {
+		return this._eventLogger;
+	}
+
+	publisher() {
+		return this._publisher;
+	}
+
+	provider() {
+		return this._dataProvider;
 	}
 
 	publish() {
@@ -191,7 +200,7 @@ export default class Context {
 	variableKeys() {
 		this._checkReady(true);
 
-		return Object.assign({}, ...Object.entries(this._indexVariables).map(x => ({[x[0]]: x[1].data.name})));
+		return Object.assign({}, ...Object.entries(this._indexVariables).map((x) => ({ [x[0]]: x[1].data.name })));
 	}
 
 	override(experimentName, variant) {
@@ -234,7 +243,7 @@ export default class Context {
 		};
 
 		const hasOverride = experimentName in this._overrides;
-		const experiment = (experimentName in this._index) ? this._index[experimentName] : null;
+		const experiment = experimentName in this._index ? this._index[experimentName] : null;
 
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
@@ -319,7 +328,7 @@ export default class Context {
 			}
 		}
 
-		if ((experiment != null) && (assignment.variant < experiment.data.variants.length)) {
+		if (experiment != null && assignment.variant < experiment.data.variants.length) {
 			assignment.variables = experiment.variables[assignment.variant];
 		}
 
@@ -502,8 +511,8 @@ export default class Context {
 					}));
 				}
 
-				this._cli
-					.publish(request)
+				this._publisher
+					.publish(request, this._sdk, this)
 					.then(() => {
 						this._logEvent("publish", request);
 
@@ -532,8 +541,8 @@ export default class Context {
 
 	_refresh(callback) {
 		if (!this._failed) {
-			this._cli
-				.getContext()
+			this._dataProvider
+				.getContextData(this._sdk)
 				.then((data) => {
 					this._init(data, this._assignments);
 
@@ -589,11 +598,11 @@ export default class Context {
 		const index = {};
 		const indexVariables = {};
 
-		for (const experiment of (data.experiments || [])) {
+		for (const experiment of data.experiments || []) {
 			const variables = [];
 			const entry = {
 				data: experiment,
-				variables
+				variables,
 			};
 
 			index[experiment.name] = entry;
@@ -601,7 +610,7 @@ export default class Context {
 			for (let i = 0; i < experiment.variants.length; ++i) {
 				const variant = experiment.variants[i];
 				const config = variant.config;
-				const parsed = ((config != null) && (config.length > 0)) ? JSON.parse(config) : {};
+				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
 
 				for (const key of Object.keys(parsed)) {
 					indexVariables[key] = entry;

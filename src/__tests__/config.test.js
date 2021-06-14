@@ -9,48 +9,48 @@ describe("Config", () => {
 			const context = new Context();
 
 			const variableKeys = {
-				"button": "exp_test_abc",
+				button: "exp_test_abc",
 				"banner.border": "exp_test_ab",
 				"banner.size": "exp_test_ab",
-				"home.arrow.direction": "exp_test_arrow"
+				"home.arrow.direction": "exp_test_arrow",
 			};
 
 			const expectedValues = {
-				"button": true,
+				button: true,
 				"banner.border": 10,
 				"banner.size": 812,
-				"home.arrow.direction": "up"
+				"home.arrow.direction": "up",
 			};
 
 			context.variableKeys.mockReturnValue(variableKeys);
 			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
-				"button": false,
-				"banner": {
-					"size": 420,
-					"border": 0,
+				button: false,
+				banner: {
+					size: 420,
+					border: 0,
 				},
-				"home": {
-					"arrow": {
-						"direction": "down"
-					}
+				home: {
+					arrow: {
+						direction: "down",
+					},
 				},
-				"other": "unused"
+				other: "unused",
 			};
 
 			const expectedConfig = {
-				"button": true,
-				"banner": {
-					"size": 812,
-					"border": 10,
+				button: true,
+				banner: {
+					size: 812,
+					border: 10,
 				},
-				"home": {
-					"arrow": {
-						"direction": "up"
-					}
+				home: {
+					arrow: {
+						direction: "up",
+					},
 				},
-				"other": "unused"
+				other: "unused",
 			};
 
 			const actual = mergeConfig(context, previousConfig);
@@ -76,7 +76,10 @@ describe("Config", () => {
 
 			expect(actual.home.arrow.direction).toEqual(expectedConfig.home.arrow.direction);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
-			expect(context.variableValue).toHaveBeenCalledWith("home.arrow.direction", previousConfig.home.arrow.direction);
+			expect(context.variableValue).toHaveBeenCalledWith(
+				"home.arrow.direction",
+				previousConfig.home.arrow.direction
+			);
 			context.variableValue.mockClear();
 
 			expect(actual.other).toEqual(expectedConfig.other);
@@ -94,45 +97,45 @@ describe("Config", () => {
 				"button.active": "exp_test_abc",
 				"banner.border": "exp_test_ab",
 				"banner.size": "exp_test_ab",
-				"home.arrow.direction": "exp_test_arrow"
+				"home.arrow.direction": "exp_test_arrow",
 			};
 
 			const expectedValues = {
 				"button.active": true,
 				"banner.border": 10,
 				"banner.size": 812,
-				"home.arrow.direction": "up"
+				"home.arrow.direction": "up",
 			};
 
 			context.variableKeys.mockReturnValue(variableKeys);
 			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
-				"button": true,
-				"banner": {
-					"size": 420,
-					"border": 0,
+				button: true,
+				banner: {
+					size: 420,
+					border: 0,
 				},
-				"home": {
-					"arrow": "down"
+				home: {
+					arrow: "down",
 				},
-				"other": "unused"
+				other: "unused",
 			};
 
 			const expectedConfig = {
-				"button": {
-					"active": true,
+				button: {
+					active: true,
 				},
-				"banner": {
-					"size": 812,
-					"border": 10,
+				banner: {
+					size: 812,
+					border: 10,
 				},
-				"home": {
-					"arrow": {
-						"direction": "up",
-					}
+				home: {
+					arrow: {
+						direction: "up",
+					},
 				},
-				"other": "unused"
+				other: "unused",
 			};
 
 			const actual = mergeConfig(context, previousConfig);
@@ -174,7 +177,7 @@ describe("Config", () => {
 				"banner.border": "exp_test_ab",
 				"banner.size": "exp_test_abc",
 				"home.arrow": "exp_test_arrow",
-				"home.arrow.direction": "exp_test_arrow_direction"
+				"home.arrow.direction": "exp_test_arrow_direction",
 			};
 
 			const expectedValues = {
@@ -182,38 +185,38 @@ describe("Config", () => {
 				"banner.border": 10,
 				"banner.size": 812,
 				"home.arrow": "up",
-				"home.arrow.direction": "up"
+				"home.arrow.direction": "up",
 			};
 
 			context.variableKeys.mockReturnValue(variableKeys);
 			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
-				"button": {
-					"active": false
+				button: {
+					active: false,
 				},
-				"banner": {
-					"size": 420,
-					"border": 0,
+				banner: {
+					size: 420,
+					border: 0,
 				},
-				"home": {
-					"arrow": "down"
+				home: {
+					arrow: "down",
 				},
-				"other": "unused"
+				other: "unused",
 			};
 
 			const expectedConfig = {
-				"button": {
-					"active": true,
+				button: {
+					active: true,
 				},
-				"banner": {
-					"size": 812,
-					"border": 10,
+				banner: {
+					size: 812,
+					border: 10,
 				},
-				"home": {
-					"arrow": "up"
+				home: {
+					arrow: "up",
 				},
-				"other": "unused"
+				other: "unused",
 			};
 
 			const actual = mergeConfig(context, previousConfig);
@@ -223,7 +226,9 @@ describe("Config", () => {
 			context.variableValue.mockClear();
 
 			expect(console.error).toHaveBeenCalledTimes(1);
-			expect(console.error).toHaveBeenCalledWith("Config key 'home.arrow' already set by experiment 'exp_test_arrow'.");
+			expect(console.error).toHaveBeenCalledWith(
+				"Config key 'home.arrow' already set by experiment 'exp_test_arrow'."
+			);
 
 			done();
 		});
