@@ -15,6 +15,7 @@ export default class Context {
 		this._goals = [];
 		this._exposures = [];
 		this._overrides = {};
+		this._cassignments = {};
 		this._params = params;
 		this._assigners = {};
 
@@ -213,6 +214,16 @@ export default class Context {
 		}
 	}
 
+	customAssignment(experimentName, variant) {
+		this._cassignments[experimentName] = variant;
+	}
+
+	customAssignments(experimentVariants) {
+		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
+			this.customAssignment(experimentName, variant);
+		}
+	}
+
 	_checkNotFinalized() {
 		if (this.isFinalized()) {
 			throw new Error("ABSmartly Context is finalized.");
@@ -242,6 +253,7 @@ export default class Context {
 			);
 		};
 
+		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
 
@@ -257,7 +269,7 @@ export default class Context {
 					// previously not-running experiment
 					return assignment;
 				}
-			} else {
+			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
 				if (experimentMatches(experiment.data, assignment)) {
 					// assignment up-to-date
 					return assignment;
@@ -282,6 +294,7 @@ export default class Context {
 
 		if (hasOverride) {
 			if (experiment != null) {
+				assignment.id = experiment.data.id;
 				assignment.unitType = experiment.data.unitType;
 				assignment.assigned = experiment.data.unitType in this._params.units;
 			}
@@ -305,12 +318,24 @@ export default class Context {
 								experiment.data.trafficSeedHi,
 								experiment.data.trafficSeedLo
 							) === 1;
-						const variant = eligible
-							? assigner.assign(experiment.data.split, experiment.data.seedHi, experiment.data.seedLo)
-							: 0;
+
 						assignment.assigned = true;
 						assignment.eligible = eligible;
-						assignment.variant = variant;
+
+						if (eligible) {
+							if (hasCustom) {
+								assignment.variant = this._cassignments[experimentName];
+								assignment.custom = true;
+							} else {
+								assignment.variant = assigner.assign(
+									experiment.data.split,
+									experiment.data.seedHi,
+									experiment.data.seedLo
+								);
+							}
+						} else {
+							assignment.variant = 0;
+						}
 					}
 				} else {
 					assignment.assigned = true;
@@ -362,6 +387,7 @@ export default class Context {
 			eligible: assignment.eligible,
 			overridden: assignment.overridden,
 			fullOn: assignment.fullOn,
+			custom: assignment.custom || false,
 		};
 		this._logEvent("exposure", exposureEvent);
 
@@ -500,6 +526,7 @@ export default class Context {
 						eligible: x.eligible,
 						overridden: x.overridden,
 						fullOn: x.fullOn,
+						custom: x.custom,
 					}));
 				}
 

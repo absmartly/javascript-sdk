@@ -471,6 +471,7 @@ describe("Context", () => {
 									eligible: true,
 									overridden: false,
 									fullOn: false,
+									custom: false,
 								},
 							],
 							attributes: [
@@ -652,6 +653,22 @@ describe("Context", () => {
 
 			context.refresh().then(() => {
 				expect(context.peek("not_found")).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should keep custom assignments", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+			context.customAssignment("exp_test_ab", 3);
+
+			expect(context.peek("exp_test_ab")).toEqual(3);
+
+			context.refresh().then(() => {
+				expect(context.peek("exp_test_ab")).toEqual(3);
 
 				done();
 			});
@@ -860,6 +877,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 1,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 2,
@@ -871,6 +889,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 2,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 3,
@@ -882,6 +901,7 @@ describe("Context", () => {
 								unit: "user_id",
 								variant: 0,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 4,
@@ -893,6 +913,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 2,
 								fullOn: true,
+								custom: false,
 							},
 						],
 					},
@@ -961,6 +982,7 @@ describe("Context", () => {
 					unit: experiment.unitType,
 					variant: expectedVariants[experiment.name],
 					fullOn: experiment.name === "exp_test_fullon",
+					custom: false,
 				});
 			}
 
@@ -1004,6 +1026,7 @@ describe("Context", () => {
 								unit: null,
 								variant: 0,
 								fullOn: false,
+								custom: false,
 							},
 						],
 					},
@@ -1056,7 +1079,7 @@ describe("Context", () => {
 						hashed: true,
 						exposures: [
 							{
-								id: 0,
+								id: 1,
 								assigned: true,
 								eligible: true,
 								exposedAt: 1611141535729,
@@ -1065,6 +1088,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 5,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 0,
@@ -1076,6 +1100,7 @@ describe("Context", () => {
 								unit: null,
 								variant: 3,
 								fullOn: false,
+								custom: false,
 							},
 						],
 					},
@@ -1148,6 +1173,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 1,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 2,
@@ -1159,6 +1185,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 2,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 3,
@@ -1170,6 +1197,7 @@ describe("Context", () => {
 								unit: "user_id",
 								variant: 0,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 4,
@@ -1181,6 +1209,7 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 2,
 								fullOn: true,
+								custom: false,
 							},
 						],
 					},
@@ -1289,6 +1318,7 @@ describe("Context", () => {
 							unit: experiment.unitType,
 							variant: expectedVariants[experiment.name],
 							fullOn: experiment.name === "exp_test_fullon",
+							custom: false,
 						});
 					} else {
 						expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
@@ -1696,6 +1726,7 @@ describe("Context", () => {
 								eligible: true,
 								overridden: false,
 								fullOn: false,
+								custom: false,
 							},
 							{
 								id: 3,
@@ -1707,6 +1738,7 @@ describe("Context", () => {
 								eligible: false,
 								overridden: false,
 								fullOn: false,
+								custom: false,
 							},
 						],
 						goals: [
@@ -1855,21 +1887,23 @@ describe("Context", () => {
 			});
 		});
 
-		it("should reset internal queues and keep attributes and overrides", (done) => {
+		it("should reset internal queues and keep attributes overrides and custom assignments", (done) => {
 			const timeOrigin = 1611141535729;
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
-			context.treatment("not_found");
 			context.track("goal1", { amount: 125, hours: 245 });
 			context.attribute("attr1", "value1");
 
 			context.override("not_found", 3);
-			expect(context.peek("not_found")).toEqual(3);
+			expect(context.treatment("not_found")).toEqual(3);
 
-			expect(context.pending()).toEqual(3);
+			context.customAssignment("exp_test_abc", 3);
+			expect(context.treatment("exp_test_abc")).toEqual(3);
+
+			expect(context.pending()).toEqual(4);
 
 			publisher.publish.mockReturnValue(Promise.resolve({}));
 
@@ -1895,17 +1929,31 @@ describe("Context", () => {
 									eligible: true,
 									overridden: false,
 									fullOn: false,
+									custom: false,
 								},
 								{
 									id: 0,
 									name: "not_found",
 									unit: null,
 									exposedAt: 1611141535729,
-									variant: 0,
+									variant: 3,
 									assigned: false,
+									eligible: true,
+									overridden: true,
+									fullOn: false,
+									custom: false,
+								},
+								{
+									id: 2,
+									name: "exp_test_abc",
+									unit: "session_id",
+									exposedAt: 1611141535729,
+									variant: 3,
+									assigned: true,
 									eligible: true,
 									overridden: false,
 									fullOn: false,
+									custom: true,
 								},
 							],
 							goals: [
@@ -1964,7 +2012,10 @@ describe("Context", () => {
 
 					expect(context.pending()).toEqual(0);
 
-					expect(context.peek("not_found")).toEqual(3);
+					expect(context.treatment("exp_test_abc")).toEqual(3);
+					expect(context.treatment("not_found")).toEqual(3);
+
+					expect(context.pending()).toEqual(0);
 
 					done();
 				});
@@ -2133,6 +2184,7 @@ describe("Context", () => {
 								eligible: true,
 								overridden: false,
 								fullOn: false,
+								custom: false,
 							},
 						],
 					},
@@ -2321,7 +2373,7 @@ describe("Context", () => {
 							hashed: true,
 							exposures: [
 								{
-									id: 0,
+									id: 1,
 									name: "exp_test_ab",
 									unit: "session_id",
 									exposedAt: 1611141535729,
@@ -2330,9 +2382,10 @@ describe("Context", () => {
 									eligible: true,
 									overridden: true,
 									fullOn: false,
+									custom: false,
 								},
 								{
-									id: 0,
+									id: 2,
 									name: "exp_test_abc",
 									unit: "session_id",
 									exposedAt: 1611141535729,
@@ -2341,6 +2394,185 @@ describe("Context", () => {
 									eligible: true,
 									overridden: true,
 									fullOn: false,
+									custom: false,
+								},
+							],
+						},
+						sdk,
+						context
+					);
+
+					done();
+				});
+			});
+		});
+	});
+
+	describe("customAssignment()", () => {
+		it("should override natural assignment and set custom flag", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.customAssignment("exp_test_abc", 11);
+
+			expect(context.pending()).toEqual(0); // should not queue exposures
+
+			context.treatment("exp_test_abc");
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 2,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_abc",
+								overridden: false,
+								unit: "session_id",
+								variant: 11,
+								fullOn: false,
+								custom: true,
+							},
+						],
+					},
+					sdk,
+					context
+				);
+
+				done();
+			});
+		});
+
+		it("should not override full-on or non-eligible assignment", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			context.customAssignment("exp_test_not_eligible", 11);
+			context.customAssignment("exp_test_fullon", 11);
+
+			expect(context.pending()).toEqual(0); // should not queue exposures
+
+			context.treatment("exp_test_not_eligible");
+			context.treatment("exp_test_fullon");
+
+			expect(context.pending()).toEqual(2);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 3,
+								assigned: true,
+								eligible: false,
+								exposedAt: 1611141535729,
+								name: "exp_test_not_eligible",
+								overridden: false,
+								unit: "user_id",
+								variant: 0,
+								fullOn: false,
+								custom: false,
+							},
+							{
+								id: 4,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_fullon",
+								overridden: false,
+								unit: "session_id",
+								variant: 2,
+								fullOn: true,
+								custom: false,
+							},
+						],
+					},
+					sdk,
+					context
+				);
+
+				done();
+			});
+		});
+
+		it("should be callable before ready()", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
+			expect(context.isReady()).toEqual(false);
+			expect(context.isFailed()).toEqual(false);
+			expect(context.isFinalized()).toEqual(false);
+
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			context.customAssignment("exp_test_ab", 1);
+			context.customAssignments({
+				exp_test_ab: 2,
+				exp_test_abc: 2,
+				not_found: 3,
+			});
+
+			context.ready().then(() => {
+				expect(context.isReady()).toEqual(true);
+				expect(context.data()).toStrictEqual(getContextResponse);
+
+				context.treatment("exp_test_ab");
+				context.treatment("exp_test_abc");
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+				context.publish().then(() => {
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+					expect(publisher.publish).toHaveBeenCalledWith(
+						{
+							publishedAt: 1611141535829,
+							units: publishUnits,
+							hashed: true,
+							exposures: [
+								{
+									id: 1,
+									name: "exp_test_ab",
+									unit: "session_id",
+									exposedAt: 1611141535729,
+									variant: 2,
+									assigned: true,
+									eligible: true,
+									overridden: false,
+									fullOn: false,
+									custom: true,
+								},
+								{
+									id: 2,
+									name: "exp_test_abc",
+									unit: "session_id",
+									exposedAt: 1611141535729,
+									variant: 2,
+									assigned: true,
+									eligible: true,
+									overridden: false,
+									fullOn: false,
+									custom: true,
 								},
 							],
 						},
