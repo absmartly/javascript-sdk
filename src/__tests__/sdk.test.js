@@ -229,9 +229,7 @@ describe("SDK", () => {
 			};
 
 			expect(() => sdk.createContext(params, contextOptions)).toThrow(
-				new Error(
-					"Unit 'session_id' UID length must be >= 1"
-				)
+				new Error("Unit 'session_id' UID length must be >= 1")
 			);
 			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();
