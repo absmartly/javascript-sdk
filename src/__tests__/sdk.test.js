@@ -210,6 +210,35 @@ describe("SDK", () => {
 			done();
 		});
 
+		it("should throw on empty unit uid", (done) => {
+			const sdk = new SDK(sdkOptions);
+
+			const promise = Promise.resolve({});
+			testContextDataProvider.getContextData.mockReturnValue(promise);
+
+			const contextOptions = {
+				publishDelay: 1000,
+				refreshPeriod: 0,
+				eventLogger: testEventLogger,
+			};
+
+			const params = {
+				units: {
+					session_id: "",
+				},
+			};
+
+			expect(() => sdk.createContext(params, contextOptions)).toThrow(
+				new Error(
+					"Unit 'session_id' UID length must be >= 1"
+				)
+			);
+			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
+			expect(Context).not.toHaveBeenCalled();
+
+			done();
+		});
+
 		it("should initialize context with default options for nodejs", (done) => {
 			const sdk = new SDK(sdkOptions);
 

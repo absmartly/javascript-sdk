@@ -96,6 +96,12 @@ export default class SDK {
 					`Unit '${entry[0]}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
 				);
 			}
+
+			if (type === "string") {
+				if (entry[1].length === 0) {
+					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`)
+				}
+			}
 		}
 	}
 }
