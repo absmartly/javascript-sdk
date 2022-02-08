@@ -239,6 +239,41 @@ The `override()` and `overrides()` methods can be called before the context is r
     });
 ```
 
+#### HTTP request timeout
+It is possible to set a timeout per individual HTTP request, overriding the global timeout set for all request when instantiating the SDK object.
+
+Here is an example of setting a timeout only for the createContext request.
+
+```javascript
+const context = sdk.createContext(request, {
+    refreshInterval: 5 * 60 * 1000
+}, {
+    timeout: 1500
+});
+```
+
+#### HTTP Request cancellation
+Sometimes it is useful to cancel an inflight HTTP request, for example, when the user is navigating away. The A/B Smartly SDK also supports a cancellation via an `AbortSignal`. An implementation of AbortController is provided for older platforms, but will use the native implementation where available.
+
+Here is an example of a cancellation scenario.
+
+```javascript
+const controller = new absmartly.AbortController();
+const context = sdk.createContext(request, {
+    refreshInterval: 5 * 60 * 1000
+}, {
+    signal: controller.signal
+});
+
+// abort request if not ready after 1500ms
+const timeoutId = setTimeout(() => controller.abort(), 1500);
+
+await context.ready();
+
+clearTimeout(timeoutId);
+```
+
+
 ## About A/B Smartly
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
 A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.

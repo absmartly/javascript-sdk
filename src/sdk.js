@@ -17,7 +17,10 @@ export default class SDK {
 			},
 			...Object.entries(options || {})
 				.filter(
-					(x) => ["application", "agent", "apiKey", "endpoint", "environment", "timeout"].indexOf(x[0]) !== -1
+					(x) =>
+						["application", "agent", "apiKey", "endpoint", "environment", "retries", "timeout"].indexOf(
+							x[0]
+						) !== -1
 				)
 				.map((x) => ({ [x[0]]: x[1] }))
 		);
@@ -30,15 +33,15 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	getContextData() {
-		return this._provider.getContextData(this);
+	getContextData(requestOptions) {
+		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(params, options) {
+	createContext(params, options, requestOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
-		const data = this._provider.getContextData(this);
+		const data = this._provider.getContextData(this, requestOptions);
 		return new Context(this, options, params, data);
 	}
 

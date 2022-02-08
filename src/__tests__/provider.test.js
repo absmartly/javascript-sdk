@@ -22,7 +22,27 @@ describe("ContextDataProvider", () => {
 
 			expect(result).toBeInstanceOf(Promise);
 			expect(client.getContext).toHaveBeenCalledTimes(1);
-			expect(client.getContext).toHaveBeenCalledWith();
+			expect(client.getContext).toHaveBeenCalledWith(undefined);
+
+			result.then((resp) => {
+				expect(resp).toBe(data);
+				done();
+			});
+		});
+
+		it("should pass through options", async (done) => {
+			const provider = new ContextDataProvider();
+
+			const data = {};
+			client.getContext.mockReturnValue(Promise.resolve(data));
+
+			const result = provider.getContextData(sdk, { timeout: 1234 });
+
+			expect(result).toBeInstanceOf(Promise);
+			expect(client.getContext).toHaveBeenCalledTimes(1);
+			expect(client.getContext).toHaveBeenCalledWith({
+				timeout: 1234,
+			});
 
 			result.then((resp) => {
 				expect(resp).toBe(data);

@@ -114,10 +114,10 @@ describe("SDK", () => {
 			const promise = Promise.resolve({});
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
-			const data = sdk.getContextData(sdk);
+			const data = sdk.getContextData();
 
 			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
-			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 			expect(data).toBe(promise);
 
 			expect(Context).not.toHaveBeenCalled();
@@ -142,7 +142,34 @@ describe("SDK", () => {
 
 			expect(context).toBeInstanceOf(Context);
 			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
-			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk, undefined);
+
+			expect(Context).toHaveBeenCalledTimes(1);
+			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, promise);
+
+			done();
+		});
+
+		it("should pass through request options", (done) => {
+			const sdk = new SDK(sdkOptions);
+
+			const promise = Promise.resolve({});
+			testContextDataProvider.getContextData.mockReturnValue(promise);
+
+			const contextOptions = {
+				publishDelay: 1000,
+				refreshPeriod: 0,
+			};
+
+			const requestOptions = {
+				timeout: 1234,
+			};
+
+			const context = sdk.createContext(contextParams, contextOptions, requestOptions);
+
+			expect(context).toBeInstanceOf(Context);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk, requestOptions);
 
 			expect(Context).toHaveBeenCalledTimes(1);
 			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, promise);
@@ -173,7 +200,7 @@ describe("SDK", () => {
 
 			expect(context).toBeInstanceOf(Context);
 			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
-			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 
 			expect(Context).toHaveBeenCalledTimes(1);
 			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, params, promise);
@@ -252,7 +279,7 @@ describe("SDK", () => {
 
 			expect(context).toBeInstanceOf(Context);
 			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
-			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 
 			expect(context).toBeInstanceOf(Context);
 			expect(Context).toHaveBeenCalledTimes(1);
@@ -283,7 +310,7 @@ describe("SDK", () => {
 
 			expect(context).toBeInstanceOf(Context);
 			expect(testContextDataProvider.getContextData).toHaveBeenCalledTimes(1);
-			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk);
+			expect(testContextDataProvider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 
 			expect(context).toBeInstanceOf(Context);
 			expect(Context).toHaveBeenCalledTimes(1);

@@ -408,7 +408,7 @@ describe("Context", () => {
 				getContextPromise.then(() => {
 					expect(setInterval).not.toHaveBeenCalled();
 					expect(provider.getContextData).toHaveBeenCalledTimes(1);
-					expect(provider.getContextData).toHaveBeenCalledWith(sdk);
+					expect(provider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 					provider.getContextData.mockClear();
 
 					// test another interval
@@ -419,7 +419,7 @@ describe("Context", () => {
 					nextGetContextPromise.then(() => {
 						expect(setInterval).not.toHaveBeenCalled();
 						expect(provider.getContextData).toHaveBeenCalledTimes(1);
-						expect(provider.getContextData).toHaveBeenCalledWith(sdk);
+						expect(provider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 
 						done();
 					});
@@ -493,7 +493,8 @@ describe("Context", () => {
 							],
 						},
 						sdk,
-						context
+						context,
+						undefined
 					);
 
 					done();
@@ -526,7 +527,26 @@ describe("Context", () => {
 
 			context.refresh().then(() => {
 				expect(provider.getContextData).toHaveBeenCalledTimes(1);
-				expect(provider.getContextData).toHaveBeenCalledWith(sdk);
+				expect(provider.getContextData).toHaveBeenCalledWith(sdk, undefined);
+
+				expect(context.experiments()).toEqual(refreshContextResponse.experiments.map((x) => x.name));
+				for (const experiment of refreshContextResponse.experiments) {
+					expect(context.treatment(experiment.name)).toEqual(expectedVariants[experiment.name]);
+				}
+				expect(context.data()).toEqual(refreshContextResponse);
+
+				done();
+			});
+		});
+
+		it("should pass through request options", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+			context.refresh({ timeout: 1234 }).then(() => {
+				expect(provider.getContextData).toHaveBeenCalledTimes(1);
+				expect(provider.getContextData).toHaveBeenCalledWith(sdk, { timeout: 1234 });
 
 				expect(context.experiments()).toEqual(refreshContextResponse.experiments.map((x) => x.name));
 				for (const experiment of refreshContextResponse.experiments) {
@@ -564,7 +584,7 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
 				expect(provider.getContextData).toHaveBeenCalledTimes(1);
-				expect(provider.getContextData).toHaveBeenCalledWith(sdk);
+				expect(provider.getContextData).toHaveBeenCalledWith(sdk, undefined);
 
 				for (const experiment of getContextResponse.experiments) {
 					context.treatment(experiment.name);
@@ -918,7 +938,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -1031,7 +1052,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -1105,7 +1127,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -1214,7 +1237,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -1466,7 +1490,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -1637,7 +1662,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -1808,7 +1834,48 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
+				);
+
+				expect(context.pending()).toEqual(0);
+
+				done();
+			});
+		});
+
+		it("should pass through request options", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.track("goal1", { amount: 125, hours: 245 });
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			context.publish({ timeout: 1234 }).then(() => {
+				expect(publisher.publish).toHaveBeenCalledTimes(1);
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535829,
+						units: publishUnits,
+						hashed: true,
+						goals: [
+							{
+								name: "goal1",
+								achievedAt: 1611141535729,
+								properties: { amount: 125, hours: 245 },
+							},
+						],
+					},
+					sdk,
+					context,
+					{
+						timeout: 1234,
+					}
 				);
 
 				expect(context.pending()).toEqual(0);
@@ -1972,7 +2039,8 @@ describe("Context", () => {
 							],
 						},
 						sdk,
-						context
+						context,
+						undefined
 					);
 
 					expect(context.pending()).toEqual(0);
@@ -2007,7 +2075,8 @@ describe("Context", () => {
 							],
 						},
 						sdk,
-						context
+						context,
+						undefined
 					);
 
 					expect(context.pending()).toEqual(0);
@@ -2189,7 +2258,60 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
+				);
+
+				expect(context.pending()).toEqual(0);
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
+
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.isFinalized()).toEqual(false);
+		});
+
+		it("should pass through request options", (done) => {
+			const timeOrigin = 1611141535729;
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			context.finalize({ timeout: 1234 }).then(() => {
+				expect(publisher.publish).toHaveBeenCalledTimes(1);
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535829,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 1,
+								name: "exp_test_ab",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 1,
+								assigned: true,
+								eligible: true,
+								overridden: false,
+								fullOn: false,
+								custom: false,
+							},
+						],
+					},
+					sdk,
+					context,
+					{ timeout: 1234 }
 				);
 
 				expect(context.pending()).toEqual(0);
@@ -2399,7 +2521,8 @@ describe("Context", () => {
 							],
 						},
 						sdk,
-						context
+						context,
+						undefined
 					);
 
 					done();
@@ -2448,7 +2571,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -2508,7 +2632,8 @@ describe("Context", () => {
 						],
 					},
 					sdk,
-					context
+					context,
+					undefined
 				);
 
 				done();
@@ -2577,7 +2702,8 @@ describe("Context", () => {
 							],
 						},
 						sdk,
-						context
+						context,
+						undefined
 					);
 
 					done();

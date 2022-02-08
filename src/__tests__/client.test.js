@@ -1,18 +1,37 @@
 import Client from "../client";
-import fetch from "isomorphic-unfetch"; //eslint-disable-line no-shadow
+// eslint-disable-next-line no-shadow
+import fetch from "../fetch";
+// eslint-disable-next-line no-shadow
+import { AbortController } from "../abort";
+import { AbortError, RetryError, TimeoutError } from "../errors"; //eslint-disable-line no-shadow
 
-jest.mock("isomorphic-unfetch");
+jest.mock("../fetch");
 
 describe("Client", () => {
 	beforeEach(() => {
 		jest.useFakeTimers();
 	});
 
+	afterEach(() => {
+		fetch.mockReset();
+	});
+
 	function advanceFakeTimers() {
-		let promise = Promise.resolve();
-		for (let i = 0; i < 20; i++) {
-			promise = promise.then(() => jest.advanceTimersByTime(1000));
-		}
+		return new Promise((resolve) => {
+			let iterations = 0;
+
+			const advance = () => {
+				jest.advanceTimersByTime(100);
+
+				if (++iterations <= 50) {
+					Promise.resolve().then(advance);
+				} else {
+					resolve();
+				}
+			};
+
+			Promise.resolve().then(advance);
+		});
 	}
 
 	const endpoint = "test.absmartly.com:8080/v1";
@@ -34,7 +53,7 @@ describe("Client", () => {
 		environment,
 		apiKey,
 		application,
-		timeout: 500,
+		timeout: 5000,
 		retries: 3,
 	};
 
@@ -76,6 +95,27 @@ describe("Client", () => {
 			statusText,
 			text: () => Promise.resolve(response),
 			json: () => Promise.resolve(JSON.parse(JSON.stringify(response))),
+		};
+	}
+
+	function mockFetch(delay, response) {
+		return (url, opts) => {
+			if (delay > 0) {
+				return new Promise((resolve, reject) => {
+					const timeout = setTimeout(() => {
+						resolve(response);
+					}, delay);
+
+					if (opts.signal) {
+						opts.signal.onabort = () => {
+							clearTimeout(timeout);
+							reject(new AbortError());
+						};
+					}
+				});
+			}
+
+			return new Promise.resolve(response);
 		};
 	}
 
@@ -135,6 +175,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 					}),
+					signal: expect.any(Object),
 				});
 
 				expect(response).toStrictEqual(defaultMockResponse);
@@ -152,6 +193,7 @@ describe("Client", () => {
 			expect(fetch).toHaveBeenCalledTimes(1);
 			expect(fetch).toHaveBeenCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
 				method: "GET",
+				signal: expect.any(Object),
 			});
 
 			expect(response).toEqual(defaultMockResponse);
@@ -168,25 +210,34 @@ describe("Client", () => {
 
 		const client = new Client(clientOptions);
 
-		client.request(true, "PUT", "/context", { a: 1 }, {}).then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(3);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(3);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			done();
-		});
 
 		advanceFakeTimers();
 	});
@@ -204,32 +255,82 @@ describe("Client", () => {
 		jest.spyOn(Math, "random");
 		Math.random.mockReturnValue(0.0);
 
-		const options = Object.assign({}, clientOptions, { retries: 5, timeout: 2000 });
+		const options = Object.assign({}, clientOptions, { retries: 5, timeout: 5000 });
 		const client = new Client(options);
 
-		client.request(true, "PUT", "/context", { a: 1 }, {}).catch((error) => {
-			expect(fetch).toHaveBeenCalledTimes(6);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.catch((error) => {
+				expect(fetch).toHaveBeenCalledTimes(6);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(error).toBeInstanceOf(RetryError);
+				expect(setTimeout).toHaveBeenCalledTimes(6);
+				expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBeLessThanOrEqual(5000 + 1675);
+
+				done();
 			});
 
-			expect(error.message).toEqual("error 6");
-			expect(setTimeout).toHaveBeenCalledTimes(5);
-			expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBeLessThan(2000);
+		advanceFakeTimers();
+	});
 
-			fetch.mockReset();
+	it("request() does not retry with options.retries == 0", (done) => {
+		fetch.mockRejectedValueOnce(new Error("error 1"));
 
-			done();
-		});
+		jest.spyOn(Math, "random");
+		Math.random.mockReturnValue(0.0);
+
+		const options = Object.assign({}, clientOptions, { retries: 0, timeout: 5000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.catch((error) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(error.message).toEqual("error 1");
+				expect(setTimeout).toHaveBeenCalledTimes(1);
+				expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBe(5000);
+
+				done();
+			});
 
 		advanceFakeTimers();
 	});
@@ -247,32 +348,165 @@ describe("Client", () => {
 		jest.spyOn(Math, "random");
 		Math.random.mockReturnValue(1.0);
 
-		const options = Object.assign({}, clientOptions, { retries: 5, timeout: 2000 });
+		const options = Object.assign({}, clientOptions, { retries: 5, timeout: 5000 });
 		const client = new Client(options);
 
-		client.request(true, "PUT", "/context", { a: 1 }, {}).catch((error) => {
-			expect(fetch).toHaveBeenCalledTimes(6);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.catch((error) => {
+				expect(fetch).toHaveBeenCalledTimes(6);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(error).toBeInstanceOf(RetryError);
+				expect(setTimeout).toHaveBeenCalledTimes(6);
+				expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBeCloseTo(5000 + 1675, 3);
+
+				done();
 			});
 
-			expect(error.message).toEqual("error 6");
-			expect(setTimeout).toHaveBeenCalledTimes(5);
-			expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBeCloseTo(2000, 3);
+		advanceFakeTimers();
+	});
 
-			fetch.mockReset();
+	it("request() does not abort before options.timeout", (done) => {
+		fetch.mockImplementation(mockFetch(1000, responseMock(200, "OK", defaultMockResponse)));
 
-			done();
-		});
+		const options = Object.assign({}, clientOptions, { timeout: 2000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.then((response) => {
+				expect(response).toStrictEqual(defaultMockResponse);
+
+				done();
+			})
+			.catch((error) => {
+				done(error);
+			});
+
+		advanceFakeTimers();
+	});
+
+	it("request() aborts after options.timeout", (done) => {
+		fetch.mockImplementation(mockFetch(2000, responseMock(200, "OK", defaultMockResponse)));
+
+		const options = Object.assign({}, clientOptions, { timeout: 1000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.then(() => {
+				done("unexpected");
+			})
+			.catch((error) => {
+				expect(error).toBeInstanceOf(TimeoutError);
+
+				done();
+			});
+
+		advanceFakeTimers();
+	});
+
+	it("request() aborts when abort() is called", (done) => {
+		fetch.mockImplementation(mockFetch(3000, responseMock(200, "OK", defaultMockResponse)));
+
+		const aborter = new AbortController();
+		const options = Object.assign({}, clientOptions, { timeout: 5000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+				signal: aborter.signal,
+			})
+			.then(() => {
+				done("unexpected");
+			})
+			.catch((error) => {
+				expect(error).toBeInstanceOf(AbortError);
+
+				done();
+			});
+
+		setTimeout(() => {
+			aborter.abort();
+		}, 500);
+
+		advanceFakeTimers();
+	});
+
+	it("request() aborts when abort() is called during a retry wait", (done) => {
+		fetch
+			.mockRejectedValueOnce(new Error("error 1"))
+			.mockRejectedValueOnce(new Error("error 2"))
+			.mockRejectedValueOnce(new Error("error 3"))
+			.mockRejectedValueOnce(new Error("error 4"))
+			.mockRejectedValueOnce(new Error("error 5"))
+			.mockRejectedValueOnce(new Error("error 6"))
+			.mockRejectedValueOnce(new Error("error 7"));
+
+		jest.spyOn(Math, "random");
+		Math.random.mockReturnValue(1.0);
+
+		const aborter = new AbortController();
+		const options = Object.assign({}, clientOptions, { retries: 7, timeout: 5000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+				signal: aborter.signal,
+			})
+			.then(() => {
+				done("unexpected");
+			})
+			.catch((error) => {
+				expect(error).toBeInstanceOf(AbortError);
+
+				done();
+			});
+
+		setTimeout(() => {
+			aborter.abort();
+		}, 500);
 
 		advanceFakeTimers();
 	});
@@ -282,27 +516,34 @@ describe("Client", () => {
 
 		const client = new Client(clientOptions);
 
-		client.request(true, "POST", "/context", { a: 1 }, {}).catch((error) => {
-			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+		client
+			.request({
+				auth: true,
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.catch((error) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(error.message).toEqual("bad request error text");
+
+				done();
 			});
-
-			expect(error.message).toEqual("bad request error text");
-
-			fetch.mockReset();
-
-			done();
-		});
 	});
 
 	it("request() retries on server errors", (done) => {
@@ -312,27 +553,34 @@ describe("Client", () => {
 
 		const client = new Client(clientOptions);
 
-		client.request(true, "POST", "/context", { a: 1 }, {}).then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(2);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+		client
+			.request({
+				auth: true,
 				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(2);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			fetch.mockReset();
-
-			done();
-		});
 
 		advanceFakeTimers();
 	});
@@ -342,25 +590,34 @@ describe("Client", () => {
 
 		const client = new Client(clientOptions);
 
-		client.request(true, "PUT", "/context", { a: 1, b: "ã=á" }, {}).then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1&b=%C3%A3%3D%C3%A1`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: { a: 1, b: "ã=á" },
+				body: {},
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?a=1&b=%C3%A3%3D%C3%A1`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			done();
-		});
 	});
 
 	it("request() should omit query parameters if dict empty", (done) => {
@@ -368,25 +625,34 @@ describe("Client", () => {
 
 		const client = new Client(clientOptions);
 
-		client.request(true, "PUT", "/context", {}, {}).then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: JSON.stringify({}),
+				path: "/context",
+				query: {},
+				body: {},
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: JSON.stringify({}),
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			done();
-		});
 	});
 
 	it("request() should call fetch with an empty body if not specified", (done) => {
@@ -394,25 +660,32 @@ describe("Client", () => {
 
 		const client = new Client(clientOptions);
 
-		client.request(true, "PUT", "/context").then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "test_app",
-					"X-Application-Version": 1000000,
-				},
-				body: undefined,
+				path: "/context",
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: undefined,
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			done();
-		});
 	});
 
 	it("request() should set applications headers for string application", (done) => {
@@ -420,25 +693,32 @@ describe("Client", () => {
 
 		const client = new Client(Object.assign({}, clientOptions, { application: "website" }));
 
-		client.request(true, "PUT", "/context").then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+		client
+			.request({
+				auth: true,
 				method: "PUT",
-				headers: {
-					"Content-Type": "application/json",
-					"X-API-Key": apiKey,
-					"X-Agent": "javascript-client",
-					"X-Environment": "test",
-					"X-Application": "website",
-					"X-Application-Version": 0,
-				},
-				body: undefined,
+				path: "/context",
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "website",
+						"X-Application-Version": 0,
+					},
+					body: undefined,
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			done();
-		});
 	});
 
 	it("request() should not send headers when auth argument is false", (done) => {
@@ -446,17 +726,24 @@ describe("Client", () => {
 
 		const client = new Client(Object.assign({}, clientOptions, { application: "website" }));
 
-		client.request(false, "PUT", "/context").then((response) => {
-			expect(fetch).toHaveBeenCalledTimes(1);
-			expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+		client
+			.request({
+				auth: false,
 				method: "PUT",
-				body: undefined,
+				path: "/context",
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					body: undefined,
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
 			});
-
-			expect(response).toEqual(defaultMockResponse);
-
-			done();
-		});
 	});
 
 	it("publish() calls endpoint", (done) => {
@@ -491,6 +778,7 @@ describe("Client", () => {
 						exposures,
 						attributes,
 					}),
+					signal: expect.any(Object),
 				});
 
 				expect(response).toEqual(defaultMockResponse);
@@ -527,6 +815,7 @@ describe("Client", () => {
 						units,
 						publishedAt,
 					}),
+					signal: expect.any(Object),
 				});
 
 				expect(response).toEqual(defaultMockResponse);
@@ -563,6 +852,7 @@ describe("Client", () => {
 						units,
 						publishedAt: publishedAt + 100,
 					}),
+					signal: expect.any(Object),
 				});
 
 				expect(response).toEqual(defaultMockResponse);

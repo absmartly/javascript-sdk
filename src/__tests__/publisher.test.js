@@ -26,7 +26,28 @@ describe("ContextPublisher", () => {
 
 			expect(result).toBeInstanceOf(Promise);
 			expect(client.publish).toHaveBeenCalledTimes(1);
-			expect(client.publish).toHaveBeenCalledWith(request);
+			expect(client.publish).toHaveBeenCalledWith(request, undefined);
+
+			result.then((resp) => {
+				expect(resp).toBe(data);
+				done();
+			});
+		});
+
+		it("should pass through options", async (done) => {
+			const publisher = new ContextPublisher();
+
+			const data = { ok: true };
+			client.publish.mockReturnValue(Promise.resolve(data));
+
+			const request = { test: 1 };
+			const result = publisher.publish(request, sdk, context, { timeout: 1234 });
+
+			expect(result).toBeInstanceOf(Promise);
+			expect(client.publish).toHaveBeenCalledTimes(1);
+			expect(client.publish).toHaveBeenCalledWith(request, {
+				timeout: 1234,
+			});
 
 			result.then((resp) => {
 				expect(resp).toBe(data);

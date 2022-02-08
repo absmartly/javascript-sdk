@@ -1,4 +1,7 @@
-import fetch from "isomorphic-unfetch"; // eslint-disable-line no-shadow
+import fetch from "./fetch"; // eslint-disable-line no-shadow
+// eslint-disable-next-line no-shadow
+import { AbortController } from "./abort";
+import { AbortError, RetryError, TimeoutError } from "./errors";
 
 export default class Client {
 	constructor(opts) {
@@ -10,7 +13,7 @@ export default class Client {
 				endpoint: undefined,
 				environment: undefined,
 				retries: 5,
-				timeout: 500,
+				timeout: 3000,
 			},
 			opts
 		);
@@ -38,25 +41,33 @@ export default class Client {
 			};
 		}
 
-		this._delay = Math.max(10, this._opts.timeout / (1 << this._opts.retries));
+		this._delay = 50;
 	}
 
-	getContext() {
-		return this.getUnauthed("/context", {
-			application: this._opts.application.name,
-			environment: this._opts.environment,
+	getContext(options) {
+		return this.getUnauthed({
+			...options,
+			path: "/context",
+			query: {
+				application: this._opts.application.name,
+				environment: this._opts.environment,
+			},
 		});
 	}
 
-	createContext(params) {
+	createContext(params, options) {
 		const body = {
 			units: params.units,
 		};
 
-		return this.post("/context", null, body);
+		return this.post({
+			...options,
+			path: "/context",
+			body,
+		});
 	}
 
-	publish(params) {
+	publish(params, options) {
 		const body = {
 			units: params.units,
 			hashed: params.hashed,
@@ -75,26 +86,33 @@ export default class Client {
 			body.attributes = params.attributes;
 		}
 
-		return this.put("/context", null, body);
+		return this.put({
+			...options,
+			path: "/context",
+			body,
+		});
 	}
 
-	request(auth, method, path, query, body) {
-		let url = `${this._opts.endpoint}${path}`;
-		if (query) {
-			const keys = Object.keys(query);
+	request(options) {
+		let url = `${this._opts.endpoint}${options.path}`;
+		if (options.query) {
+			const keys = Object.keys(options.query);
 			if (keys.length > 0) {
-				const encoded = keys.map((k) => `${k}=${encodeURIComponent(query[k])}`).join("&");
+				const encoded = keys.map((k) => `${k}=${encodeURIComponent(options.query[k])}`).join("&");
 				url = `${url}?${encoded}`;
 			}
 		}
 
+		const aborter = new AbortController();
+
 		const tryOnce = () => {
 			const opts = {
-				method,
-				body: body !== undefined ? JSON.stringify(body, null, 0) : undefined,
+				method: options.method,
+				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
+				signal: aborter.signal,
 			};
 
-			if (auth) {
+			if (options.auth) {
 				opts.headers = {
 					"Content-Type": "application/json",
 					"X-API-Key": this._opts.apiKey,
@@ -121,14 +139,32 @@ export default class Client {
 		};
 
 		const wait = (ms) =>
-			new Promise((resolve) => {
-				setTimeout(resolve, ms);
+			new Promise((resolve, reject) => {
+				const timeoutId = setTimeout(() => {
+					delete wait.reject;
+					resolve();
+				}, ms);
+
+				wait.reject = (reason) => {
+					clearTimeout(timeoutId);
+					reject(reason);
+				};
 			});
 
 		const tryWith = (retries, timeout, tries = 0, waited = 0) => {
+			delete tryWith.timedout;
+
 			return tryOnce().catch((reason) => {
-				if (reason._bail || tries >= retries || waited >= timeout) {
-					return Promise.reject(reason);
+				if (reason._bail || retries <= 0) {
+					throw new Error(reason.message);
+				} else if (tries >= retries) {
+					throw new RetryError();
+				} else if (waited >= timeout || reason.name === "AbortError") {
+					if (tryWith.timedout) {
+						throw new TimeoutError();
+					}
+
+					throw reason;
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
@@ -140,18 +176,55 @@ export default class Client {
 			});
 		};
 
-		return tryWith(this._opts.retries, this._opts.timeout);
+		const abort = () => {
+			if (wait.reject) {
+				wait.reject(new AbortError());
+			} else {
+				aborter.abort();
+			}
+		};
+
+		if (options.signal) {
+			options.signal.addEventListener("abort", abort);
+		}
+
+		const timeout = options.timeout || this._opts.timeout || 0;
+		const timeoutId =
+			timeout > 0
+				? setTimeout(() => {
+						tryWith.timedout = true;
+						abort();
+				  }, timeout)
+				: 0;
+
+		return tryWith(this._opts.retries, this._opts.timeout).finally(() => {
+			clearTimeout(timeoutId);
+			if (options.signal) {
+				options.signal.removeEventListener("abort", abort);
+			}
+		});
 	}
 
-	post(path, query, body) {
-		return this.request(true, "POST", path, query, body);
+	post(options) {
+		return this.request({
+			...options,
+			auth: true,
+			method: "POST",
+		});
 	}
 
-	put(path, query, body) {
-		return this.request(true, "PUT", path, query, body);
+	put(options) {
+		return this.request({
+			...options,
+			auth: true,
+			method: "PUT",
+		});
 	}
 
-	getUnauthed(path, query) {
-		return this.request(false, "GET", path, query);
+	getUnauthed(options) {
+		return this.request({
+			...options,
+			method: "GET",
+		});
 	}
 }

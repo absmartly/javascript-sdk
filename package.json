@@ -1,6 +1,6 @@
 {
 	"name": "@absmartly/javascript-sdk",
-	"version": "1.7.1",
+	"version": "1.8.0",
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
@@ -34,7 +34,7 @@
 		"test": "jest --coverage"
 	},
 	"dependencies": {
-		"isomorphic-unfetch": "=3.1.0",
+		"node-fetch": "^2.6.1",
 		"rfdc": "^1.2.0"
 	},
 	"devDependencies": {

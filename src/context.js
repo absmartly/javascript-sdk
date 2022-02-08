@@ -94,7 +94,7 @@ export default class Context {
 		return this._dataProvider;
 	}
 
-	publish() {
+	publish(requestOptions) {
 		this._checkReady(true);
 
 		return new Promise((resolve, reject) => {
@@ -104,11 +104,11 @@ export default class Context {
 				} else {
 					resolve();
 				}
-			});
+			}, requestOptions);
 		});
 	}
 
-	refresh() {
+	refresh(requestOptions) {
 		this._checkReady(true);
 
 		return new Promise((resolve, reject) => {
@@ -118,7 +118,7 @@ export default class Context {
 				} else {
 					resolve();
 				}
-			});
+			}, requestOptions);
 		});
 	}
 
@@ -176,8 +176,8 @@ export default class Context {
 		return this._track(goalName, properties);
 	}
 
-	finalize() {
-		return this._finalize();
+	finalize(requestOptions) {
+		return this._finalize(requestOptions);
 	}
 
 	experiments() {
@@ -482,7 +482,7 @@ export default class Context {
 		}
 	}
 
-	_flush(callback) {
+	_flush(callback, requestOptions) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
@@ -539,7 +539,7 @@ export default class Context {
 				}
 
 				this._publisher
-					.publish(request, this._sdk, this)
+					.publish(request, this._sdk, this, requestOptions)
 					.then(() => {
 						this._logEvent("publish", request);
 
@@ -566,10 +566,10 @@ export default class Context {
 		}
 	}
 
-	_refresh(callback) {
+	_refresh(callback, requestOptions) {
 		if (!this._failed) {
 			this._dataProvider
-				.getContextData(this._sdk)
+				.getContextData(this._sdk, requestOptions)
 				.then((data) => {
 					this._init(data, this._assignments);
 
@@ -656,7 +656,7 @@ export default class Context {
 		}
 	}
 
-	_finalize() {
+	_finalize(requestOptions) {
 		if (!this._finalized) {
 			if (!this._finalizing) {
 				if (this._refreshInterval !== undefined) {
@@ -677,7 +677,7 @@ export default class Context {
 
 								resolve();
 							}
-						});
+						}, requestOptions);
 					});
 
 					return this._finalizing;
