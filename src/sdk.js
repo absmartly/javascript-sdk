@@ -2,6 +2,7 @@ import Client from "./client";
 import Context from "./context";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
+import { isBrowser } from "./utils";
 
 export default class SDK {
 	static defaultEventLogger = (context, eventName, data) => {
@@ -81,10 +82,9 @@ export default class SDK {
 	}
 
 	static _contextOptions(options) {
-		const isBrowser = typeof window !== "undefined" && typeof window.navigator !== "undefined";
 		return Object.assign(
 			{
-				publishDelay: isBrowser ? 100 : -1,
+				publishDelay: isBrowser() ? 100 : -1,
 				refreshPeriod: 0,
 			},
 			options || {}

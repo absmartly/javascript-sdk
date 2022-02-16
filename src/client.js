@@ -103,13 +103,13 @@ export default class Client {
 			}
 		}
 
-		const aborter = new AbortController();
+		const controller = new AbortController();
 
 		const tryOnce = () => {
 			const opts = {
 				method: options.method,
 				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
-				signal: aborter.signal,
+				signal: controller.signal,
 			};
 
 			if (options.auth) {
@@ -155,13 +155,15 @@ export default class Client {
 			delete tryWith.timedout;
 
 			return tryOnce().catch((reason) => {
+				console.warn(reason);
+
 				if (reason._bail || retries <= 0) {
 					throw new Error(reason.message);
 				} else if (tries >= retries) {
-					throw new RetryError();
+					throw new RetryError(tries);
 				} else if (waited >= timeout || reason.name === "AbortError") {
 					if (tryWith.timedout) {
-						throw new TimeoutError();
+						throw new TimeoutError(timeout);
 					}
 
 					throw reason;
@@ -180,7 +182,7 @@ export default class Client {
 			if (wait.reject) {
 				wait.reject(new AbortError());
 			} else {
-				aborter.abort();
+				controller.abort();
 			}
 		};
 

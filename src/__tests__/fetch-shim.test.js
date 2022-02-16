@@ -1,13 +1,14 @@
-import { farfetch } from "../fetch";
+// eslint-disable-next-line no-shadow
+import { fetch } from "../fetch-shim";
 // eslint-disable-next-line no-shadow
 import { AbortController } from "../abort";
 
-describe("farfetch", () => {
+describe("fetch", () => {
 	it("should be a function", () => {
-		expect(farfetch).toEqual(expect.any(Function));
+		expect(fetch).toEqual(expect.any(Function));
 	});
 
-	describe("farfetch()", () => {
+	describe("fetch()", () => {
 		let xhr;
 
 		beforeEach(() => {
@@ -31,7 +32,7 @@ describe("farfetch", () => {
 		});
 
 		it("sanity test", async (done) => {
-			farfetch("/foo", { headers: { a: "b" } })
+			fetch("/foo", { headers: { a: "b" } })
 				.then((response) => {
 					expect(response).toMatchObject({
 						text: expect.any(Function),
@@ -68,7 +69,7 @@ describe("farfetch", () => {
 
 		it("handles empty header values", async (done) => {
 			xhr.getAllResponseHeaders = jest.fn().mockReturnValue("Server: \nX-Foo:baz");
-			farfetch("/foo").then((response) => {
+			fetch("/foo").then((response) => {
 				expect(response.headers.get("server")).toEqual("");
 				expect(response.headers.get("X-foo")).toEqual("baz");
 
@@ -83,7 +84,7 @@ describe("farfetch", () => {
 			jest.spyOn(controller.signal, "addEventListener");
 			jest.spyOn(controller.signal, "removeEventListener");
 
-			farfetch("/foo", {
+			fetch("/foo", {
 				signal: controller.signal,
 			})
 				.then((response) => {
@@ -107,7 +108,7 @@ describe("farfetch", () => {
 			jest.spyOn(controller.signal, "addEventListener");
 			jest.spyOn(controller.signal, "removeEventListener");
 
-			farfetch("/foo", {
+			fetch("/foo", {
 				signal: controller.signal,
 			}).catch((error) => {
 				expect(error.name).toBe("AbortError");
@@ -128,7 +129,7 @@ describe("farfetch", () => {
 			jest.spyOn(controller.signal, "addEventListener");
 			jest.spyOn(controller.signal, "removeEventListener");
 
-			farfetch("/foo", {
+			fetch("/foo", {
 				signal: controller.signal,
 			}).catch(() => {
 				expect(xhr.abort).toHaveBeenCalledTimes(0);

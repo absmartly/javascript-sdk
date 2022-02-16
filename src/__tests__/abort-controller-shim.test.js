@@ -1,6 +1,7 @@
-import { Aborter, Signal } from "../abort";
+// eslint-disable-next-line no-shadow
+import { AbortController, AbortSignal } from "../abort-controller-shim";
 
-describe("Signal", () => {
+describe("AbortSignal", () => {
 	const expectedEvent = expect.objectContaining({
 		type: expect.any(String),
 		cancelable: false,
@@ -9,7 +10,7 @@ describe("Signal", () => {
 
 	describe("dispatchEvent", () => {
 		it("calls listeners", async (done) => {
-			const aborter = new Aborter();
+			const aborter = new AbortController();
 			const signal = aborter.signal;
 			const listener1 = jest.fn();
 			const listener2 = jest.fn();
@@ -44,26 +45,60 @@ describe("Signal", () => {
 			done();
 		});
 	});
-});
 
-describe("Aborter", () => {
-	it("creates abort signal", async (done) => {
-		const aborter = new Aborter();
-		expect(aborter.signal).toBeInstanceOf(Signal);
+	it("toString() returns [object AbortSignal]", async (done) => {
+		const aborter = new AbortSignal();
+
+		expect(aborter.toString()).toEqual("[object AbortSignal]");
 
 		done();
 	});
 
-	it("abort dispatches event on signal", async (done) => {
-		const aborter = new Aborter();
+	it("toStringTag is set to AbortSignal", async (done) => {
+		const aborter = new AbortSignal();
+
+		expect(aborter[Symbol.toStringTag]).toEqual("AbortSignal");
+
+		done();
+	});
+});
+
+describe("AbortController", () => {
+	it("creates abort signal", async (done) => {
+		const aborter = new AbortController();
+		expect(aborter.signal).toBeInstanceOf(AbortSignal);
+		expect(aborter.signal.aborted).toBe(false);
+
+		done();
+	});
+
+	it("abort dispatches event on signal and aborted is set", async (done) => {
+		const aborter = new AbortController();
 		jest.spyOn(aborter.signal, "dispatchEvent").mockImplementation(() => {});
 
 		aborter.abort();
 
+		expect(aborter.signal.aborted).toBe(true);
 		expect(aborter.signal.dispatchEvent).toHaveBeenCalledTimes(1);
 		expect(aborter.signal.dispatchEvent).toHaveBeenCalledWith(
 			expect.objectContaining({ type: expect.any(String) })
 		);
+
+		done();
+	});
+
+	it("toString() returns [object AbortController]", async (done) => {
+		const aborter = new AbortController();
+
+		expect(aborter.toString()).toEqual("[object AbortController]");
+
+		done();
+	});
+
+	it("toStringTag is set to AbortController", async (done) => {
+		const aborter = new AbortController();
+
+		expect(aborter[Symbol.toStringTag]).toEqual("AbortController");
 
 		done();
 	});

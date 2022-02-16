@@ -1,5 +1,5 @@
 import { stringToUint8Array } from "../utils";
-import { murmur3_32, imultiply } from "../murmur3_32";
+import { murmur3_32 } from "../murmur3_32";
 
 describe("murmur3_32()", () => {
 	const testCases = [
@@ -45,39 +45,6 @@ describe("murmur3_32()", () => {
 		testCases.forEach((testCase) => {
 			const bytes = stringToUint8Array(testCase[0]);
 			expect(murmur3_32(bytes.buffer, testCase[1])).toBe(testCase[2]);
-		});
-
-		done();
-	});
-});
-
-describe("imultiply()", () => {
-	const testCases = [
-		[2384764113, 687795780],
-		[582814207, 535503786],
-		[806648609, 812414476],
-		[327353982, 365350859],
-		[295929, 831272299],
-		[546231025, 615713427],
-		[786046353, 660627115],
-		[610696861, 3273390915],
-		[159039979, 751373527],
-		[359285987, 47347982],
-		[2629321177, 2244093433],
-		[614818046, 866325134],
-		[782951, 978581619],
-		[332782054, 548432069],
-		[453965834, 405913800],
-		[2881278426, 543635675],
-		[801062917, 4584324],
-		[0, 4584324],
-		[0, 9855841078],
-	];
-
-	it("should match Math.imul()", (done) => {
-		testCases.forEach((testCase) => {
-			expect(imultiply(testCase[0], testCase[1])).toEqual(Math.imul(testCase[0], testCase[1]));
-			expect(imultiply(testCase[1], testCase[0])).toEqual(Math.imul(testCase[1], testCase[0]));
 		});
 
 		done();

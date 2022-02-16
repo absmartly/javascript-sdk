@@ -1,5 +1,13 @@
 import { md5 } from "./md5";
 
+export function isBrowser() {
+	return typeof window !== "undefined" && typeof window.document !== "undefined";
+}
+
+export function isWorker() {
+	return typeof self === "object" && self.constructor && self.constructor.name === "DedicatedWorkerGlobalScope";
+}
+
 export function isNumeric(value) {
 	return typeof value === "number";
 }

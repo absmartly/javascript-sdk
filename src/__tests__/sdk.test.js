@@ -296,7 +296,7 @@ describe("SDK", () => {
 
 			// fake browser environment
 			const previousWindow = global.window;
-			global.window = { navigator: {} };
+			global.window = { document: {} };
 
 			const context = sdk.createContext(contextParams);
 

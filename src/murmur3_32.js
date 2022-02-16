@@ -2,15 +2,7 @@ const C1 = 0xcc9e2d51;
 const C2 = 0x1b873593;
 const C3 = 0xe6546b64;
 
-export function imultiply(a, b) {
-	//https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/imul
-	b |= 0;
-	let result = (a & 0x003fffff) * b;
-	if ((a & 0xffc00000) !== 0) result += ((a & 0xffc00000) * b) | 0;
-	return result | 0;
-}
-
-const imul32 = Math.imul || imultiply;
+const imul32 = Math.imul;
 
 function fmix32(h) {
 	h ^= h >>> 16;
