@@ -34,6 +34,7 @@ describe("ContextPublisher", () => {
 				expect(resp).toBe(data);
 				done();
 			});
+			jest.clearAllMocks();
 		});
 
 		it("should pass through options", async (done) => {
@@ -56,6 +57,7 @@ describe("ContextPublisher", () => {
 				expect(resp).toBe(data);
 				done();
 			});
+			jest.clearAllMocks();
 		});
 	});
 });

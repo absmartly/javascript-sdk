@@ -30,8 +30,8 @@ describe("ContextDataProvider", () => {
 				expect(resp).toBe(data);
 				done();
 			});
+			jest.clearAllMocks();
 		});
-
 		it("should pass through options", async (done) => {
 			const provider = new ContextDataProvider();
 
@@ -51,6 +51,7 @@ describe("ContextDataProvider", () => {
 				expect(resp).toBe(data);
 				done();
 			});
+			jest.clearAllMocks();
 		});
 	});
 });

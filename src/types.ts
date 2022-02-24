@@ -25,6 +25,8 @@ export interface IGoals {
 	achievedAt: number;
 }
 export interface IUnits {
+	session_id?: string;
+	user_id?: number;
 	type: string;
 	uid: any;
 }

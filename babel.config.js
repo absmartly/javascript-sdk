@@ -3,7 +3,7 @@ module.exports = function (api) {
 
 	const target = process.env.TARGET || "cjs";
 
-	const presets = [];
+	const presets = ["@babel/preset-typescript"];
 	const plugins = [
 		"@babel/plugin-syntax-dynamic-import",
 		"@babel/plugin-syntax-import-meta",
@@ -19,7 +19,6 @@ module.exports = function (api) {
 
 	const preset = [
 		"@babel/preset-env",
-		"@babel/preset-typescript",
 		{
 			modules: "commonjs", // transpile modules into common-js syntax by default
 			targets: {},
