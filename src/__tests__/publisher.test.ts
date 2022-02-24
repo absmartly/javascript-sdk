@@ -12,6 +12,7 @@ describe("ContextPublisher", () => {
 	const sdk = new SDK();
 	const context = new Context();
 
+	// @ts-ignore
 	sdk.getClient.mockReturnValue(client);
 
 	describe("publish()", () => {
@@ -19,6 +20,7 @@ describe("ContextPublisher", () => {
 			const publisher = new ContextPublisher();
 
 			const data = { ok: true };
+			// @ts-ignore
 			client.publish.mockReturnValue(Promise.resolve(data));
 
 			const request = { test: 1 };
@@ -38,6 +40,7 @@ describe("ContextPublisher", () => {
 			const publisher = new ContextPublisher();
 
 			const data = { ok: true };
+			// @ts-ignore
 			client.publish.mockReturnValue(Promise.resolve(data));
 
 			const request = { test: 1 };

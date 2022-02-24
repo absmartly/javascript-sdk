@@ -1,3 +1,5 @@
+const { defaults } = require("jest-config");
+
 module.exports = {
 	clearMocks: true,
 	coverageDirectory: "coverage",
@@ -5,4 +7,5 @@ module.exports = {
 	transform: {
 		"^.+\\.[t|j]sx?$": "babel-jest",
 	},
+	moduleFileExtensions: [...defaults.moduleFileExtensions, "ts", "tsx"],
 };

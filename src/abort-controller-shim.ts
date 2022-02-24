@@ -1,12 +1,19 @@
+interface IEvent {
+	type: string;
+	cancelable: boolean;
+	bubbles: boolean;
+}
+
 // eslint-disable-next-line no-shadow
 export class AbortSignal {
 	aborted = false;
+	_events: { [key: string]: any[] };
 
 	constructor() {
 		this._events = {};
 	}
 
-	addEventListener(type, listener) {
+	addEventListener(type: string, listener: any) {
 		let listeners = this._events[type];
 		if (!listeners) {
 			listeners = [];
@@ -15,7 +22,7 @@ export class AbortSignal {
 		listeners.push(listener);
 	}
 
-	removeEventListener(type, listener) {
+	removeEventListener(type: string, listener: any) {
 		const listeners = this._events[type];
 		if (listeners) {
 			const index = listeners.find((x) => x === listener);
@@ -28,7 +35,7 @@ export class AbortSignal {
 		}
 	}
 
-	dispatchEvent(evt) {
+	dispatchEvent(evt: IEvent) {
 		this[`on${evt.type}`] && this[`on${evt.type}`](evt);
 		const listeners = this._events[evt.type];
 		if (listeners) {
@@ -49,7 +56,7 @@ export class AbortController {
 	signal = new AbortSignal();
 
 	abort() {
-		let evt;
+		let evt: IEvent;
 		try {
 			evt = new Event("abort");
 		} catch (e) {

@@ -2,6 +2,7 @@
 import { fetch } from "../fetch-shim";
 // eslint-disable-next-line no-shadow
 import { AbortController } from "../abort";
+import { Response } from "node-fetch";
 
 describe("fetch", () => {
 	it("should be a function", () => {
@@ -24,6 +25,7 @@ describe("fetch", () => {
 				abort: jest.fn(),
 			};
 
+			// @ts-ignore
 			global.XMLHttpRequest = jest.fn(() => xhr);
 		});
 
@@ -32,8 +34,8 @@ describe("fetch", () => {
 		});
 
 		it("sanity test", async (done) => {
-			fetch("/foo", { headers: { a: "b" } })
-				.then((response) => {
+			fetch("/foo", { headers: { a: "b" } as any })
+				.then((response: Response) => {
 					expect(response).toMatchObject({
 						text: expect.any(Function),
 						json: expect.any(Function),
@@ -69,7 +71,7 @@ describe("fetch", () => {
 
 		it("handles empty header values", async (done) => {
 			xhr.getAllResponseHeaders = jest.fn().mockReturnValue("Server: \nX-Foo:baz");
-			fetch("/foo").then((response) => {
+			fetch("/foo").then((response: Response) => {
 				expect(response.headers.get("server")).toEqual("");
 				expect(response.headers.get("X-foo")).toEqual("baz");
 
@@ -87,7 +89,7 @@ describe("fetch", () => {
 			fetch("/foo", {
 				signal: controller.signal,
 			})
-				.then((response) => {
+				.then((response: Response) => {
 					return response.json();
 				})
 				.then((data) => {

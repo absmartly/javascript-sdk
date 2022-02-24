@@ -1,8 +1,25 @@
 // inspired by https://github.com/bradlc/unfetch-abortable
+import { AbortSignal } from "./abort-controller-shim";
 import { AbortError } from "./errors";
 
 // eslint-disable-next-line no-shadow
-export function fetch(url, options) {
+
+interface IContextOptions {
+	credentials?: string;
+	method?: string;
+	body?: string;
+	signal?: any;
+	headers?: {
+		"Content-Type": string;
+		"X-API-Key": string;
+		"X-Agent": string;
+		"X-Application": string;
+		"X-Environment": string;
+		"X-Application-Version": number | string;
+	};
+}
+
+export function fetch(url: string, options?: IContextOptions) {
 	options = options || {};
 	return new Promise((resolve, reject) => {
 		const request = new XMLHttpRequest();
@@ -28,8 +45,8 @@ export function fetch(url, options) {
 			headers: {
 				keys: () => keys,
 				entries: () => all,
-				get: (n) => headers[n.toLowerCase()],
-				has: (n) => n.toLowerCase() in headers,
+				get: (n: string) => headers[n.toLowerCase()],
+				has: (n: string) => n.toLowerCase() in headers,
 			},
 		});
 
@@ -39,7 +56,7 @@ export function fetch(url, options) {
 			request.getAllResponseHeaders().replace(/^(.*?):[^\S\n]*([\s\S]*?)$/gm, (m, key, value) => {
 				keys.push((key = key.toLowerCase()));
 				all.push([key, value]);
-				headers[key] = headers[key] ? `${headers[key]},${value}` : value;
+				return (headers[key] = headers[key] ? `${headers[key]},${value}` : value);
 			});
 
 			cleanup();

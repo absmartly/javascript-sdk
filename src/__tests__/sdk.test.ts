@@ -112,6 +112,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const data = sdk.getContextData();
@@ -131,6 +132,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -154,6 +156,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -181,6 +184,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -212,6 +216,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -227,9 +232,7 @@ describe("SDK", () => {
 			};
 
 			expect(() => sdk.createContext(params, contextOptions)).toThrow(
-				new Error(
-					"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
-				)
+				new Error("Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']")
 			);
 			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();
@@ -241,6 +244,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -268,6 +272,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const context = sdk.createContext(contextParams);
@@ -292,10 +297,12 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			// fake browser environment
 			const previousWindow = global.window;
+			// @ts-ignore
 			global.window = { document: {} };
 
 			const context = sdk.createContext(contextParams);
@@ -360,9 +367,7 @@ describe("SDK", () => {
 			};
 
 			expect(() => sdk.createContextWith(params, contextOptions, {})).toThrow(
-				new Error(
-					"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
-				)
+				new Error("Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']")
 			);
 			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();

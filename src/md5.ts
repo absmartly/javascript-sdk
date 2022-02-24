@@ -1,25 +1,25 @@
-function cmn(q, a, b, x, s, t) {
+function cmn(q: number, a:number, b: number, x: number, s: number, t: number) {
 	a = a + q + (x >>> 0) + t;
 	return ((a << s) | (a >>> (32 - s))) + b;
 }
 
-function ff(a, b, c, d, x, s, t) {
+function ff(a: number, b: number, c: number, d: number, x: number, s: number, t: number) {
 	return cmn((b & c) | (~b & d), a, b, x, s, t);
 }
 
-function gg(a, b, c, d, x, s, t) {
+function gg(a: number, b: number, c: number, d: number, x: number, s: number, t: number) {
 	return cmn((b & d) | (c & ~d), a, b, x, s, t);
 }
 
-function hh(a, b, c, d, x, s, t) {
+function hh(a: number, b: number, c: number, d: number, x: number, s: number, t: number) {
 	return cmn(b ^ c ^ d, a, b, x, s, t);
 }
 
-function ii(a, b, c, d, x, s, t) {
+function ii(a: number, b: number, c: number, d: number, x: number, s: number, t: number) {
 	return cmn(c ^ (b | ~d), a, b, x, s, t);
 }
 
-function md5cycle(x, k) {
+function md5cycle(x: Uint32Array, k: Uint32Array) {
 	let a = x[0];
 	let b = x[1];
 	let c = x[2];
@@ -99,17 +99,17 @@ function md5cycle(x, k) {
 	x[3] = (d + x[3]) >>> 0;
 }
 
-export function md5(key) {
-	key = new DataView(key);
+export function md5(key: ArrayBuffer): Uint8Array {
+	let newKey = new DataView(key);
 
-	let i;
-	const l = key.byteLength;
+	let i: number;
+	const l = newKey.byteLength;
 	const n = l & ~63;
 	const block = new Uint32Array(16);
 	const state = Uint32Array.of(1732584193, -271733879, -1732584194, 271733878);
 	for (i = 0; i < n; i += 64) {
 		for (let w = 0; w < 16; ++w) {
-			block[w] = key.getUint32(i + (w << 2), true);
+			block[w] = newKey.getUint32(i + (w << 2), true);
 		}
 
 		md5cycle(state, block);
@@ -118,19 +118,19 @@ export function md5(key) {
 	let w = 0;
 	const m = l & ~3;
 	for (; i < m; i += 4) {
-		block[w++] = key.getUint32(i, true);
+		block[w++] = newKey.getUint32(i, true);
 	}
 
 	const p = l & 3;
 	switch (p) {
 		case 3:
-			block[w++] = 0x80000000 | key.getUint8(i) | (key.getUint8(i + 1) << 8) | (key.getUint8(i + 2) << 16);
+			block[w++] = 0x80000000 | newKey.getUint8(i) | (newKey.getUint8(i + 1) << 8) | (newKey.getUint8(i + 2) << 16);
 			break;
 		case 2:
-			block[w++] = 0x800000 | key.getUint8(i) | (key.getUint8(i + 1) << 8);
+			block[w++] = 0x800000 | newKey.getUint8(i) | (newKey.getUint8(i + 1) << 8);
 			break;
 		case 1:
-			block[w++] = 0x8000 | key.getUint8(i);
+			block[w++] = 0x8000 | newKey.getUint8(i);
 			break;
 		default:
 			block[w++] = 0x80;

@@ -19,6 +19,7 @@ module.exports = function (api) {
 
 	const preset = [
 		"@babel/preset-env",
+		"@babel/preset-typescript",
 		{
 			modules: "commonjs", // transpile modules into common-js syntax by default
 			targets: {},

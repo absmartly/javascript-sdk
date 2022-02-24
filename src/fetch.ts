@@ -9,14 +9,14 @@ const exported = isBrowser()
 	? self.fetch
 		? self.fetch.bind(self)
 		: fetchShim
-	: global
-	? global.fetch
-		? global.fetch.bind(global)
-		: function (url, opts) {
+	: globalThis
+	? globalThis.fetch
+		? globalThis.fetch.bind(globalThis)
+		: function (url: string, opts: any) {
 				return new Promise((resolve, reject) => {
 					import("node-fetch")
 						.then((fetchNode) => {
-							fetchNode.default(url.replace(/^\/\//g, "https://"), opts).then(resolve).catch(reject);
+							return fetchNode.default(url.replace(/^\/\//g, "https://"), opts).then(resolve).catch(reject);
 						})
 						.catch(reject);
 				});

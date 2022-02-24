@@ -1,0 +1,40 @@
+export type expectedAttrs = string[] | number[] | boolean[] | string | number | boolean | unknown;
+
+export interface Attrs {
+	name: expectedAttrs;
+	value: expectedAttrs;
+	setAt: number;
+}
+
+export interface IExposures {
+	id: string;
+	name: string;
+	exposedAt: number;
+	unit: string;
+	variant: string;
+	assigned: string | boolean;
+	eligible: string | boolean;
+	overridden: string | boolean;
+	fullOn: string | boolean;
+	custom: string | boolean;
+}
+
+export interface IGoals {
+	name: string;
+	properties: any;
+	achievedAt: number;
+}
+export interface IUnits {
+	type: string;
+	uid: any;
+}
+
+export interface IRequest {
+	publishedAt?: number;
+	units?: IUnits[];
+	hashed?: boolean;
+	goals?: IGoals[];
+	exposures?: IExposures[];
+	attributes?: Attrs[];
+	test?: number;
+}
