@@ -21,8 +21,9 @@ describe("Config", () => {
 				"banner.size": 812,
 				"home.arrow.direction": "up",
 			};
-
+			// @ts-ignore
 			context.variableKeys.mockReturnValue(variableKeys);
+			// @ts-ignore
 			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
@@ -57,31 +58,33 @@ describe("Config", () => {
 			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
 			expect(actual).toMatchObject(expectedConfig);
 			expect(context.variableValue).toHaveBeenCalledTimes(4); // called during equality check above
+			// @ts-ignore
 			context.variableValue.mockClear();
-
+			// @ts-ignore
 			expect(actual.button).toEqual(expectedConfig.button);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
 			expect(context.variableValue).toHaveBeenCalledWith("button", previousConfig.button);
+			// @ts-ignore
 			context.variableValue.mockClear();
-
+			// @ts-ignore
 			expect(actual.banner.border).toEqual(expectedConfig.banner.border);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
 			expect(context.variableValue).toHaveBeenCalledWith("banner.border", previousConfig.banner.border);
+			// @ts-ignore
 			context.variableValue.mockClear();
-
+			// @ts-ignore
 			expect(actual.banner.size).toEqual(expectedConfig.banner.size);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
 			expect(context.variableValue).toHaveBeenCalledWith("banner.size", previousConfig.banner.size);
+			// @ts-ignore
 			context.variableValue.mockClear();
-
+			// @ts-ignore
 			expect(actual.home.arrow.direction).toEqual(expectedConfig.home.arrow.direction);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
-			expect(context.variableValue).toHaveBeenCalledWith(
-				"home.arrow.direction",
-				previousConfig.home.arrow.direction
-			);
+			expect(context.variableValue).toHaveBeenCalledWith("home.arrow.direction", previousConfig.home.arrow.direction);
+			// @ts-ignore
 			context.variableValue.mockClear();
-
+			// @ts-ignore
 			expect(actual.other).toEqual(expectedConfig.other);
 			expect(context.variableValue).toHaveBeenCalledTimes(0);
 
@@ -106,8 +109,9 @@ describe("Config", () => {
 				"banner.size": 812,
 				"home.arrow.direction": "up",
 			};
-
+			// @ts-ignore
 			context.variableKeys.mockReturnValue(variableKeys);
+			// @ts-ignore
 			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
@@ -142,6 +146,7 @@ describe("Config", () => {
 			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
 			expect(actual).toMatchObject(expectedConfig);
 			expect(context.variableValue).toHaveBeenCalledTimes(4); // called during equality check above
+			// @ts-ignore
 			context.variableValue.mockClear();
 
 			expect(console.warn).toHaveBeenCalledTimes(2);
@@ -151,15 +156,17 @@ describe("Config", () => {
 			expect(console.warn).toHaveBeenCalledWith(
 				"Config key 'home.arrow.direction' for experiment 'exp_test_arrow' is overriding non-object value at 'home.arrow' with an object."
 			);
-
+			// @ts-ignore
 			expect(actual.button.active).toEqual(expectedConfig.button.active);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
 			expect(context.variableValue).toHaveBeenCalledWith("button.active", undefined);
+			// @ts-ignore
 			context.variableValue.mockClear();
-
+			// @ts-ignore
 			expect(actual.home.arrow.direction).toEqual(expectedConfig.home.arrow.direction);
 			expect(context.variableValue).toHaveBeenCalledTimes(1);
 			expect(context.variableValue).toHaveBeenCalledWith("home.arrow.direction", undefined);
+			// @ts-ignore
 			context.variableValue.mockClear();
 
 			done();
@@ -187,8 +194,9 @@ describe("Config", () => {
 				"home.arrow": "up",
 				"home.arrow.direction": "up",
 			};
-
+			// @ts-ignore
 			context.variableKeys.mockReturnValue(variableKeys);
+			// @ts-ignore
 			context.variableValue.mockImplementation((key) => expectedValues[key]);
 
 			const previousConfig = {
@@ -223,12 +231,11 @@ describe("Config", () => {
 			expect(actual).not.toBe(previousConfig); // should be a clone and new properties are not values, but have accessors
 			expect(actual).toMatchObject(expectedConfig);
 			expect(context.variableValue).toHaveBeenCalledTimes(4); // called during equality check above
+			// @ts-ignore
 			context.variableValue.mockClear();
 
 			expect(console.error).toHaveBeenCalledTimes(1);
-			expect(console.error).toHaveBeenCalledWith(
-				"Config key 'home.arrow' already set by experiment 'exp_test_arrow'."
-			);
+			expect(console.error).toHaveBeenCalledWith("Config key 'home.arrow' already set by experiment 'exp_test_arrow'.");
 
 			done();
 		});

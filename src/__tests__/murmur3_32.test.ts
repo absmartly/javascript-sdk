@@ -44,7 +44,7 @@ describe("murmur3_32()", () => {
 	it("should match known hashes", (done) => {
 		testCases.forEach((testCase) => {
 			const bytes = stringToUint8Array(testCase[0]);
-			expect(murmur3_32(bytes.buffer, testCase[1])).toBe(testCase[2]);
+			expect(murmur3_32(bytes.buffer, testCase[1] as number)).toBe(testCase[2]);
 		});
 
 		done();

@@ -12,6 +12,7 @@ describe("ContextPublisher", () => {
 	const sdk = new SDK();
 	const context = new Context();
 
+	// @ts-ignore
 	sdk.getClient.mockReturnValue(client);
 
 	describe("publish()", () => {
@@ -19,6 +20,7 @@ describe("ContextPublisher", () => {
 			const publisher = new ContextPublisher();
 
 			const data = { ok: true };
+			// @ts-ignore
 			client.publish.mockReturnValue(Promise.resolve(data));
 
 			const request = { test: 1 };
@@ -32,12 +34,14 @@ describe("ContextPublisher", () => {
 				expect(resp).toBe(data);
 				done();
 			});
+			jest.clearAllMocks();
 		});
 
 		it("should pass through options", async (done) => {
 			const publisher = new ContextPublisher();
 
 			const data = { ok: true };
+			// @ts-ignore
 			client.publish.mockReturnValue(Promise.resolve(data));
 
 			const request = { test: 1 };
@@ -53,6 +57,7 @@ describe("ContextPublisher", () => {
 				expect(resp).toBe(data);
 				done();
 			});
+			jest.clearAllMocks();
 		});
 	});
 });

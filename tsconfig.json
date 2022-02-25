@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"outDir": "./dist",
+		"allowJs": true,
+		"target": "ES2016",
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"isolatedModules": true,
+		"noEmit": true,
+	},
+	"include": [
+		"./src/**/*"
+	]
+}

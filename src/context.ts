@@ -1,8 +1,90 @@
 import { arrayEqualsShallow, hashUnit, isObject, isNumeric } from "./utils";
 import { VariantAssigner } from "./assigner";
+import { ContextDataProvider, ContextPublisher, SDK } from ".";
+import { Attrs, expectedAttrs, IExposures, IGoals, IRequest, IUnits } from "./types";
+
+interface IApplication {
+	name: string;
+	version: number | string;
+}
+
+interface IOptions {
+	agent?: string;
+	apiKey?: string | undefined;
+	application?: IApplication | undefined;
+	environment?: string | undefined;
+	retries?: number;
+	timeout?: number;
+	endpoint?: string;
+	publishDelay: number;
+	refreshPeriod: number;
+	publisher?: ContextPublisher;
+	dataProvider?: ContextDataProvider;
+	eventLogger?: (event: string, data: any) => void;
+}
+
+interface IIndexVariables {
+	data?: {
+		name: string;
+	};
+}
+
+interface Params {
+	units: {
+		session_id?: boolean;
+	};
+}
+
+interface IParams {
+	units: {
+		session_id?: string;
+		user_id?: number;
+	};
+}
+
+interface IAssignment {
+	id: number;
+	iteration: number;
+	fullOnVariant: number | string;
+	unitType: string | null;
+	variant: number | string;
+	assigned: boolean;
+	eligible: boolean;
+	overridden: boolean;
+	fullOn: boolean;
+	custom?: boolean;
+	exposed: boolean;
+	trafficSplit?: number | string;
+	variables?: any;
+}
 
 export default class Context {
-	constructor(sdk, options, params, promise) {
+	_sdk: SDK;
+	_publisher: ContextPublisher;
+	_dataProvider: ContextDataProvider;
+	_eventLogger: any;
+	_opts: IOptions;
+	_pending: number;
+	_failed: boolean;
+	_finalized: boolean;
+	_attrs: Attrs[];
+	_goals: IGoals[];
+	_exposures: IExposures[];
+	_publishTimeout: NodeJS.Timeout | undefined;
+	_units: IUnits[];
+	_overrides: {};
+	_cassignments: {};
+	_assignments: {};
+	_params: Params | IParams;
+	_assigners: {};
+	_hashes: {};
+	_index: {};
+	_refreshInterval: NodeJS.Timer;
+	_promise: any;
+	_indexVariables: IIndexVariables[] | IIndexVariables;
+	_finalizing: Promise<unknown>;
+	_data: any;
+	constructor(sdk: SDK, options?: IOptions, params?: Params | IParams, promise?: any) {
 		this._sdk = sdk;
 		this._publisher = options.publisher || this._sdk.getContextPublisher();
 		this._dataProvider = options.dataProvider || this._sdk.getContextDataProvider();
@@ -75,7 +157,6 @@ export default class Context {
 	pending() {
 		return this._pending;
 	}
-
 	data() {
 		this._checkReady();
 
@@ -94,11 +175,11 @@ export default class Context {
 		return this._dataProvider;
 	}
 
-	publish(requestOptions) {
+	publish(requestOptions?: object) {
 		this._checkReady(true);
 
-		return new Promise((resolve, reject) => {
-			this._flush((error) => {
+		return new Promise<void>((resolve, reject) => {
+			this._flush((error: Error | string) => {
 				if (error) {
 					reject(error);
 				} else {
@@ -108,10 +189,10 @@ export default class Context {
 		});
 	}
 
-	refresh(requestOptions) {
+	refresh(requestOptions?: object) {
 		this._checkReady(true);
 
-		return new Promise((resolve, reject) => {
+		return new Promise<void>((resolve, reject) => {
 			this._refresh((error) => {
 				if (error) {
 					reject(error);
@@ -122,8 +203,9 @@ export default class Context {
 		});
 	}
 
-	attribute(attrName, value) {
-		const allowed = (v) => v == null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+	attribute(attrName: string, value: expectedAttrs) {
+		const allowed = (v: expectedAttrs) =>
+			v == null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
 		if (Array.isArray(value)) {
 			if (value.length > 0) {
 				let typeSeen = value[0] == null ? null : typeof value[0];
@@ -131,9 +213,7 @@ export default class Context {
 				for (let i = 0; i < value.length; ++i) {
 					const element = value[i];
 					if (!allowed(element)) {
-						throw new Error(
-							`Attribute '${attrName}' element at index ${i} is of unsupported type '${typeof value}'`
-						);
+						throw new Error(`Attribute '${attrName}' element at index ${i} is of unsupported type '${typeof value}'`);
 					} else if (element != null) {
 						if (typeSeen == null) {
 							typeSeen = typeof element;
@@ -158,25 +238,25 @@ export default class Context {
 		}
 	}
 
-	peek(experimentName) {
+	peek(experimentName: string) {
 		this._checkReady(true);
 
 		return this._peek(experimentName).variant;
 	}
 
-	treatment(experimentName) {
+	treatment(experimentName: string) {
 		this._checkReady(true);
 
 		return this._treatment(experimentName).variant;
 	}
 
-	track(goalName, properties) {
+	track(goalName: string, properties?: number | string | boolean | object) {
 		this._checkNotFinalized();
 
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions) {
+	finalize(requestOptions?: object) {
 		return this._finalize(requestOptions);
 	}
 
@@ -186,13 +266,13 @@ export default class Context {
 		return this._data.experiments.map((x) => x.name);
 	}
 
-	variableValue(key, defaultValue) {
+	variableValue(key: string, defaultValue: number) {
 		this._checkReady(true);
 
 		return this._variableValue(key, defaultValue);
 	}
 
-	peekVariableValue(key, defaultValue) {
+	peekVariableValue(key: string, defaultValue: number) {
 		this._checkReady(true);
 
 		return this._peekVariable(key, defaultValue);
@@ -204,7 +284,7 @@ export default class Context {
 		return Object.assign({}, ...Object.entries(this._indexVariables).map((x) => ({ [x[0]]: x[1].data.name })));
 	}
 
-	override(experimentName, variant) {
+	override(experimentName: string, variant) {
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
@@ -214,7 +294,7 @@ export default class Context {
 		}
 	}
 
-	customAssignment(experimentName, variant) {
+	customAssignment(experimentName: string, variant) {
 		this._cassignments[experimentName] = variant;
 	}
 
@@ -232,7 +312,7 @@ export default class Context {
 		}
 	}
 
-	_checkReady(expectNotFinalized) {
+	_checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
 			throw new Error("ABSmartly Context is not yet ready.");
 		}
@@ -242,7 +322,7 @@ export default class Context {
 		}
 	}
 
-	_assign(experimentName) {
+	_assign(experimentName: string) {
 		const experimentMatches = (experiment, assignment) => {
 			return (
 				experiment.id === assignment.id &&
@@ -256,9 +336,8 @@ export default class Context {
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
-
 		if (experimentName in this._assignments) {
-			const assignment = this._assignments[experimentName];
+			const assignment: IAssignment = this._assignments[experimentName];
 			if (hasOverride) {
 				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
 					// override up-to-date
@@ -277,7 +356,7 @@ export default class Context {
 			}
 		}
 
-		const assignment = {
+		const assignment: IAssignment = {
 			id: 0,
 			iteration: 0,
 			fullOnVariant: 0,
@@ -325,6 +404,7 @@ export default class Context {
 						if (eligible) {
 							if (hasCustom) {
 								assignment.variant = this._cassignments[experimentName];
+								// @ts-ignore
 								assignment.custom = true;
 							} else {
 								assignment.variant = assigner.assign(
@@ -360,11 +440,11 @@ export default class Context {
 		return assignment;
 	}
 
-	_peek(experimentName) {
+	_peek(experimentName: string) {
 		return this._assign(experimentName);
 	}
 
-	_treatment(experimentName) {
+	_treatment(experimentName: string) {
 		const assignment = this._assign(experimentName);
 
 		if (!assignment.exposed) {
@@ -376,7 +456,7 @@ export default class Context {
 		return assignment;
 	}
 
-	_queueExposure(experimentName, assignment) {
+	_queueExposure(experimentName: string, assignment: IAssignment) {
 		const exposureEvent = {
 			id: assignment.id,
 			name: experimentName,
@@ -397,7 +477,7 @@ export default class Context {
 		this._setTimeout();
 	}
 
-	_variableValue(key, defaultValue) {
+	_variableValue(key: string, defaultValue: number) {
 		if (key in this._indexVariables) {
 			const experimentName = this._indexVariables[key].data.name;
 			const assignment = this._assign(experimentName);
@@ -417,7 +497,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_peekVariable(key, defaultValue) {
+	_peekVariable(key: string, defaultValue: number) {
 		if (key in this._indexVariables) {
 			const experimentName = this._indexVariables[key].data.name;
 			const assignment = this._assign(experimentName);
@@ -431,7 +511,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_validateGoal(goalName, properties) {
+	_validateGoal(goalName: string, properties: number | string | boolean | object) {
 		if (properties !== null && properties !== undefined) {
 			if (!isObject(properties)) {
 				throw new Error(`Goal '${goalName}' properties must be of type object.`);
@@ -461,7 +541,7 @@ export default class Context {
 		return null;
 	}
 
-	_track(goalName, properties) {
+	_track(goalName: string, properties: number | string | object | boolean) {
 		const props = this._validateGoal(goalName, properties);
 		const goalEvent = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
@@ -476,13 +556,14 @@ export default class Context {
 		if (this.isReady()) {
 			if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
 				this._publishTimeout = setTimeout(() => {
+					// @ts-ignore
 					this._flush();
 				}, this._opts.publishDelay);
 			}
 		}
 	}
 
-	_flush(callback, requestOptions) {
+	_flush(callback?: CallableFunction, requestOptions?: object) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
@@ -501,7 +582,7 @@ export default class Context {
 					}));
 				}
 
-				const request = {
+				const request: IRequest = {
 					publishedAt: Date.now(),
 					units: this._units,
 					hashed: true,
@@ -566,7 +647,7 @@ export default class Context {
 		}
 	}
 
-	_refresh(callback, requestOptions) {
+	_refresh(callback?: CallableFunction, requestOptions?: object) {
 		if (!this._failed) {
 			this._dataProvider
 				.getContextData(this._sdk, requestOptions)
@@ -593,13 +674,13 @@ export default class Context {
 		}
 	}
 
-	_logEvent(eventName, data) {
+	_logEvent(eventName: string, data?: object) {
 		if (this._eventLogger) {
 			this._eventLogger(this, eventName, data);
 		}
 	}
 
-	_logError(error) {
+	_logError(error: Error | string) {
 		if (this._eventLogger) {
 			this._eventLogger(this, "error", error);
 		}
@@ -656,7 +737,7 @@ export default class Context {
 		}
 	}
 
-	_finalize(requestOptions) {
+	_finalize(requestOptions?: object) {
 		if (!this._finalized) {
 			if (!this._finalizing) {
 				if (this._refreshInterval !== undefined) {
@@ -665,8 +746,8 @@ export default class Context {
 				}
 
 				if (this.pending() > 0) {
-					this._finalizing = new Promise((resolve, reject) => {
-						this._flush((error) => {
+					this._finalizing = new Promise<void>((resolve, reject) => {
+						this._flush((error: Error | string) => {
 							this._finalizing = null;
 
 							if (error) {
@@ -674,7 +755,6 @@ export default class Context {
 							} else {
 								this._finalized = true;
 								this._logEvent("finalize");
-
 								resolve();
 							}
 						}, requestOptions);

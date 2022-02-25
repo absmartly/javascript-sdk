@@ -1,30 +1,38 @@
 import { md5 } from "./md5";
 
-export function isBrowser() {
+declare global {
+	interface Window {
+		constructor: {
+			name: string;
+		};
+	}
+}
+
+export function isBrowser(): boolean {
 	return typeof window !== "undefined" && typeof window.document !== "undefined";
 }
 
-export function isWorker() {
+export function isWorker(): boolean {
 	return typeof self === "object" && self.constructor && self.constructor.name === "DedicatedWorkerGlobalScope";
 }
 
-export function isNumeric(value) {
+export function isNumeric(value: number | string | boolean | undefined[] | {}): boolean {
 	return typeof value === "number";
 }
 
-export function isObject(value) {
+export function isObject(value: Object): boolean {
 	return value instanceof Object && value.constructor === Object;
 }
 
-export function arrayEqualsShallow(a, b) {
+export function arrayEqualsShallow(a: number[], b: number[] | string[] | (number | string)[]): boolean {
 	return a.length === b.length && a.every((va, vi) => b[vi] === va);
 }
 
-export function stringToUint8Array(value) {
+export function stringToUint8Array(value: any): Uint8Array {
 	const n = value.length;
 	const array = new Array(value.length);
 
-	let k = 0;
+	let k: number = 0;
 	for (let i = 0; i < n; ++i) {
 		const c = value.charCodeAt(i);
 		if (c < 0x80) {
@@ -43,14 +51,14 @@ export function stringToUint8Array(value) {
 
 const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-export function base64UrlNoPadding(value) {
+export function base64UrlNoPadding(value: ArrayBuffer | ArrayBufferView | ArrayBufferLike): string {
 	const chars = Base64URLNoPaddingChars;
 
 	const remaining = value.byteLength % 3;
 	const encodeLen = ((value.byteLength / 3) | 0) * 4 + (remaining === 0 ? 0 : remaining === 1 ? 2 : 3);
 	const result = new Array(encodeLen);
 
-	let i;
+	let i: number;
 	let out = 0;
 	const len = value.byteLength - remaining;
 	for (i = 0; i < len; i += 3) {
@@ -85,19 +93,20 @@ export function base64UrlNoPadding(value) {
 	return result.join("");
 }
 
-export function hashUnit(value) {
+export function hashUnit(value: string | number) {
 	const unit = typeof value === "string" ? value : value.toFixed(0);
 	return base64UrlNoPadding(md5(stringToUint8Array(unit).buffer));
 }
 
-export function chooseVariant(split, prob) {
+export function chooseVariant(split: number[] | number, prob: number): number {
 	let cumSum = 0.0;
-	for (let i = 0; i < split.length; ++i) {
-		cumSum += split[i];
-		if (prob < cumSum) {
-			return i;
+	if (typeof split === "object") {
+		for (let i = 0; i < split.length; ++i) {
+			cumSum += split[i];
+			if (prob < cumSum) {
+				return i;
+			}
 		}
+		return split.length - 1;
 	}
-
-	return split.length - 1;
 }

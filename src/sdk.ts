@@ -4,14 +4,55 @@ import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isBrowser } from "./utils";
 
+interface Params {
+	units: {
+		session_id: boolean;
+	};
+}
+
+interface IParams {
+	units: {
+		session_id?: string;
+		user_id?: number;
+	};
+}
+
+interface IApplication {
+	name: string;
+	version: number | string;
+}
+
+interface IOptions {
+	agent?: string;
+	apiKey?: string | undefined;
+	application?: IApplication | undefined;
+	environment?: string | undefined;
+	retries?: number;
+	timeout?: number;
+	endpoint?: string;
+	publishDelay: number;
+	refreshPeriod: number;
+	publisher?: ContextPublisher;
+	dataProvider?: ContextDataProvider;
+	eventLogger?: (event: string, data: any) => void;
+}
+
+interface IRequestOptions {
+	timeout?: number;
+}
+
 export default class SDK {
-	static defaultEventLogger = (context, eventName, data) => {
+	_client: Client;
+	_eventLogger: unknown;
+	_publisher: ContextPublisher;
+	_provider: ContextDataProvider;
+	static defaultEventLogger = (context, eventName: string, data: any) => {
 		if (eventName === "error") {
 			console.error(data);
 		}
 	};
 
-	constructor(options) {
+	constructor(options?: any) {
 		const clientOptions = Object.assign(
 			{
 				agent: "absmartly-javascript-sdk",
@@ -19,9 +60,7 @@ export default class SDK {
 			...Object.entries(options || {})
 				.filter(
 					(x) =>
-						["application", "agent", "apiKey", "endpoint", "environment", "retries", "timeout"].indexOf(
-							x[0]
-						) !== -1
+						["application", "agent", "apiKey", "endpoint", "environment", "retries", "timeout"].indexOf(x[0]) !== -1
 				)
 				.map((x) => ({ [x[0]]: x[1] }))
 		);
@@ -34,11 +73,11 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	getContextData(requestOptions) {
+	getContextData(requestOptions?: any) {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(params, options, requestOptions) {
+	createContext(params: Params | IParams, options?: IOptions, requestOptions?: IRequestOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
@@ -54,7 +93,7 @@ export default class SDK {
 		return this._eventLogger;
 	}
 
-	setContextPublisher(publisher) {
+	setContextPublisher(publisher: ContextPublisher) {
 		this._publisher = publisher;
 	}
 
@@ -62,7 +101,7 @@ export default class SDK {
 		return this._publisher;
 	}
 
-	setContextDataProvider(provider) {
+	setContextDataProvider(provider: ContextDataProvider) {
 		this._provider = provider;
 	}
 
@@ -74,14 +113,14 @@ export default class SDK {
 		return this._client;
 	}
 
-	createContextWith(params, data, options) {
+	createContextWith(params: Params | IParams, data: object, options?: IOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
 		return new Context(this, options, params, data);
 	}
 
-	static _contextOptions(options) {
+	static _contextOptions(options: IOptions) {
 		return Object.assign(
 			{
 				publishDelay: isBrowser() ? 100 : -1,
@@ -91,7 +130,7 @@ export default class SDK {
 		);
 	}
 
-	static _validateParams(params) {
+	static _validateParams(params: Params | IParams) {
 		for (const entry of Object.entries(params.units)) {
 			const type = typeof entry[1];
 			if (type !== "string" && type !== "number") {

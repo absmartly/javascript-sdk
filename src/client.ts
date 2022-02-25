@@ -2,9 +2,54 @@ import fetch from "./fetch"; // eslint-disable-line no-shadow
 // eslint-disable-next-line no-shadow
 import { AbortController } from "./abort";
 import { AbortError, RetryError, TimeoutError } from "./errors";
+import { AbortSignal } from "./abort-controller-shim";
+
+interface IApplication {
+	name: string;
+	version: number | string;
+}
+
+interface Params {
+	units?: {
+		session_id: string;
+	};
+	hashed?: boolean | string;
+	publishedAt?: string | number;
+	goals?: any[];
+	exposures?: any[];
+	attributes?: any[];
+}
+
+interface IOptions {
+	agent: string;
+	apiKey: string | undefined;
+	application: IApplication | undefined;
+	environment: string | undefined;
+	retries: number;
+	timeout: number;
+	endpoint: string;
+}
+
+interface IContextOptions {
+	method: string;
+	body: string;
+	signal: AbortSignal | globalThis.AbortSignal;
+	headers?: {
+		"Content-Type": string;
+		"X-API-Key": string;
+		"X-Agent": string;
+		"X-Application": string;
+		"X-Environment": string;
+		"X-Application-Version": number | string;
+	};
+}
+
+type ErrorType = Error & { _bail?: boolean };
 
 export default class Client {
-	constructor(opts) {
+	_opts: IOptions;
+	_delay: number;
+	constructor(opts?: IOptions) {
 		this._opts = Object.assign(
 			{
 				agent: "javascript-client",
@@ -44,7 +89,7 @@ export default class Client {
 		this._delay = 50;
 	}
 
-	getContext(options) {
+	getContext(options?: any) {
 		return this.getUnauthed({
 			...options,
 			path: "/context",
@@ -55,7 +100,7 @@ export default class Client {
 		});
 	}
 
-	createContext(params, options) {
+	createContext(params: Params, options?: any) {
 		const body = {
 			units: params.units,
 		};
@@ -67,8 +112,8 @@ export default class Client {
 		});
 	}
 
-	publish(params, options) {
-		const body = {
+	publish(params: Params, options?: any) {
+		const body: Params = {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
@@ -106,7 +151,7 @@ export default class Client {
 		const controller = new AbortController();
 
 		const tryOnce = () => {
-			const opts = {
+			const opts: IContextOptions = {
 				method: options.method,
 				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
 				signal: controller.signal,
@@ -127,7 +172,7 @@ export default class Client {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text) => {
-						const error = new Error(text !== null && text.length > 0 ? text : response.statusText);
+						let error: ErrorType = new Error(text !== null && text.length > 0 ? text : response.statusText);
 						error._bail = bail;
 
 						return Promise.reject(error);
@@ -138,20 +183,20 @@ export default class Client {
 			});
 		};
 
-		const wait = (ms) =>
-			new Promise((resolve, reject) => {
+		const wait: any = (ms: number) =>
+			new Promise<void>((resolve, reject) => {
 				const timeoutId = setTimeout(() => {
 					delete wait.reject;
 					resolve();
 				}, ms);
 
-				wait.reject = (reason) => {
+				wait.reject = (reason: string) => {
 					clearTimeout(timeoutId);
 					reject(reason);
 				};
 			});
 
-		const tryWith = (retries, timeout, tries = 0, waited = 0) => {
+		const tryWith: any = (retries: number, timeout: number, tries: number = 0, waited: number = 0) => {
 			delete tryWith.timedout;
 
 			return tryOnce().catch((reason) => {
@@ -192,13 +237,11 @@ export default class Client {
 
 		const timeout = options.timeout || this._opts.timeout || 0;
 		const timeoutId =
-			timeout > 0
-				? setTimeout(() => {
-						tryWith.timedout = true;
-						abort();
-				  }, timeout)
-				: 0;
-
+			timeout > 0 &&
+			setTimeout(() => {
+				tryWith.timedout = true;
+				abort();
+			}, timeout);
 		return tryWith(this._opts.retries, this._opts.timeout).finally(() => {
 			clearTimeout(timeoutId);
 			if (options.signal) {

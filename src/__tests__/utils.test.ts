@@ -68,9 +68,7 @@ describe("arrayEqualsShallow()", () => {
 
 describe("hashUnit()", () => {
 	it("should return matching hashes", (done) => {
-		expect(hashUnit("4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408")).toBe(
-			"H2jvj6o9YcAgNdhKqEbtWw"
-		);
+		expect(hashUnit("4a42766ca6313d26f49985e799ff4f3790fb86efa0fce46edb3ea8fbf1ea3408")).toBe("H2jvj6o9YcAgNdhKqEbtWw");
 		expect(hashUnit("bleh@absmarty.com")).toBe("DRgslOje35bZMmpaohQjkA");
 		expect(hashUnit("açb↓c")).toBe("LxcqH5VC15rXfWfA_smreg");
 		expect(hashUnit("testy")).toBe("K5I_V6RgP8c6sYKz-TVn8g");
@@ -162,10 +160,7 @@ describe("base64UrlNoPadding()", () => {
 			["testy12", "dGVzdHkxMg"],
 			["testy123", "dGVzdHkxMjM"],
 			["special characters açb↓c", "c3BlY2lhbCBjaGFyYWN0ZXJzIGHDp2LihpNj"],
-			[
-				"The quick brown fox jumps over the lazy dog",
-				"VGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVyIHRoZSBsYXp5IGRvZw",
-			],
+			["The quick brown fox jumps over the lazy dog", "VGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVyIHRoZSBsYXp5IGRvZw"],
 			[
 				"The quick brown fox jumps over the lazy dog and eats a pie",
 				"VGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVyIHRoZSBsYXp5IGRvZyBhbmQgZWF0cyBhIHBpZQ",

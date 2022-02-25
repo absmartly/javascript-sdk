@@ -17,7 +17,7 @@ describe("Client", () => {
 	});
 
 	function advanceFakeTimers() {
-		return new Promise((resolve) => {
+		return new Promise<void>((resolve) => {
 			let iterations = 0;
 
 			const advance = () => {
@@ -115,7 +115,7 @@ describe("Client", () => {
 				});
 			}
 
-			return new Promise.resolve(response);
+			return Promise.resolve(response);
 		};
 	}
 
@@ -253,6 +253,7 @@ describe("Client", () => {
 			.mockRejectedValueOnce(new Error("error 7"));
 
 		jest.spyOn(Math, "random");
+		// @ts-ignore
 		Math.random.mockReturnValue(0.0);
 
 		const options = Object.assign({}, clientOptions, { retries: 5, timeout: 5000 });
@@ -284,6 +285,7 @@ describe("Client", () => {
 
 				expect(error).toBeInstanceOf(RetryError);
 				expect(setTimeout).toHaveBeenCalledTimes(6);
+				// @ts-ignore
 				expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBeLessThanOrEqual(5000 + 1675);
 
 				done();
@@ -296,6 +298,7 @@ describe("Client", () => {
 		fetch.mockRejectedValueOnce(new Error("error 1"));
 
 		jest.spyOn(Math, "random");
+		// @ts-ignore
 		Math.random.mockReturnValue(0.0);
 
 		const options = Object.assign({}, clientOptions, { retries: 0, timeout: 5000 });
@@ -327,6 +330,7 @@ describe("Client", () => {
 
 				expect(error.message).toEqual("error 1");
 				expect(setTimeout).toHaveBeenCalledTimes(1);
+				// @ts-ignore
 				expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBe(5000);
 
 				done();
@@ -346,6 +350,7 @@ describe("Client", () => {
 			.mockRejectedValueOnce(new Error("error 7"));
 
 		jest.spyOn(Math, "random");
+		// @ts-ignore
 		Math.random.mockReturnValue(1.0);
 
 		const options = Object.assign({}, clientOptions, { retries: 5, timeout: 5000 });
@@ -377,6 +382,7 @@ describe("Client", () => {
 
 				expect(error).toBeInstanceOf(RetryError);
 				expect(setTimeout).toHaveBeenCalledTimes(6);
+				// @ts-ignore
 				expect(setTimeout.mock.calls.map((x) => x[1]).reduce((x, y) => x + y)).toBeCloseTo(5000 + 1675, 3);
 
 				done();
@@ -480,6 +486,7 @@ describe("Client", () => {
 			.mockRejectedValueOnce(new Error("error 7"));
 
 		jest.spyOn(Math, "random");
+		// @ts-ignore
 		Math.random.mockReturnValue(1.0);
 
 		const aborter = new AbortController();

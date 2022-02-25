@@ -15,6 +15,7 @@ describe("AbortSignal", () => {
 			const listener1 = jest.fn();
 			const listener2 = jest.fn();
 			const listener3 = jest.fn();
+			// @ts-ignore
 			signal.onabort = listener3;
 			signal.addEventListener("abort", listener1);
 			signal.addEventListener("abort", listener2);
@@ -80,9 +81,7 @@ describe("AbortController", () => {
 
 		expect(aborter.signal.aborted).toBe(true);
 		expect(aborter.signal.dispatchEvent).toHaveBeenCalledTimes(1);
-		expect(aborter.signal.dispatchEvent).toHaveBeenCalledWith(
-			expect.objectContaining({ type: expect.any(String) })
-		);
+		expect(aborter.signal.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: expect.any(String) }));
 
 		done();
 	});

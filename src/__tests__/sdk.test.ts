@@ -3,6 +3,7 @@ import SDK from "../sdk";
 import Context from "../context";
 import { ContextPublisher } from "../publisher";
 import { ContextDataProvider } from "../provider";
+import fetch from "../fetch";
 
 jest.mock("../client");
 jest.mock("../context");
@@ -10,6 +11,10 @@ jest.mock("../publisher");
 jest.mock("../provider");
 
 describe("SDK", () => {
+	beforeEach(() => {
+		jest.resetAllMocks();
+	});
+
 	const contextParams = {
 		units: {
 			session_id: "ab",
@@ -54,6 +59,7 @@ describe("SDK", () => {
 			expect(sdk.getContextPublisher()).toBeInstanceOf(ContextPublisher);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should create a client with specified options", (done) => {
@@ -78,6 +84,7 @@ describe("SDK", () => {
 			expect(sdk.getContextPublisher()).toBe(testContextPublisher);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should set default values for unspecified client options", (done) => {
@@ -104,6 +111,7 @@ describe("SDK", () => {
 			);
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -112,6 +120,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const data = sdk.getContextData();
@@ -123,6 +132,7 @@ describe("SDK", () => {
 			expect(Context).not.toHaveBeenCalled();
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -131,6 +141,7 @@ describe("SDK", () => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -148,12 +159,14 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, promise);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should pass through request options", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -175,12 +188,14 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, promise);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should coerce unit uid to string", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -206,12 +221,14 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, params, promise);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should throw on unsupported unit uid type", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -227,20 +244,20 @@ describe("SDK", () => {
 			};
 
 			expect(() => sdk.createContext(params, contextOptions)).toThrow(
-				new Error(
-					"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
-				)
+				new Error("Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']")
 			);
 			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should throw on empty unit uid", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const contextOptions = {
@@ -262,12 +279,14 @@ describe("SDK", () => {
 			expect(Context).not.toHaveBeenCalled();
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should initialize context with default options for nodejs", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			const context = sdk.createContext(contextParams);
@@ -286,16 +305,19 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, defaultOptions, contextParams, promise);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should initialize context with default options for browser", (done) => {
 			const sdk = new SDK(sdkOptions);
 
 			const promise = Promise.resolve({});
+			// @ts-ignore
 			testContextDataProvider.getContextData.mockReturnValue(promise);
 
 			// fake browser environment
 			const previousWindow = global.window;
+			// @ts-ignore
 			global.window = { document: {} };
 
 			const context = sdk.createContext(contextParams);
@@ -317,6 +339,7 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, defaultOptions, contextParams, promise);
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -342,6 +365,7 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, contextOptions, contextParams, data);
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should throw on unsupported unit uid type", (done) => {
@@ -359,15 +383,19 @@ describe("SDK", () => {
 				},
 			};
 
-			expect(() => sdk.createContextWith(params, contextOptions, {})).toThrow(
-				new Error(
-					"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
-				)
+			expect(() =>
+				sdk.createContextWith(params, contextOptions, {
+					publishDelay: 0,
+					refreshPeriod: 0,
+				})
+			).toThrow(
+				new Error("Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']")
 			);
 			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();
 			expect(Context).not.toHaveBeenCalled();
 
 			done();
+			jest.clearAllMocks();
 		});
 
 		it("should initialize context with default options", (done) => {
@@ -388,6 +416,7 @@ describe("SDK", () => {
 			expect(Context).toHaveBeenCalledWith(sdk, defaultOptions, contextParams, data);
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -401,6 +430,7 @@ describe("SDK", () => {
 			expect(sdk.getEventLogger()).toBe(newLogger);
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -414,6 +444,7 @@ describe("SDK", () => {
 			expect(sdk.getContextDataProvider()).toBe(newProvider);
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -427,6 +458,7 @@ describe("SDK", () => {
 			expect(sdk.getContextPublisher()).toBe(newPublisher);
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 
@@ -454,6 +486,7 @@ describe("SDK", () => {
 			}
 
 			done();
+			jest.clearAllMocks();
 		});
 	});
 });
