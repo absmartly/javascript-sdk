@@ -12,6 +12,7 @@ jest.mock("../provider");
 jest.mock("../publisher");
 
 describe("Context", () => {
+	beforeEach(() => jest.clearAllMocks());
 	const contextParams = {
 		units: {
 			session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",

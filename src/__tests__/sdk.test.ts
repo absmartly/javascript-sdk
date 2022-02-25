@@ -3,6 +3,7 @@ import SDK from "../sdk";
 import Context from "../context";
 import { ContextPublisher } from "../publisher";
 import { ContextDataProvider } from "../provider";
+import fetch from "../fetch";
 
 jest.mock("../client");
 jest.mock("../context");
@@ -10,6 +11,10 @@ jest.mock("../publisher");
 jest.mock("../provider");
 
 describe("SDK", () => {
+	beforeEach(() => {
+		jest.resetAllMocks();
+	});
+
 	const contextParams = {
 		units: {
 			session_id: "ab",
@@ -378,7 +383,12 @@ describe("SDK", () => {
 				},
 			};
 
-			expect(() => sdk.createContextWith(params, contextOptions, {})).toThrow(
+			expect(() =>
+				sdk.createContextWith(params, contextOptions, {
+					publishDelay: 0,
+					refreshPeriod: 0,
+				})
+			).toThrow(
 				new Error("Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']")
 			);
 			expect(testContextDataProvider.getContextData).not.toHaveBeenCalled();

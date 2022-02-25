@@ -3,29 +3,38 @@ import Context from "./context";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isBrowser } from "./utils";
-import { IUnits } from "./types";
 
 interface Params {
 	units: {
-		session_id: string | boolean;
+		session_id: boolean;
 	};
 }
 
 interface IParams {
-	units: IUnits;
+	units: {
+		session_id?: string;
+		user_id?: number;
+	};
 }
 
-interface IContextOptions {
-	publishDelay?: number;
-	refreshPeriod?: number;
-	eventLogger?: (event: string, data: any) => void;
+interface IApplication {
+	name: string;
+	version: number | string;
 }
 
 interface IOptions {
-	publishDelay?: number;
-	refreshPeriod?: number;
+	agent?: string;
+	apiKey?: string | undefined;
+	application?: IApplication | undefined;
+	environment?: string | undefined;
+	retries?: number;
+	timeout?: number;
+	endpoint?: string;
+	publishDelay: number;
+	refreshPeriod: number;
+	publisher?: ContextPublisher;
+	dataProvider?: ContextDataProvider;
 	eventLogger?: (event: string, data: any) => void;
-	client?: Client;
 }
 
 interface IRequestOptions {
@@ -68,7 +77,7 @@ export default class SDK {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(params: Params, options?: IContextOptions, requestOptions?: IRequestOptions) {
+	createContext(params: Params | IParams, options?: IOptions, requestOptions?: IRequestOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
@@ -104,14 +113,14 @@ export default class SDK {
 		return this._client;
 	}
 
-	createContextWith(params: Params, data: object, options?: IContextOptions) {
+	createContextWith(params: Params | IParams, data: object, options?: IOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
 		return new Context(this, options, params, data);
 	}
 
-	static _contextOptions(options: IContextOptions) {
+	static _contextOptions(options: IOptions) {
 		return Object.assign(
 			{
 				publishDelay: isBrowser() ? 100 : -1,

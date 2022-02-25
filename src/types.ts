@@ -7,11 +7,11 @@ export interface Attrs {
 }
 
 export interface IExposures {
-	id: string;
+	id: number;
 	name: string;
 	exposedAt: number;
 	unit: string;
-	variant: string;
+	variant: number | string;
 	assigned: string | boolean;
 	eligible: string | boolean;
 	overridden: string | boolean;
