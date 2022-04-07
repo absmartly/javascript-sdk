@@ -1,4 +1,4 @@
-import { arrayEqualsShallow, hashUnit, isObject, isNumeric } from "./utils";
+import { arrayEqualsShallow, hashUnit, isObject, isNumeric, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 
 export default class Context {
@@ -19,7 +19,7 @@ export default class Context {
 		this._params = params;
 		this._assigners = {};
 
-		if (promise instanceof Promise) {
+		if (isPromise(promise)) {
 			this._promise = promise
 				.then((data) => {
 					this._init(data);

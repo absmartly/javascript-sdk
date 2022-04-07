@@ -16,6 +16,10 @@ export function isObject(value) {
 	return value instanceof Object && value.constructor === Object;
 }
 
+export function isPromise(value) {
+	return value !== null && typeof value === "object" && typeof value.then === "function";
+}
+
 export function arrayEqualsShallow(a, b) {
 	return a.length === b.length && a.every((va, vi) => b[vi] === va);
 }

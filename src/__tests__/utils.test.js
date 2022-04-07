@@ -5,6 +5,7 @@ import {
 	hashUnit,
 	isNumeric,
 	isObject,
+	isPromise,
 	stringToUint8Array,
 } from "../utils";
 
@@ -43,6 +44,31 @@ describe("isNumeric()", () => {
 		expect(isNumeric(false)).toBe(false);
 		expect(isNumeric([])).toBe(false);
 		expect(isNumeric({})).toBe(false);
+
+		done();
+	});
+});
+
+describe("isPromise()", () => {
+	it("should return true with a thenable object", (done) => {
+		expect(
+			isPromise({
+				then() {},
+			})
+		).toBe(true);
+
+		done();
+	});
+
+	it("should return false with non objects or objects without then function", (done) => {
+		expect(isPromise(null)).toBe(false);
+		expect(isPromise([])).toBe(false);
+		expect(isPromise({})).toBe(false);
+		expect(isPromise(1)).toBe(false);
+		expect(isPromise(true)).toBe(false);
+		expect(isPromise(false)).toBe(false);
+		expect(isPromise("str")).toBe(false);
+		expect(isPromise(new Uint8Array(1))).toBe(false);
 
 		done();
 	});
