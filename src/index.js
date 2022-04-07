@@ -7,3 +7,4 @@ import { ContextPublisher } from "./publisher";
 import { AbortController } from "./abort";
 
 export { mergeConfig, AbortController, Context, ContextDataProvider, ContextPublisher, SDK };
+export default { mergeConfig, AbortController, Context, ContextDataProvider, ContextPublisher, SDK };
