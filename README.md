@@ -282,4 +282,5 @@ A/B Smartly's real-time analytics helps engineering and product teams ensure tha
 - [Java SDK](https://www.github.com/absmartly/java-sdk)
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
 - [PHP SDK](https://www.github.com/absmartly/php-sdk)
+- [Swift SDK](https://www.github.com/absmartly/swift-sdk)
 - [Vue2 SDK](https://www.github.com/absmartly/vue2-sdk)
