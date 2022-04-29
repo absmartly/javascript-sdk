@@ -446,11 +446,11 @@ describe("SDK", () => {
 					errorSpy.mockClear();
 				} else {
 					SDK.defaultEventLogger("context", eventName, {});
-					expect(console.error).toHaveBeenCalledTimes(0);
+					expect(console.error).not.toHaveBeenCalled();
 				}
-				expect(console.warn).toHaveBeenCalledTimes(0);
-				expect(console.info).toHaveBeenCalledTimes(0);
-				expect(console.log).toHaveBeenCalledTimes(0);
+				expect(console.warn).not.toHaveBeenCalled();
+				expect(console.info).not.toHaveBeenCalled();
+				expect(console.log).not.toHaveBeenCalled();
 			}
 
 			done();

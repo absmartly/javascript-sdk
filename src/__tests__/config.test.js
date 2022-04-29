@@ -83,7 +83,7 @@ describe("Config", () => {
 			context.variableValue.mockClear();
 
 			expect(actual.other).toEqual(expectedConfig.other);
-			expect(context.variableValue).toHaveBeenCalledTimes(0);
+			expect(context.variableValue).not.toHaveBeenCalled();
 
 			done();
 		});

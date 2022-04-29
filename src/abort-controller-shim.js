@@ -38,7 +38,6 @@ export class AbortSignal {
 		}
 	}
 
-	// eslint-disable-next-line class-methods-use-this
 	toString() {
 		return "[object AbortSignal]";
 	}
@@ -64,7 +63,6 @@ export class AbortController {
 		this.signal.dispatchEvent(evt);
 	}
 
-	// eslint-disable-next-line class-methods-use-this
 	toString() {
 		return "[object AbortController]";
 	}

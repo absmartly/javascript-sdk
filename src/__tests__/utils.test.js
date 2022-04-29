@@ -3,6 +3,7 @@ import {
 	base64UrlNoPadding,
 	chooseVariant,
 	hashUnit,
+	isEqualsDeep,
 	isNumeric,
 	isObject,
 	isPromise,
@@ -69,6 +70,129 @@ describe("isPromise()", () => {
 		expect(isPromise(false)).toBe(false);
 		expect(isPromise("str")).toBe(false);
 		expect(isPromise(new Uint8Array(1))).toBe(false);
+
+		done();
+	});
+});
+
+describe("isEqualsDeep()", () => {
+	it("should return true with two NaNs", (done) => {
+		expect(isEqualsDeep(Number.NaN, Number.NaN)).toBe(true);
+
+		done();
+	});
+
+	it("should return true iff basic primitives are equal", (done) => {
+		expect(isEqualsDeep(0, 0)).toBe(true);
+		expect(isEqualsDeep(1, 1)).toBe(true);
+		expect(isEqualsDeep(1.5, 1.5)).toBe(true);
+		expect(isEqualsDeep("", "")).toBe(true);
+		expect(isEqualsDeep("abc", "abc")).toBe(true);
+		expect(isEqualsDeep(true, true)).toBe(true);
+		expect(isEqualsDeep(false, false)).toBe(true);
+
+		expect(isEqualsDeep(0, 1)).toBe(false);
+		expect(isEqualsDeep(1, 1.5)).toBe(false);
+		expect(isEqualsDeep(1.5, "")).toBe(false);
+		expect(isEqualsDeep("", "abc")).toBe(false);
+		expect(isEqualsDeep("abc", true)).toBe(false);
+		expect(isEqualsDeep(true, false)).toBe(false);
+		expect(isEqualsDeep(false, 0)).toBe(false);
+
+		done();
+	});
+
+	it("should return true iff arrays are equal", (done) => {
+		expect(isEqualsDeep([1, 2, 3], [1, 2, 3])).toBe(true);
+		expect(isEqualsDeep([1, 2, 3], [3, 2, 1])).toBe(false);
+
+		expect(isEqualsDeep([], [1])).toBe(false);
+		expect(isEqualsDeep([1], [])).toBe(false);
+
+		expect(isEqualsDeep([1, 2, [3, 4, [5, 6]]], [1, 2, [3, 4, [5, 6]]])).toBe(true);
+		expect(isEqualsDeep([1, 2, [3, 4, [5, 6]]], [1, 2, [3, 4, [5, 9]]])).toBe(false);
+
+		expect(isEqualsDeep(["a", "b", ["c", "d", ["e", "f"]]], ["a", "b", ["c", "d", ["e", "f"]]])).toBe(true);
+		expect(isEqualsDeep(["a", "b", ["c", "d", ["e", "f"]]], ["a", "b", ["c", "d", ["e", "x"]]])).toBe(false);
+
+		done();
+	});
+
+	it("should return true iff arrays with circular references are equal", (done) => {
+		const a = [1, 2, [3, 4, [5, 6]]];
+		a[1] = a;
+
+		const b = [1, 2, [3, 4, [5, 6]]];
+		b[1] = b;
+
+		expect(isEqualsDeep(a, b)).toBe(true);
+
+		a[2][2][0] = a;
+		b[2][2][0] = b;
+
+		expect(isEqualsDeep(a, b)).toBe(true);
+
+		b[2][2][1] = 9;
+
+		expect(isEqualsDeep(a, b)).toBe(false);
+
+		done();
+	});
+
+	it("should return true iff objects are equal", (done) => {
+		expect(isEqualsDeep({ a: 1, b: 2, c: 3 }, { a: 1, b: 2, c: 3 })).toBe(true);
+		expect(isEqualsDeep({ a: 1, b: 2, c: 3 }, { c: 3, b: 2, a: 1 })).toBe(true);
+		expect(isEqualsDeep({ a: 1, b: 2, c: 3 }, { a: 3, b: 2, c: 1 })).toBe(false);
+
+		expect(isEqualsDeep({}, { a: 1 })).toBe(false);
+		expect(isEqualsDeep({ a: 1 }, {})).toBe(false);
+
+		expect(
+			isEqualsDeep(
+				{ a: 1, b: 2, c: { d: 3, e: 4, f: { g: 5, h: 6 } } },
+				{ a: 1, b: 2, c: { d: 3, e: 4, f: { g: 5, h: 6 } } }
+			)
+		).toBe(true);
+		expect(
+			isEqualsDeep(
+				{ a: 1, b: 2, c: { d: 3, e: 4, f: { g: 5, h: 6 } } },
+				{ a: 1, b: 2, c: { d: 3, e: 4, f: { g: 5, h: 9 } } }
+			)
+		).toBe(false);
+
+		expect(
+			isEqualsDeep(
+				{ a: "a", b: "b", c: { d: "c", e: "d", f: { g: "e", h: "f" } } },
+				{ a: "a", b: "b", c: { d: "c", e: "d", f: { g: "e", h: "f" } } }
+			)
+		).toBe(true);
+		expect(
+			isEqualsDeep(
+				{ a: "a", b: "b", c: { d: "c", e: "d", f: { g: "e", h: "f" } } },
+				{ a: "a", b: "b", c: { d: "c", e: "d", f: { g: "e", h: "x" } } }
+			)
+		).toBe(false);
+
+		done();
+	});
+
+	it("should return true iff arrays with circular references are equal", (done) => {
+		const a = { a: 1, b: 2, c: { d: 3, e: 4, f: { g: 5, h: 6 } } };
+		a.b = a;
+
+		const b = { a: 1, b: 2, c: { d: 3, e: 4, f: { g: 5, h: 6 } } };
+		b.b = b;
+
+		expect(isEqualsDeep(a, b)).toBe(true);
+
+		a.c.f.g = a;
+		b.c.f.g = b;
+
+		expect(isEqualsDeep(a, b)).toBe(true);
+
+		b.c.f.h = 9;
+
+		expect(isEqualsDeep(a, b)).toBe(false);
 
 		done();
 	});

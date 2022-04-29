@@ -91,7 +91,7 @@ describe("fetch", () => {
 					return response.json();
 				})
 				.then((data) => {
-					expect(xhr.abort).toHaveBeenCalledTimes(0);
+					expect(xhr.abort).not.toHaveBeenCalled();
 					expect(data).toEqual({ a: "b" });
 					expect(controller.signal.addEventListener).toHaveBeenCalledTimes(1);
 					expect(controller.signal.removeEventListener).toHaveBeenCalledTimes(1);
@@ -132,7 +132,7 @@ describe("fetch", () => {
 			fetch("/foo", {
 				signal: controller.signal,
 			}).catch(() => {
-				expect(xhr.abort).toHaveBeenCalledTimes(0);
+				expect(xhr.abort).not.toHaveBeenCalled();
 				expect(controller.signal.addEventListener).toHaveBeenCalledTimes(1);
 				expect(controller.signal.removeEventListener).toHaveBeenCalledTimes(1);
 

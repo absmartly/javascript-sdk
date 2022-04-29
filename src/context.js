@@ -1,5 +1,6 @@
 import { arrayEqualsShallow, hashUnit, isObject, isNumeric, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
+import { AudienceMatcher } from "./matcher";
 
 export default class Context {
 	constructor(sdk, options, params, promise) {
@@ -18,6 +19,7 @@ export default class Context {
 		this._cassignments = {};
 		this._params = params;
 		this._assigners = {};
+		this._audienceMatcher = new AudienceMatcher();
 
 		if (isPromise(promise)) {
 			this._promise = promise
@@ -288,6 +290,8 @@ export default class Context {
 			exposed: false,
 			eligible: true,
 			fullOn: false,
+			custom: false,
+			audienceMismatch: false,
 		};
 
 		this._assignments[experimentName] = assignment;
@@ -305,7 +309,20 @@ export default class Context {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
 
-				if (experiment.data.fullOnVariant === 0) {
+				if (experiment.data.audience && experiment.data.audience.length > 0) {
+					const result = this._audienceMatcher.evaluate(
+						experiment.data.audience,
+						Object.fromEntries(this._attrs.map((x) => [x.name, x.value]))
+					);
+
+					if (typeof result === "boolean") {
+						assignment.audienceMismatch = !result;
+					}
+				}
+
+				if (experiment.data.audienceStrict && assignment.audienceMismatch !== false) {
+					assignment.variant = 0;
+				} else if (experiment.data.fullOnVariant === 0) {
 					if (unitType in this._params.units) {
 						const unit = this._unitHash(unitType);
 						const assigner =
@@ -387,7 +404,8 @@ export default class Context {
 			eligible: assignment.eligible,
 			overridden: assignment.overridden,
 			fullOn: assignment.fullOn,
-			custom: assignment.custom || false,
+			custom: assignment.custom,
+			audienceMismatch: assignment.audienceMismatch,
 		};
 		this._logEvent("exposure", exposureEvent);
 
@@ -527,6 +545,7 @@ export default class Context {
 						overridden: x.overridden,
 						fullOn: x.fullOn,
 						custom: x.custom,
+						audienceMismatch: x.audienceMismatch,
 					}));
 				}
 

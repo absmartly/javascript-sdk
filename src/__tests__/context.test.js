@@ -50,6 +50,7 @@ describe("Context", () => {
 						config: '{"banner.border":1,"banner.size":"large"}',
 					},
 				],
+				audience: null,
 			},
 			{
 				id: 2,
@@ -82,6 +83,7 @@ describe("Context", () => {
 						config: '{"button.color":"red"}',
 					},
 				],
+				audience: "",
 			},
 			{
 				id: 3,
@@ -114,6 +116,7 @@ describe("Context", () => {
 						config: '{"card.width":"75%"}',
 					},
 				],
+				audience: "{}",
 			},
 			{
 				id: 4,
@@ -150,6 +153,7 @@ describe("Context", () => {
 						config: '{"submit.color":"green","submit.shape":"square"}',
 					},
 				],
+				audience: "null",
 			},
 		],
 	};
@@ -186,6 +190,34 @@ describe("Context", () => {
 			},
 		].concat(getContextResponse.experiments),
 	});
+
+	const audienceContextResponse = {
+		...getContextResponse,
+		experiments: getContextResponse.experiments.map((x) => {
+			if (x.name === "exp_test_ab") {
+				return {
+					...x,
+					audience: JSON.stringify({
+						filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
+					}),
+				};
+			}
+			return x;
+		}),
+	};
+
+	const audienceStrictContextResponse = {
+		...audienceContextResponse,
+		experiments: audienceContextResponse.experiments.map((x) => {
+			if (x.name === "exp_test_ab") {
+				return {
+					...x,
+					audienceStrict: true,
+				};
+			}
+			return x;
+		}),
+	};
 
 	const expectedVariants = {
 		exp_test_ab: 1,
@@ -228,6 +260,12 @@ describe("Context", () => {
 		publishDelay: -1,
 		refreshPeriod: 0,
 	};
+
+	const timeOrigin = 1611141535729;
+
+	beforeEach(() => {
+		jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+	});
 
 	describe("Context", () => {
 		it("should be ready with data", (done) => {
@@ -435,9 +473,6 @@ describe("Context", () => {
 			expect(context.isFailed()).toEqual(false);
 			expect(context.isFinalized()).toEqual(false);
 
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			context.attribute("attr1", "value1");
 			context.attributes({
 				attr2: "value2",
@@ -472,6 +507,7 @@ describe("Context", () => {
 									overridden: false,
 									fullOn: false,
 									custom: false,
+									audienceMismatch: false,
 								},
 							],
 							attributes: [
@@ -607,7 +643,7 @@ describe("Context", () => {
 
 			context.ready().then(() => {
 				context.refresh().then(() => {
-					expect(provider.getContextData).toHaveBeenCalledTimes(0);
+					expect(provider.getContextData).not.toHaveBeenCalled();
 
 					done();
 				});
@@ -856,13 +892,26 @@ describe("Context", () => {
 
 			done();
 		});
+
+		it("should return assigned variant on audience mismatch in non-strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			done();
+		});
+
+		it("should return control variant on audience mismatch in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.peek("exp_test_ab")).toEqual(0);
+
+			done();
+		});
 	});
 
 	describe("treatment()", () => {
 		it("should queue exposures", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -898,6 +947,7 @@ describe("Context", () => {
 								variant: 1,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 2,
@@ -910,6 +960,7 @@ describe("Context", () => {
 								variant: 2,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 3,
@@ -922,6 +973,7 @@ describe("Context", () => {
 								variant: 0,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 4,
@@ -934,6 +986,7 @@ describe("Context", () => {
 								variant: 2,
 								fullOn: true,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -985,9 +1038,6 @@ describe("Context", () => {
 		});
 
 		it("should call event logger", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			for (const experiment of getContextResponse.experiments) {
 				SDK.defaultEventLogger.mockClear();
@@ -1004,6 +1054,7 @@ describe("Context", () => {
 					variant: expectedVariants[experiment.name],
 					fullOn: experiment.name === "exp_test_fullon",
 					custom: false,
+					audienceMismatch: false,
 				});
 			}
 
@@ -1011,16 +1062,13 @@ describe("Context", () => {
 			for (const experiment of getContextResponse.experiments) {
 				SDK.defaultEventLogger.mockClear();
 				context.treatment(experiment.name);
-				expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
+				expect(SDK.defaultEventLogger).not.toHaveBeenCalled();
 			}
 
 			done();
 		});
 
 		it("should queue exposure with base variant on unknown/stopped experiment", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -1048,6 +1096,135 @@ describe("Context", () => {
 								variant: 0,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should queue exposure with audienceMatch true on audience match", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+			context.attribute("age", 21);
+
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						attributes: [
+							{
+								name: "age",
+								setAt: 1611141535729,
+								value: 21,
+							},
+						],
+						exposures: [
+							{
+								id: 1,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_ab",
+								overridden: false,
+								unit: "session_id",
+								variant: 1,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should queue exposure with audienceMatch false on audience mismatch", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 1,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_ab",
+								overridden: false,
+								unit: "session_id",
+								variant: 1,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: true,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should queue exposure with audienceMatch false and control variant on audience mismatch in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 1,
+								assigned: false,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_ab",
+								overridden: false,
+								unit: "session_id",
+								variant: 0,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: true,
 							},
 						],
 					},
@@ -1077,9 +1254,6 @@ describe("Context", () => {
 		});
 
 		it("should queue exposure with override variant", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -1111,6 +1285,7 @@ describe("Context", () => {
 								variant: 5,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 0,
@@ -1123,6 +1298,7 @@ describe("Context", () => {
 								variant: 3,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -1156,9 +1332,6 @@ describe("Context", () => {
 
 	describe("variableValue()", () => {
 		it("should queue exposures", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -1197,6 +1370,7 @@ describe("Context", () => {
 								variant: 1,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 2,
@@ -1209,6 +1383,7 @@ describe("Context", () => {
 								variant: 2,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 3,
@@ -1221,6 +1396,7 @@ describe("Context", () => {
 								variant: 0,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 4,
@@ -1233,6 +1409,7 @@ describe("Context", () => {
 								variant: 2,
 								fullOn: true,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -1316,9 +1493,6 @@ describe("Context", () => {
 		});
 
 		it("should call event logger", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			const experiments = context.experiments();
 			const exposed = {};
@@ -1343,9 +1517,10 @@ describe("Context", () => {
 							variant: expectedVariants[experiment.name],
 							fullOn: experiment.name === "exp_test_fullon",
 							custom: false,
+							audienceMismatch: false,
 						});
 					} else {
-						expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
+						expect(SDK.defaultEventLogger).not.toHaveBeenCalled();
 					}
 				}
 			}
@@ -1355,7 +1530,7 @@ describe("Context", () => {
 				SDK.defaultEventLogger.mockClear();
 				context.variableValue(key, 17);
 				if (experiments.indexOf(experimentName) !== -1) {
-					expect(SDK.defaultEventLogger).toHaveBeenCalledTimes(0);
+					expect(SDK.defaultEventLogger).not.toHaveBeenCalled();
 				}
 			}
 
@@ -1369,6 +1544,134 @@ describe("Context", () => {
 			expect(context.variableValue("not.found", 17)).toBe(17);
 
 			done();
+		});
+
+		it("should queue exposure with audienceMatch true on audience match", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+			context.attribute("age", 21);
+
+			expect(context.variableValue("banner.size", "small")).toEqual("large");
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						attributes: [
+							{
+								name: "age",
+								setAt: 1611141535729,
+								value: 21,
+							},
+						],
+						exposures: [
+							{
+								id: 1,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_ab",
+								overridden: false,
+								unit: "session_id",
+								variant: 1,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should queue exposure with audienceMatch false on audience mismatch", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+
+			expect(context.variableValue("banner.size", "small")).toEqual("large");
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 1,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_ab",
+								overridden: false,
+								unit: "session_id",
+								variant: 1,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: true,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should queue exposure with audienceMatch false and control variant on audience mismatch in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.variableValue("banner.size", "small")).toEqual("small");
+
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 1,
+								assigned: false,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_ab",
+								overridden: false,
+								unit: "session_id",
+								variant: 0,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: true,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
 		});
 
 		it("should throw after finalized() call", (done) => {
@@ -1431,6 +1734,22 @@ describe("Context", () => {
 
 			done();
 		});
+
+		it("should return assigned variant on audience mismatch in non-strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+
+			expect(context.peekVariableValue("banner.size", "small")).toEqual("large");
+
+			done();
+		});
+
+		it("should return control variant on audience mismatch in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.peekVariableValue("banner.size", "small")).toEqual("small");
+
+			done();
+		});
 	});
 
 	describe("variableKeys()", () => {
@@ -1448,9 +1767,6 @@ describe("Context", () => {
 
 	describe("track()", () => {
 		it("should queue goals", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -1499,9 +1815,6 @@ describe("Context", () => {
 		});
 
 		it("should call event logger", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			SDK.defaultEventLogger.mockClear();
@@ -1613,9 +1926,6 @@ describe("Context", () => {
 		});
 
 		it("should start timeout after ready if queue is not empty", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			jest.useFakeTimers();
 
 			const publishDelay = 100;
@@ -1700,9 +2010,6 @@ describe("Context", () => {
 		});
 
 		it("should call client publish", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
@@ -1753,6 +2060,7 @@ describe("Context", () => {
 								overridden: false,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 3,
@@ -1765,6 +2073,7 @@ describe("Context", () => {
 								overridden: false,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 						goals: [
@@ -1845,9 +2154,6 @@ describe("Context", () => {
 		});
 
 		it("should pass through request options", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.track("goal1", { amount: 125, hours: 245 });
@@ -1901,9 +2207,6 @@ describe("Context", () => {
 		});
 
 		it("should call event logger on success", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.track("goal1", { amount: 125, hours: 245 });
@@ -1933,9 +2236,6 @@ describe("Context", () => {
 		});
 
 		it("should not call client publish when failed", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, Promise.reject("bad request error text"));
 			context.ready().then(() => {
 				context.treatment("exp_test_ab");
@@ -1946,7 +2246,7 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(2);
 
 				context.publish().then(() => {
-					expect(publisher.publish).toHaveBeenCalledTimes(0);
+					expect(publisher.publish).not.toHaveBeenCalled();
 					expect(context.pending()).toEqual(0);
 
 					done();
@@ -1955,9 +2255,6 @@ describe("Context", () => {
 		});
 
 		it("should reset internal queues and keep attributes overrides and custom assignments", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
@@ -1997,6 +2294,7 @@ describe("Context", () => {
 									overridden: false,
 									fullOn: false,
 									custom: false,
+									audienceMismatch: false,
 								},
 								{
 									id: 0,
@@ -2009,6 +2307,7 @@ describe("Context", () => {
 									overridden: true,
 									fullOn: false,
 									custom: false,
+									audienceMismatch: false,
 								},
 								{
 									id: 2,
@@ -2021,6 +2320,7 @@ describe("Context", () => {
 									overridden: false,
 									fullOn: false,
 									custom: true,
+									audienceMismatch: false,
 								},
 							],
 							goals: [
@@ -2222,9 +2522,6 @@ describe("Context", () => {
 		});
 
 		it("should call client publish", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
@@ -2254,6 +2551,7 @@ describe("Context", () => {
 								overridden: false,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -2274,9 +2572,6 @@ describe("Context", () => {
 		});
 
 		it("should pass through request options", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			context.treatment("exp_test_ab");
@@ -2306,6 +2601,7 @@ describe("Context", () => {
 								overridden: false,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -2375,7 +2671,7 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(1);
 
 				context.finalize().then(() => {
-					expect(publisher.publish).toHaveBeenCalledTimes(0);
+					expect(publisher.publish).not.toHaveBeenCalled();
 					expect(context.pending()).toEqual(0);
 					expect(context.isFinalizing()).toEqual(false);
 					expect(context.isFinalized()).toEqual(true);
@@ -2465,9 +2761,6 @@ describe("Context", () => {
 			expect(context.isFailed()).toEqual(false);
 			expect(context.isFinalized()).toEqual(false);
 
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			context.override("exp_test_ab", 1);
 			context.overrides({
 				exp_test_ab: 2,
@@ -2505,6 +2798,7 @@ describe("Context", () => {
 									overridden: true,
 									fullOn: false,
 									custom: false,
+									audienceMismatch: false,
 								},
 								{
 									id: 2,
@@ -2517,6 +2811,7 @@ describe("Context", () => {
 									overridden: true,
 									fullOn: false,
 									custom: false,
+									audienceMismatch: false,
 								},
 							],
 						},
@@ -2533,9 +2828,6 @@ describe("Context", () => {
 
 	describe("customAssignment()", () => {
 		it("should override natural assignment and set custom flag", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -2567,6 +2859,7 @@ describe("Context", () => {
 								variant: 11,
 								fullOn: false,
 								custom: true,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -2580,9 +2873,6 @@ describe("Context", () => {
 		});
 
 		it("should not override full-on or non-eligible assignment", (done) => {
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
-
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
@@ -2616,6 +2906,7 @@ describe("Context", () => {
 								variant: 0,
 								fullOn: false,
 								custom: false,
+								audienceMismatch: false,
 							},
 							{
 								id: 4,
@@ -2628,6 +2919,7 @@ describe("Context", () => {
 								variant: 2,
 								fullOn: true,
 								custom: false,
+								audienceMismatch: false,
 							},
 						],
 					},
@@ -2645,9 +2937,6 @@ describe("Context", () => {
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
 			expect(context.isFinalized()).toEqual(false);
-
-			const timeOrigin = 1611141535729;
-			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
 			context.customAssignment("exp_test_ab", 1);
 			context.customAssignments({
@@ -2686,6 +2975,7 @@ describe("Context", () => {
 									overridden: false,
 									fullOn: false,
 									custom: true,
+									audienceMismatch: false,
 								},
 								{
 									id: 2,
@@ -2698,6 +2988,7 @@ describe("Context", () => {
 									overridden: false,
 									fullOn: false,
 									custom: true,
+									audienceMismatch: false,
 								},
 							],
 						},

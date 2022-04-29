@@ -16,7 +16,7 @@ module.exports = {
 		//		"require-atomic-updates": "error",
 		"array-callback-return": "error",
 		"block-scoped-var": "error",
-		"class-methods-use-this": "error",
+		"class-methods-use-this": "off",
 		"consistent-return": "error",
 		"default-case": ["error", { commentPattern: "^skip|no\\s+default" }],
 		"default-param-last": "error",

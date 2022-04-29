@@ -20,8 +20,99 @@ export function isPromise(value) {
 	return value !== null && typeof value === "object" && typeof value.then === "function";
 }
 
+function arrayEqualsDeep(a, b, astack, bstack) {
+	let len = astack?.length ?? 0;
+	while (len--) {
+		if (astack[len] === a) return bstack[len] === b;
+	}
+
+	astack = astack ?? [];
+	bstack = bstack ?? [];
+
+	astack.push(a);
+	bstack.push(b);
+
+	len = a.length;
+	while (len--) {
+		// eslint-disable-next-line no-use-before-define
+		if (!isEqualsDeep(a[len], b[len], astack, bstack)) return false;
+	}
+
+	bstack.pop();
+	astack.pop();
+
+	return true;
+}
+
+function objectEqualsDeep(a, b, keys, astack, bstack) {
+	let len = astack?.length ?? 0;
+	while (len--) {
+		if (astack[len] === a) return bstack[len] === b;
+	}
+
+	astack = astack ?? [];
+	bstack = bstack ?? [];
+
+	astack.push(a);
+	bstack.push(b);
+
+	len = keys.length;
+	while (len--) {
+		const key = keys[len];
+		// eslint-disable-next-line no-prototype-builtins
+		if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+
+		// eslint-disable-next-line no-use-before-define
+		if (!isEqualsDeep(a[key], b[key], astack, bstack)) return false;
+	}
+
+	bstack.pop();
+	astack.pop();
+
+	return true;
+}
+
+export function isEqualsDeep(a, b, astack, bstack) {
+	if (a === b) return true;
+	if (typeof a !== typeof b) return false;
+
+	switch (typeof a) {
+		case "boolean":
+			return a === b;
+		case "number":
+			if (Number.isNaN(a)) return Number.isNaN(b);
+			return a === b;
+		case "string":
+			return a === b;
+		case "object": {
+			const arrays = Array.isArray(a);
+			if (arrays && !Array.isArray(b)) return false;
+
+			const objects = isObject(a);
+			if (objects && !isObject(b)) return false;
+
+			if (!arrays && !objects) return false;
+
+			if (arrays) {
+				if (a.length === b.length) {
+					return arrayEqualsDeep(a, b, astack, bstack);
+				}
+			} else {
+				const keys = Object.keys(a);
+				if (keys.length === Object.keys(b).length) {
+					return objectEqualsDeep(a, b, keys, astack, bstack);
+				}
+			}
+			break;
+		}
+		default:
+			break;
+	}
+	return false;
+}
+
 export function arrayEqualsShallow(a, b) {
-	return a.length === b.length && a.every((va, vi) => b[vi] === va);
+	return a === b || (a.length === b.length && !a.some((va, vi) => va !== b[vi]));
 }
 
 export function stringToUint8Array(value) {
