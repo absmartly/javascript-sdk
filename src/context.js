@@ -310,10 +310,12 @@ export default class Context {
 				const unitType = experiment.data.unitType;
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(
-						experiment.data.audience,
-						Object.fromEntries(this._attrs.map((x) => [x.name, x.value]))
-					);
+					const attrs = {};
+					for (const attr of this._attrs) {
+						attrs[attr.name] = attr.value;
+					}
+
+					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
 					if (typeof result === "boolean") {
 						assignment.audienceMismatch = !result;
