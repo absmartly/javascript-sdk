@@ -1,6 +1,6 @@
 {
 	"name": "@absmartly/javascript-sdk",
-	"version": "1.9.0",
+	"version": "1.10.0",
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
