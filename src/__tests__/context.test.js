@@ -1260,7 +1260,7 @@ describe("Context", () => {
 						exposures: [
 							{
 								id: 1,
-								assigned: true,
+								assigned: false,
 								eligible: true,
 								exposedAt: 1611141535729,
 								name: "exp_test_ab",
@@ -2756,7 +2756,7 @@ describe("Context", () => {
 									unit: "session_id",
 									exposedAt: 1611141535729,
 									variant: 2,
-									assigned: true,
+									assigned: false,
 									eligible: true,
 									overridden: true,
 									fullOn: false,
@@ -2769,7 +2769,7 @@ describe("Context", () => {
 									unit: "session_id",
 									exposedAt: 1611141535729,
 									variant: 2,
-									assigned: true,
+									assigned: false,
 									eligible: true,
 									overridden: true,
 									fullOn: false,

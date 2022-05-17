@@ -274,7 +274,6 @@ export default class Context {
 			if (experiment != null) {
 				assignment.id = experiment.data.id;
 				assignment.unitType = experiment.data.unitType;
-				assignment.assigned = experiment.data.unitType in this._params.units;
 			}
 
 			assignment.overridden = true;
