@@ -539,6 +539,24 @@ describe("Context", () => {
 				});
 			});
 		});
+
+		it("should throw after finalized() call", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			context.finalize().then(() => {
+				expect(() => context.unit("test", "test")).toThrow(); // finalizing
+
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.unit("test", "test")).toThrow(); // finalizing
+		});
 	});
 
 	describe("attribute()", () => {
@@ -3038,6 +3056,24 @@ describe("Context", () => {
 					done();
 				});
 			});
+		});
+
+		it("should throw after finalized() call", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			context.finalize().then(() => {
+				expect(() => context.customAssignment("exp_test_ab", 3)).toThrow(); // finalizing
+
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.customAssignment("exp_test_ab", 3)).toThrow(); // finalizing
 		});
 	});
 });

@@ -129,14 +129,12 @@ export default class Context {
 	}
 
 	unit(unitType, uid) {
-		if (!this._units) {
-			this._units = {};
-		}
+		this._checkNotFinalized();
 
 		switch (typeof uid) {
 			case "string":
 				uid = uid.trim();
-				if (uid.length === 0) throw new Error(`Unit '${unitType}' must not be blank.`);
+				if (uid.length === 0) throw new Error(`Unit '${unitType}' UID must not be blank.`);
 				break;
 			case "number":
 				break;
@@ -146,7 +144,7 @@ export default class Context {
 
 		const previous = this._units[unitType];
 		if (previous !== undefined && previous !== uid) {
-			throw new Error(`Unit '${unitType}' already set.`);
+			throw new Error(`Unit '${unitType}' UID already set.`);
 		}
 
 		this._units[unitType] = uid;
@@ -159,6 +157,8 @@ export default class Context {
 	}
 
 	attribute(attrName, value) {
+		this._checkNotFinalized();
+
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
 	}
 
@@ -225,6 +225,8 @@ export default class Context {
 	}
 
 	customAssignment(experimentName, variant) {
+		this._checkNotFinalized();
+
 		this._cassignments[experimentName] = variant;
 	}
 
