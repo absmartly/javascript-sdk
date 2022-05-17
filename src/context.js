@@ -1,4 +1,4 @@
-import { arrayEqualsShallow, hashUnit, isObject, isNumeric, isPromise } from "./utils";
+import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 
@@ -17,9 +17,13 @@ export default class Context {
 		this._exposures = [];
 		this._overrides = {};
 		this._cassignments = {};
-		this._params = params;
+		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
+
+		if (params.units) {
+			this.units(params.units);
+		}
 
 		if (isPromise(promise)) {
 			this._promise = promise
@@ -122,6 +126,36 @@ export default class Context {
 				}
 			}, requestOptions);
 		});
+	}
+
+	unit(unitType, uid) {
+		if (!this._units) {
+			this._units = {};
+		}
+
+		switch (typeof uid) {
+			case "string":
+				uid = uid.trim();
+				if (uid.length === 0) throw new Error(`Unit '${unitType}' must not be blank.`);
+				break;
+			case "number":
+				break;
+			default:
+				throw new Error(`Unit '${unitType}' must be a string or a number.`);
+		}
+
+		const previous = this._units[unitType];
+		if (previous !== undefined && previous !== uid) {
+			throw new Error(`Unit '${unitType}' already set.`);
+		}
+
+		this._units[unitType] = uid;
+	}
+
+	units(units) {
+		for (const [unitType, uid] of Object.entries(units)) {
+			this.unit(unitType, uid);
+		}
 	}
 
 	attribute(attrName, value) {
@@ -298,7 +332,7 @@ export default class Context {
 				if (experiment.data.audienceStrict && assignment.audienceMismatch !== false) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
-					if (unitType in this._params.units) {
+					if (unitType in this._units) {
 						const unit = this._unitHash(unitType);
 						const assigner =
 							unitType in this._assigners
@@ -430,7 +464,7 @@ export default class Context {
 				throw new Error(`Goal '${goalName}' properties must be of type object.`);
 			}
 
-			return {...properties};
+			return { ...properties };
 		}
 
 		return null;
@@ -469,16 +503,12 @@ export default class Context {
 			}
 		} else {
 			if (!this._failed) {
-				if (!this._units) {
-					this._units = Object.entries(this._params.units).map((entry) => ({
-						type: entry[0],
-						uid: this._unitHash(entry[0]),
-					}));
-				}
-
 				const request = {
 					publishedAt: Date.now(),
-					units: this._units,
+					units: Object.entries(this._units).map((entry) => ({
+						type: entry[0],
+						uid: this._unitHash(entry[0]),
+					})),
 					hashed: true,
 				};
 
@@ -587,7 +617,7 @@ export default class Context {
 		}
 
 		if (!(unitType in this._hashes)) {
-			const hash = unitType in this._params.units ? hashUnit(this._params.units[unitType]) : null;
+			const hash = unitType in this._units ? hashUnit(this._units[unitType]) : null;
 			this._hashes[unitType] = hash;
 			return hash;
 		}

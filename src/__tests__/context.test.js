@@ -466,6 +466,81 @@ describe("Context", () => {
 		});
 	});
 
+	describe("unit()", () => {
+		it("should throw on duplicate unit type set", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.isReady()).toEqual(true);
+
+			expect(() => context.unit("session_id", "new_id")).toThrow();
+
+			// should not throw if set to the same value
+			expect(() => context.unit("session_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec")).not.toThrow();
+
+			done();
+		});
+
+		it("should throw on invalid uid", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.isReady()).toEqual(true);
+
+			expect(() => context.unit("session_id", "")).toThrow();
+			expect(() => context.unit("session_id", null)).toThrow();
+			expect(() => context.unit("session_id", undefined)).toThrow();
+			expect(() => context.unit("session_id", true)).toThrow();
+			expect(() => context.unit("session_id", {})).toThrow();
+			expect(() => context.unit("session_id", [])).toThrow();
+
+			done();
+		});
+
+		it("should be callable before ready()", (done) => {
+			const context = new Context(sdk, contextOptions, {}, Promise.resolve(getContextResponse));
+
+			context.units(contextParams.units);
+
+			context.ready().then(() => {
+				expect(context.isReady()).toEqual(true);
+
+				context.treatment("exp_test_ab");
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+				context.publish().then(() => {
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+					expect(publisher.publish).toHaveBeenCalledWith(
+						{
+							publishedAt: 1611141535829,
+							units: publishUnits,
+							hashed: true,
+							exposures: [
+								{
+									id: 1,
+									name: "exp_test_ab",
+									unit: "session_id",
+									exposedAt: 1611141535729,
+									variant: 1,
+									assigned: true,
+									eligible: true,
+									overridden: false,
+									fullOn: false,
+									custom: false,
+									audienceMismatch: false,
+								},
+							],
+						},
+						sdk,
+						context,
+						undefined
+					);
+
+					done();
+				});
+			});
+		});
+	});
+
 	describe("attribute()", () => {
 		it("should be callable before ready()", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
