@@ -125,32 +125,6 @@ export default class Context {
 	}
 
 	attribute(attrName, value) {
-		const allowed = (v) => v == null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
-		if (Array.isArray(value)) {
-			if (value.length > 0) {
-				let typeSeen = value[0] == null ? null : typeof value[0];
-
-				for (let i = 0; i < value.length; ++i) {
-					const element = value[i];
-					if (!allowed(element)) {
-						throw new Error(
-							`Attribute '${attrName}' element at index ${i} is of unsupported type '${typeof value}'`
-						);
-					} else if (element != null) {
-						if (typeSeen == null) {
-							typeSeen = typeof element;
-						} else {
-							if (typeof element !== typeSeen) {
-								throw new Error(`Attribute '${attrName}' has elements of different types`);
-							}
-						}
-					}
-				}
-			}
-		} else if (!allowed(value)) {
-			throw new Error(`Attribute '${attrName}' is of unsupported type '${typeof value}'`);
-		}
-
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
 	}
 
@@ -457,25 +431,7 @@ export default class Context {
 				throw new Error(`Goal '${goalName}' properties must be of type object.`);
 			}
 
-			return Object.assign(
-				{},
-				...Object.entries(properties).map((entry) => {
-					const key = entry[0];
-					const value = entry[1];
-
-					if (isNumeric(value)) {
-						return { [key]: value };
-					} else if (isObject(value)) {
-						const filtered = this._validateGoal(goalName, value);
-						if (Object.keys(filtered).length > 0) {
-							return { [key]: filtered };
-						}
-					} else if (value !== null) {
-						throw new Error(`Goal '${goalName}' property value type must be one of [number, object].`);
-					}
-					return undefined;
-				})
-			);
+			return {...properties};
 		}
 
 		return null;

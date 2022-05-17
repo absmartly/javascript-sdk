@@ -537,22 +537,6 @@ describe("Context", () => {
 				});
 			});
 		});
-
-		it("should throw on unsupported attribute type", (done) => {
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
-
-			expect(() => context.attribute("attr1", {})).toThrow(
-				new Error("Attribute 'attr1' is of unsupported type 'object'")
-			);
-			expect(() => context.attribute("attr1", [1, {}])).toThrow(
-				new Error("Attribute 'attr1' element at index 1 is of unsupported type 'object'")
-			);
-			expect(() => context.attribute("attr1", [1, "two"])).toThrow(
-				new Error("Attribute 'attr1' has elements of different types")
-			);
-
-			done();
-		});
 	});
 
 	describe("refresh()", () => {
@@ -1838,27 +1822,6 @@ describe("Context", () => {
 			expect(() => context.track("goal1", { test: null })).not.toThrowError();
 
 			expect(context.pending()).toEqual(3);
-
-			done();
-		});
-
-		it("should throw when goal property values not numbers", (done) => {
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
-			expect(context.pending()).toEqual(0);
-
-			expect(() => context.track("goal1", { test: true })).toThrowError(
-				"Goal 'goal1' property value type must be one of [number, object]."
-			);
-			expect(() => context.track("goal1", { test: "testy" })).toThrowError(
-				"Goal 'goal1' property value type must be one of [number, object]."
-			);
-			expect(() => context.track("goal1", { test: [] })).toThrowError(
-				"Goal 'goal1' property value type must be one of [number, object]."
-			);
-			expect(() => context.track("goal1", { test: { test: "testy" } })).toThrowError(
-				"Goal 'goal1' property value type must be one of [number, object]."
-			);
-			expect(context.pending()).toEqual(0);
 
 			done();
 		});
