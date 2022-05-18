@@ -682,7 +682,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should not re-queue exposures after refresh", (done) => {
+		it("should not re-queue exposures after refresh when not changed", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
 			for (const experiment of getContextResponse.experiments) {
@@ -710,6 +710,43 @@ describe("Context", () => {
 				}
 
 				expect(context.pending()).toEqual(refreshContextResponse.experiments.length);
+
+				done();
+			});
+		});
+
+		it("should not re-queue when not changed on audience mismatch", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+
+			expect(context.pending()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(audienceStrictContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_ab")).toEqual(0);
+
+				expect(context.pending()).toEqual(1);
+
+				done();
+			});
+		});
+
+		it("should not re-queue when not changed with override", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			context.override("exp_test_ab", 3);
+			expect(context.treatment("exp_test_ab")).toEqual(3);
+
+			expect(context.pending()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(audienceStrictContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_ab")).toEqual(3);
+
+				expect(context.pending()).toEqual(1);
 
 				done();
 			});
@@ -829,6 +866,23 @@ describe("Context", () => {
 			});
 		});
 
+		it("should pick up changes in experiment started", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			const experimentName = "exp_test_new";
+
+			expect(context.treatment(experimentName)).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment(experimentName)).toEqual(1);
+				expect(context.pending()).toEqual(2); // exposure before the change + exposure after stopped
+
+				done();
+			});
+		});
+
 		it("should pick up changes in experiment fullon", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			const experimentName = "exp_test_abc";
@@ -906,33 +960,33 @@ describe("Context", () => {
 				done();
 			});
 		});
-	});
 
-	it("should pick up changes in experiment id", (done) => {
-		const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
-		const experimentName = "exp_test_abc";
+		it("should pick up changes in experiment id", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			const experimentName = "exp_test_abc";
 
-		expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
-		expect(context.pending()).toEqual(1);
+			expect(context.treatment(experimentName)).toEqual(expectedVariants[experimentName]);
+			expect(context.pending()).toEqual(1);
 
-		const iteratedRefreshContextResponse = clone(getContextResponse);
-		for (const experiment of iteratedRefreshContextResponse.experiments) {
-			if (experiment.name === experimentName) {
-				experiment.id = 11;
-				experiment.trafficSeedHi = 54870830;
-				experiment.trafficSeedHi = 398724581;
-				experiment.seedHi = 77498863;
-				experiment.seedHi = 34737352;
+			const iteratedRefreshContextResponse = clone(getContextResponse);
+			for (const experiment of iteratedRefreshContextResponse.experiments) {
+				if (experiment.name === experimentName) {
+					experiment.id = 11;
+					experiment.trafficSeedHi = 54870830;
+					experiment.trafficSeedHi = 398724581;
+					experiment.seedHi = 77498863;
+					experiment.seedHi = 34737352;
+				}
 			}
-		}
 
-		provider.getContextData.mockReturnValue(Promise.resolve(iteratedRefreshContextResponse));
+			provider.getContextData.mockReturnValue(Promise.resolve(iteratedRefreshContextResponse));
 
-		context.refresh().then(() => {
-			expect(context.treatment(experimentName)).toEqual(1);
-			expect(context.pending()).toEqual(2); // exposure before the change + exposure after fullon
+			context.refresh().then(() => {
+				expect(context.treatment(experimentName)).toEqual(1);
+				expect(context.pending()).toEqual(2); // exposure before the change + exposure after fullon
 
-			done();
+				done();
+			});
 		});
 	});
 
