@@ -115,7 +115,7 @@ Then we can initialize the A/B Smartly context on the client-side directly with 
 #### Setting extra units for a context
 You can add additional units to a context by calling the `unit()` or the `units()` method.
 This method may be used for example, when a user logs in to your application, and you want to use the new unit type to the context.
-Please note that you cannot override an already set unit type as that would be a change of identity. In this case, you must create a new context instead.
+Please note that **you cannot override an already set unit type** as that would be a change of identity, and will throw an exception. In this case, you must create a new context instead.
 The `unit()` and `units()` methods can be called before the context is ready.
 
 ```javascript
