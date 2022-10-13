@@ -199,16 +199,23 @@ export default class Client {
 				  }, timeout)
 				: 0;
 
-		const onFinallyAfterTryWith = () => {
+		const onThenAfterTryWith = (value) => {
 			clearTimeout(timeoutId);
 			if (options.signal) {
 				options.signal.removeEventListener("abort", abort);
 			}
+			return value;
 		};
 
-		return Promise.prototype.finally
-			? tryWith(this._opts.retries, this._opts.timeout).finally(onFinallyAfterTryWith)
-			: tryWith(this._opts.retries, this._opts.timeout).then(onFinallyAfterTryWith, onFinallyAfterTryWith);
+		const onCatchAfterTryWith = (error) => {
+			clearTimeout(timeoutId);
+			if (options.signal) {
+				options.signal.removeEventListener("abort", abort);
+			}
+			throw error;
+		};
+
+		return tryWith(this._opts.retries, this._opts.timeout).then(onThenAfterTryWith).catch(onCatchAfterTryWith);
 	}
 
 	post(options) {
