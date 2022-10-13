@@ -512,13 +512,11 @@ describe("Client", () => {
 	});
 
 	it("request() cleans up signal event listener on error", (done) => {
-		fetch
-			.mockRejectedValueOnce(new Error("error 1"));
+		fetch.mockRejectedValueOnce(new Error("error 1"));
 
 		const aborter = new AbortController();
 		jest.spyOn(aborter.signal, "addEventListener");
 		jest.spyOn(aborter.signal, "removeEventListener");
-
 
 		const options = Object.assign({}, clientOptions, { retries: 0, timeout: 5000 });
 		const client = new Client(options);
@@ -535,7 +533,7 @@ describe("Client", () => {
 			.then(() => {
 				done("unexpected");
 			})
-			.catch((error) => {
+			.catch(() => {
 				expect(aborter.signal.addEventListener).toHaveBeenCalledTimes(1);
 				expect(aborter.signal.removeEventListener).toHaveBeenCalledTimes(1);
 
@@ -544,13 +542,11 @@ describe("Client", () => {
 	});
 
 	it("request() cleans up signal event listener on success", (done) => {
-		fetch
-			.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
 		const aborter = new AbortController();
 		jest.spyOn(aborter.signal, "addEventListener");
 		jest.spyOn(aborter.signal, "removeEventListener");
-
 
 		const options = Object.assign({}, clientOptions, { retries: 0, timeout: 5000 });
 		const client = new Client(options);
