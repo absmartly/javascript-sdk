@@ -199,23 +199,22 @@ export default class Client {
 				  }, timeout)
 				: 0;
 
-		const onThenAfterTryWith = (value) => {
+		const finalCleanUp = () => {
 			clearTimeout(timeoutId);
 			if (options.signal) {
 				options.signal.removeEventListener("abort", abort);
 			}
-			return value;
 		};
 
-		const onCatchAfterTryWith = (error) => {
-			clearTimeout(timeoutId);
-			if (options.signal) {
-				options.signal.removeEventListener("abort", abort);
-			}
-			throw error;
-		};
-
-		return tryWith(this._opts.retries, this._opts.timeout).then(onThenAfterTryWith).catch(onCatchAfterTryWith);
+		return tryWith(this._opts.retries, this._opts.timeout)
+			.then((value) => {
+				finalCleanUp();
+				return value;
+			})
+			.catch((error) => {
+				finalCleanUp();
+				throw error;
+			});
 	}
 
 	post(options) {
