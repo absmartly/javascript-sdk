@@ -511,6 +511,70 @@ describe("Client", () => {
 		advanceFakeTimers();
 	});
 
+	it("request() cleans up signal event listener on error", (done) => {
+		fetch
+			.mockRejectedValueOnce(new Error("error 1"));
+
+		const aborter = new AbortController();
+		jest.spyOn(aborter.signal, "addEventListener");
+		jest.spyOn(aborter.signal, "removeEventListener");
+
+
+		const options = Object.assign({}, clientOptions, { retries: 0, timeout: 5000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+				signal: aborter.signal,
+			})
+			.then(() => {
+				done("unexpected");
+			})
+			.catch((error) => {
+				expect(aborter.signal.addEventListener).toHaveBeenCalledTimes(1);
+				expect(aborter.signal.removeEventListener).toHaveBeenCalledTimes(1);
+
+				done();
+			});
+	});
+
+	it("request() cleans up signal event listener on success", (done) => {
+		fetch
+			.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const aborter = new AbortController();
+		jest.spyOn(aborter.signal, "addEventListener");
+		jest.spyOn(aborter.signal, "removeEventListener");
+
+
+		const options = Object.assign({}, clientOptions, { retries: 0, timeout: 5000 });
+		const client = new Client(options);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+				query: { a: 1 },
+				body: {},
+				signal: aborter.signal,
+			})
+			.then(() => {
+				expect(aborter.signal.addEventListener).toHaveBeenCalledTimes(1);
+				expect(aborter.signal.removeEventListener).toHaveBeenCalledTimes(1);
+
+				done();
+			})
+			.catch((error) => {
+				done(error);
+			});
+	});
+
 	it("request() stops retrying on bad request", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(400, "bad request", "bad request error text"));
 
