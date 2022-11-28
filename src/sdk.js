@@ -19,9 +19,16 @@ export default class SDK {
 			...Object.entries(options || {})
 				.filter(
 					(x) =>
-						["application", "agent", "apiKey", "endpoint", "environment", "retries", "timeout"].indexOf(
-							x[0]
-						) !== -1
+						[
+							"application",
+							"agent",
+							"apiKey",
+							"endpoint",
+							"keepalive",
+							"environment",
+							"retries",
+							"timeout",
+						].indexOf(x[0]) !== -1
 				)
 				.map((x) => ({ [x[0]]: x[1] }))
 		);

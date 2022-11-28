@@ -53,6 +53,7 @@ describe("Client", () => {
 		environment,
 		apiKey,
 		application,
+		keepalive: true,
 		timeout: 5000,
 		retries: 3,
 	};
@@ -175,6 +176,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 					}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -193,6 +195,7 @@ describe("Client", () => {
 			expect(fetch).toHaveBeenCalledTimes(1);
 			expect(fetch).toHaveBeenCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
 				method: "GET",
+				keepalive: true,
 				signal: expect.any(Object),
 			});
 
@@ -231,6 +234,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -279,6 +283,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -322,6 +327,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -372,6 +378,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -597,6 +604,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -634,6 +642,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -671,6 +680,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -706,6 +716,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: JSON.stringify({}),
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -739,6 +750,7 @@ describe("Client", () => {
 						"X-Application-Version": 1000000,
 					},
 					body: undefined,
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -771,6 +783,7 @@ describe("Client", () => {
 						"X-Application": "website",
 						"X-Application-Version": 0,
 					},
+					keepalive: true,
 					body: undefined,
 					signal: expect.any(Object),
 				});
@@ -797,6 +810,7 @@ describe("Client", () => {
 				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
 					method: "PUT",
 					body: undefined,
+					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -831,6 +845,7 @@ describe("Client", () => {
 						"X-Application": "test_app",
 						"X-Application-Version": 1000000,
 					},
+					keepalive: true,
 					body: JSON.stringify({
 						units,
 						publishedAt,
@@ -871,6 +886,7 @@ describe("Client", () => {
 						"X-Application": "test_app",
 						"X-Application-Version": 1000000,
 					},
+					keepalive: true,
 					body: JSON.stringify({
 						units,
 						publishedAt,
@@ -908,9 +924,48 @@ describe("Client", () => {
 						"X-Application": "test_app",
 						"X-Application-Version": 1000000,
 					},
+					keepalive: true,
 					body: JSON.stringify({
 						units,
 						publishedAt: publishedAt + 100,
+					}),
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
+	it("publish() should not have the keepalive flag if specified", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client({ ...clientOptions, keepalive: false });
+
+		client
+			.publish({
+				units,
+				publishedAt,
+				goals: [],
+				exposures: [],
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					keepalive: false,
+					body: JSON.stringify({
+						units,
+						publishedAt,
 					}),
 					signal: expect.any(Object),
 				});
