@@ -14,6 +14,7 @@ export default class Client {
 				environment: undefined,
 				retries: 5,
 				timeout: 3000,
+				keepalive: true,
 			},
 			opts
 		);
@@ -110,6 +111,7 @@ export default class Client {
 				method: options.method,
 				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
 				signal: controller.signal,
+				keepalive: this._opts.keepalive,
 			};
 
 			if (options.auth) {
