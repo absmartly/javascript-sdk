@@ -21,6 +21,12 @@ describe("Context", () => {
 
 	const publishUnits = Object.entries(contextParams.units).map((x) => ({ type: x[0], uid: hashUnit(x[1]) }));
 
+	const units = {
+		session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+		user_id: "123456789",
+		email: "bleh@absmartly.com",
+	};
+
 	const getContextResponse = {
 		experiments: [
 			{
@@ -553,6 +559,19 @@ describe("Context", () => {
 	});
 
 	describe("unit()", () => {
+		it("should set a unit", (done) => {
+			const context = new Context(sdk, contextOptions, { units: {} }, getContextResponse);
+
+			context.units(units);
+
+			for (const [key, value] of Object.entries(units)) {
+				expect(context.getUnit(key)).toEqual(value);
+			}
+
+			expect(context.getUnits()).toEqual(units);
+
+			done();
+		});
 		it("should throw on duplicate unit type set", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.isReady()).toEqual(true);
@@ -646,6 +665,24 @@ describe("Context", () => {
 	});
 
 	describe("attribute()", () => {
+		it("should set an attribute", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.attribute("attr1", "value1");
+			context.attributes({
+				attr2: "value2",
+				attr3: 15,
+			});
+
+			expect(context.getAttribute("attr1")).toEqual("value1");
+			expect(context.getAttributes()).toEqual({
+				attr1: "value1",
+				attr2: "value2",
+				attr3: 15,
+			});
+
+			done();
+		});
 		it("should be callable before ready()", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
@@ -654,6 +691,13 @@ describe("Context", () => {
 
 			context.attribute("attr1", "value1");
 			context.attributes({
+				attr2: "value2",
+				attr3: 3,
+			});
+
+			expect(context.getAttribute("attr1")).toEqual("value1");
+			expect(context.getAttributes()).toEqual({
+				attr1: "value1",
 				attr2: "value2",
 				attr3: 3,
 			});

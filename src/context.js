@@ -128,6 +128,10 @@ export default class Context {
 		});
 	}
 
+	getUnit(unitType) {
+		return this._units[unitType];
+	}
+
 	unit(unitType, uid) {
 		this._checkNotFinalized();
 
@@ -150,16 +154,32 @@ export default class Context {
 		this._units[unitType] = uid;
 	}
 
+	getUnits() {
+		return this._units;
+	}
+
 	units(units) {
 		for (const [unitType, uid] of Object.entries(units)) {
 			this.unit(unitType, uid);
 		}
 	}
 
+	getAttribute(attrName) {
+		return this._attrs.find((attr) => attr.name === attrName).value;
+	}
+
 	attribute(attrName, value) {
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
+	}
+
+	getAttributes() {
+		const attributes = {};
+		for (const [key, value] of this._attrs.map((a) => [a.name, a.value])) {
+			attributes[key] = value;
+		}
+		return attributes;
 	}
 
 	attributes(attrs) {
