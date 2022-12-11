@@ -189,6 +189,15 @@ describe("Evaluator", () => {
 			expect(evaluator.compare(null, "abc")).toBe(null);
 			expect(evaluator.compare(null, {})).toBe(null);
 			expect(evaluator.compare(null, [])).toBe(null);
+
+			expect(evaluator.compare(0, null)).toBe(null);
+			expect(evaluator.compare(1, null)).toBe(null);
+			expect(evaluator.compare(true, null)).toBe(null);
+			expect(evaluator.compare(false, null)).toBe(null);
+			expect(evaluator.compare("", null)).toBe(null);
+			expect(evaluator.compare("abc", null)).toBe(null);
+			expect(evaluator.compare({}, null)).toBe(null);
+			expect(evaluator.compare([], null)).toBe(null);
 		});
 
 		it("should return null if comparing non-object with object", () => {
