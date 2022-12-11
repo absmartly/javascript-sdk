@@ -211,7 +211,16 @@ export default class Context {
 	variableKeys() {
 		this._checkReady(true);
 
-		return Object.assign({}, ...Object.entries(this._indexVariables).map((x) => ({ [x[0]]: x[1].data.name })));
+		const variableExperiments = {};
+
+		for (const [key, values] of Object.entries(this._indexVariables)) {
+			for (const i in values) {
+				if (variableExperiments[key]) variableExperiments[key].push(values[i].data.name);
+				else variableExperiments[key] = [values[i].data.name];
+			}
+		}
+
+		return variableExperiments;
 	}
 
 	override(experimentName, variant) {
@@ -428,17 +437,19 @@ export default class Context {
 
 	_variableValue(key, defaultValue) {
 		if (key in this._indexVariables) {
-			const experimentName = this._indexVariables[key].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (!assignment.exposed) {
-					assignment.exposed = true;
+			for (const i in this._indexVariables[key]) {
+				const experimentName = this._indexVariables[key][i].data.name;
+				const assignment = this._assign(experimentName);
+				if (assignment.variables !== undefined) {
+					if (!assignment.exposed) {
+						assignment.exposed = true;
 
-					this._queueExposure(experimentName, assignment);
-				}
+						this._queueExposure(experimentName, assignment);
+					}
 
-				if (key in assignment.variables) {
-					return assignment.variables[key];
+					if (key in assignment.variables) {
+						return assignment.variables[key];
+					}
 				}
 			}
 		}
@@ -448,11 +459,13 @@ export default class Context {
 
 	_peekVariable(key, defaultValue) {
 		if (key in this._indexVariables) {
-			const experimentName = this._indexVariables[key].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (key in assignment.variables) {
-					return assignment.variables[key];
+			for (const i in this._indexVariables[key]) {
+				const experimentName = this._indexVariables[key][i].data.name;
+				const assignment = this._assign(experimentName);
+				if (assignment.variables !== undefined) {
+					if (key in assignment.variables) {
+						return assignment.variables[key];
+					}
 				}
 			}
 		}
@@ -633,6 +646,26 @@ export default class Context {
 		const index = {};
 		const indexVariables = {};
 
+		const binarySearch = (arr, value, comparator) => {
+			let low = 0;
+			let high = arr.length - 1;
+
+			while (low <= high) {
+				const mid = Math.floor((low + high) / 2);
+				const cmp = comparator(arr[mid], value);
+
+				if (cmp < 0) {
+					low = mid + 1;
+				} else if (cmp > 0) {
+					high = mid - 1;
+				} else {
+					return mid;
+				}
+			}
+
+			return -1;
+		};
+
 		for (const experiment of data.experiments || []) {
 			const variables = [];
 			const entry = {
@@ -648,7 +681,12 @@ export default class Context {
 				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
 
 				for (const key of Object.keys(parsed)) {
-					indexVariables[key] = entry;
+					const value = entry;
+					if (indexVariables[key]) {
+						const at = binarySearch(indexVariables[key], value, (a, b) => a.data.id - b.data.id);
+
+						if (at < 0) indexVariables[key].splice(-(at + 1), 0, value);
+					} else indexVariables[key] = [value];
 				}
 
 				variables[i] = parsed;
