@@ -1,6 +1,7 @@
 import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
+import { insertUniqueSorted } from "./algorithm";
 
 export default class Context {
 	constructor(sdk, options, params, promise) {
@@ -128,6 +129,10 @@ export default class Context {
 		});
 	}
 
+	getUnit(unitType) {
+		return this._units[unitType];
+	}
+
 	unit(unitType, uid) {
 		this._checkNotFinalized();
 
@@ -150,16 +155,38 @@ export default class Context {
 		this._units[unitType] = uid;
 	}
 
+	getUnits() {
+		return this._units;
+	}
+
 	units(units) {
 		for (const [unitType, uid] of Object.entries(units)) {
 			this.unit(unitType, uid);
 		}
 	}
 
+	getAttribute(attrName) {
+		let result;
+
+		for (const attr of this._attrs) {
+			if (attr.name === attrName) result = attr.value;
+		}
+
+		return result;
+	}
+
 	attribute(attrName, value) {
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
+	}
+
+	getAttributes() {
+		const attributes = {};
+		for (const [key, value] of this._attrs.map((a) => [a.name, a.value])) {
+			attributes[key] = value;
+		}
+		return attributes;
 	}
 
 	attributes(attrs) {
@@ -211,7 +238,16 @@ export default class Context {
 	variableKeys() {
 		this._checkReady(true);
 
-		return Object.assign({}, ...Object.entries(this._indexVariables).map((x) => ({ [x[0]]: x[1].data.name })));
+		const variableExperiments = {};
+
+		for (const [key, values] of Object.entries(this._indexVariables)) {
+			for (const i in values) {
+				if (variableExperiments[key]) variableExperiments[key].push(values[i].data.name);
+				else variableExperiments[key] = [values[i].data.name];
+			}
+		}
+
+		return variableExperiments;
 	}
 
 	override(experimentName, variant) {
@@ -427,8 +463,8 @@ export default class Context {
 	}
 
 	_variableValue(key, defaultValue) {
-		if (key in this._indexVariables) {
-			const experimentName = this._indexVariables[key].data.name;
+		for (const i in this._indexVariables[key]) {
+			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
 				if (!assignment.exposed) {
@@ -447,8 +483,8 @@ export default class Context {
 	}
 
 	_peekVariable(key, defaultValue) {
-		if (key in this._indexVariables) {
-			const experimentName = this._indexVariables[key].data.name;
+		for (const i in this._indexVariables[key]) {
+			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
 				if (key in assignment.variables) {
@@ -648,7 +684,10 @@ export default class Context {
 				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
 
 				for (const key of Object.keys(parsed)) {
-					indexVariables[key] = entry;
+					const value = entry;
+					if (indexVariables[key]) {
+						insertUniqueSorted(indexVariables[key], value, (a, b) => a.data.id < b.data.id);
+					} else indexVariables[key] = [value];
 				}
 
 				variables[i] = parsed;

@@ -21,6 +21,12 @@ describe("Context", () => {
 
 	const publishUnits = Object.entries(contextParams.units).map((x) => ({ type: x[0], uid: hashUnit(x[1]) }));
 
+	const units = {
+		session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec",
+		user_id: "123456789",
+		email: "bleh@absmartly.com",
+	};
+
 	const getContextResponse = {
 		experiments: [
 			{
@@ -227,6 +233,92 @@ describe("Context", () => {
 		exp_test_new: 1,
 	};
 
+	const lowestIdConflictingKeyContextResponse = {
+		...getContextResponse,
+		experiments: getContextResponse.experiments.map((e) => {
+			if (e.name === "exp_test_ab") {
+				return {
+					...e,
+					id: 99,
+					variants: e.variants.map((v, i) => {
+						if (i === expectedVariants[e.name]) {
+							return {
+								...v,
+								config: JSON.stringify({
+									icon: "arrow",
+								}),
+							};
+						}
+						return v;
+					}),
+				};
+			}
+			if (e.name === "exp_test_abc") {
+				return {
+					...e,
+					id: 1,
+					variants: e.variants.map((v, i) => {
+						if (i === expectedVariants[e.name]) {
+							return {
+								...v,
+								config: JSON.stringify({ icon: "circle" }),
+							};
+						}
+						return v;
+					}),
+				};
+			}
+			return e;
+		}),
+	};
+
+	const disjointedContextResponse = {
+		...getContextResponse,
+		experiments: getContextResponse.experiments.map((exp) => {
+			if (exp.name === "exp_test_ab") {
+				return {
+					...exp,
+					audienceStrict: true,
+					audience: JSON.stringify({
+						filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
+					}),
+					variants: exp.variants.map((v, i) => {
+						if (i === expectedVariants[exp.name]) {
+							return {
+								...v,
+								config: JSON.stringify({
+									icon: "arrow",
+								}),
+							};
+						}
+						return v;
+					}),
+				};
+			}
+			if (exp.name === "exp_test_abc") {
+				return {
+					...exp,
+					audienceStrict: true,
+					audience: JSON.stringify({
+						filter: [{ lt: [{ var: "age" }, { value: 20 }] }],
+					}),
+					variants: exp.variants.map((variant, i) => {
+						if (i === expectedVariants[exp.name]) {
+							return {
+								...variant,
+								config: JSON.stringify({
+									icon: "circle",
+								}),
+							};
+						}
+						return variant;
+					}),
+				};
+			}
+			return exp;
+		}),
+	};
+
 	const expectedVariables = {
 		"banner.border": 1,
 		"banner.size": "large",
@@ -237,13 +329,13 @@ describe("Context", () => {
 	};
 
 	const variableExperiments = {
-		"banner.border": "exp_test_ab",
-		"banner.size": "exp_test_ab",
-		"button.color": "exp_test_abc",
-		"card.width": "exp_test_not_eligible",
-		"submit.color": "exp_test_fullon",
-		"submit.shape": "exp_test_fullon",
-		"show-modal": "exp_test_new",
+		"banner.border": ["exp_test_ab"],
+		"banner.size": ["exp_test_ab"],
+		"button.color": ["exp_test_abc"],
+		"card.width": ["exp_test_not_eligible"],
+		"submit.color": ["exp_test_fullon"],
+		"submit.shape": ["exp_test_fullon"],
+		"show-modal": ["exp_test_new"],
 	};
 
 	const sdk = new SDK();
@@ -467,6 +559,19 @@ describe("Context", () => {
 	});
 
 	describe("unit()", () => {
+		it("should set a unit", (done) => {
+			const context = new Context(sdk, contextOptions, { units: {} }, getContextResponse);
+
+			context.units(units);
+
+			for (const [key, value] of Object.entries(units)) {
+				expect(context.getUnit(key)).toEqual(value);
+			}
+
+			expect(context.getUnits()).toEqual(units);
+
+			done();
+		});
 		it("should throw on duplicate unit type set", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.isReady()).toEqual(true);
@@ -559,7 +664,39 @@ describe("Context", () => {
 		});
 	});
 
+	describe("getAttribute()", () => {
+		it("should get the last set attribute", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.attribute("attr1", "value1");
+			context.attribute("attr1", "value2");
+
+			expect(context.getAttribute("attr1")).toEqual("value2");
+
+			done();
+		});
+	});
+
 	describe("attribute()", () => {
+		it("should set an attribute", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.attribute("attr1", "value1");
+			context.attributes({
+				attr2: "value2",
+				attr3: 15,
+			});
+
+			expect(context.getAttribute("attr1")).toEqual("value1");
+			expect(context.getAttributes()).toEqual({
+				attr1: "value1",
+				attr2: "value2",
+				attr3: 15,
+			});
+
+			done();
+		});
+
 		it("should be callable before ready()", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
@@ -568,6 +705,13 @@ describe("Context", () => {
 
 			context.attribute("attr1", "value1");
 			context.attributes({
+				attr2: "value2",
+				attr3: 3,
+			});
+
+			expect(context.getAttribute("attr1")).toEqual("value1");
+			expect(context.getAttributes()).toEqual({
+				attr1: "value1",
 				attr2: "value2",
 				attr3: 3,
 			});
@@ -1462,13 +1606,32 @@ describe("Context", () => {
 	});
 
 	describe("variableValue()", () => {
+		it("conflicting key disjoint audiences", (done) => {
+			const context1 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
+			const context2 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
+
+			expect(context1.pending()).toEqual(0);
+			expect(context2.pending()).toEqual(0);
+
+			expect(expectedVariants["exp_test_ab"]).not.toEqual(0);
+			expect(expectedVariants["exp_test_abc"]).not.toEqual(0);
+
+			context1.attribute("age", 20);
+			expect(context1.variableValue("icon", "square")).toEqual("arrow");
+
+			context2.attribute("age", 19);
+			expect(context2.variableValue("icon", "square")).toEqual("circle");
+
+			done();
+		});
 		it("should queue exposures", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			const experiments = context.experiments();
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				const actual = context.variableValue(key, 17);
 				const eligible = experimentName !== "exp_test_not_eligible";
 
@@ -1559,7 +1722,8 @@ describe("Context", () => {
 
 			const experiments = context.experiments();
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				const actual = context.peekVariableValue(key, 17);
 				const eligible = experimentName !== "exp_test_not_eligible";
 
@@ -1572,7 +1736,8 @@ describe("Context", () => {
 
 			expect(context.pending()).toEqual(0);
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				const actual = context.variableValue(key, 17);
 				const eligible = experimentName !== "exp_test_not_eligible";
 
@@ -1594,7 +1759,8 @@ describe("Context", () => {
 
 			const experiments = context.experiments();
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				const actual = context.variableValue(key, 17);
 				const eligible = experimentName !== "exp_test_not_eligible";
 
@@ -1607,7 +1773,8 @@ describe("Context", () => {
 
 			expect(context.pending()).toEqual(getContextResponse.experiments.length);
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				const actual = context.variableValue(key, 17);
 				const eligible = experimentName !== "exp_test_not_eligible";
 
@@ -1628,7 +1795,8 @@ describe("Context", () => {
 			const experiments = context.experiments();
 			const exposed = {};
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				SDK.defaultEventLogger.mockClear();
 				context.variableValue(key, 17);
 
@@ -1657,7 +1825,8 @@ describe("Context", () => {
 			}
 
 			// check it calls logger only once
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				SDK.defaultEventLogger.mockClear();
 				context.variableValue(key, 17);
 				if (experiments.indexOf(experimentName) !== -1) {
@@ -1825,13 +1994,49 @@ describe("Context", () => {
 	});
 
 	describe("peekVariableValue()", () => {
+		it("conflicting key disjoint audiences", (done) => {
+			const context1 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
+			const context2 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
+
+			expect(context1.pending()).toEqual(0);
+			expect(context2.pending()).toEqual(0);
+
+			expect(expectedVariants["exp_test_ab"]).not.toEqual(0);
+			expect(expectedVariants["exp_test_abc"]).not.toEqual(0);
+
+			context1.attribute("age", 20);
+			expect(context1.peekVariableValue("icon", "square")).toEqual("arrow");
+
+			context2.attribute("age", 19);
+			expect(context2.peekVariableValue("icon", "square")).toEqual("circle");
+
+			expect(context1.pending()).toEqual(0);
+			expect(context2.pending()).toEqual(0);
+
+			done();
+		});
+
+		it("should pick lowest experiment id on conflicting key", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, lowestIdConflictingKeyContextResponse);
+
+			expect(context.pending()).toEqual(0);
+
+			expect(expectedVariants["exp_test_ab"]).not.toEqual(0);
+			expect(expectedVariants["exp_test_abc"]).not.toEqual(0);
+
+			expect(context.peekVariableValue("icon", "square")).toEqual("circle");
+
+			done();
+		});
+
 		it("should not queue exposures", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			const experiments = context.experiments();
 
-			for (const [key, experimentName] of Object.entries(variableExperiments)) {
+			for (const [key, experimentNames] of Object.entries(variableExperiments)) {
+				const experimentName = experimentNames[0];
 				const actual = context.peekVariableValue(key, 17);
 				const eligible = experimentName !== "exp_test_not_eligible";
 
