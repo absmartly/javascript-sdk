@@ -166,8 +166,13 @@ export default class Context {
 	}
 
 	getAttribute(attrName) {
-		const reversedAttrs = [...this._attrs].reverse();
-		return reversedAttrs.find((attr) => attr.name === attrName).value;
+		let result;
+
+		for (const attr of this._attrs) {
+			if (attr.name === attrName) result = attr.value;
+		}
+
+		return result;
 	}
 
 	attribute(attrName, value) {
@@ -681,7 +686,7 @@ export default class Context {
 				for (const key of Object.keys(parsed)) {
 					const value = entry;
 					if (indexVariables[key]) {
-						insertUniqueSorted(indexVariables[key], value, (a, b) => a.data.id - b.data.id);
+						insertUniqueSorted(indexVariables[key], value, (a, b) => a.data.id < b.data.id);
 					} else indexVariables[key] = [value];
 				}
 
