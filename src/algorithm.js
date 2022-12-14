@@ -3,7 +3,7 @@ export const insertUniqueSorted = (arr, value, isSorted) => {
 	let right = arr.length - 1;
 
 	while (left <= right) {
-		const mid = left + (right - left) / 2;
+		const mid = Math.floor(left + (right - left) / 2);
 
 		if (isSorted(arr[mid], value)) {
 			left = mid + 1;
@@ -14,5 +14,5 @@ export const insertUniqueSorted = (arr, value, isSorted) => {
 		}
 	}
 
-	arr.splice(left - 1, 0, value);
+	arr.splice(left, 0, value);
 };
