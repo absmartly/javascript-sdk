@@ -664,6 +664,19 @@ describe("Context", () => {
 		});
 	});
 
+	describe("getAttribute()", () => {
+		it("should get the last set attribute", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.attribute("attr1", "value1");
+			context.attribute("attr1", "value2");
+
+			expect(context.getAttribute("attr1")).toEqual("value2");
+
+			done();
+		});
+	});
+
 	describe("attribute()", () => {
 		it("should set an attribute", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
@@ -683,6 +696,7 @@ describe("Context", () => {
 
 			done();
 		});
+
 		it("should be callable before ready()", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);

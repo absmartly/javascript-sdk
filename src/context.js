@@ -1,6 +1,7 @@
 import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
+import { insertUniqueSorted } from "./algorithm";
 
 export default class Context {
 	constructor(sdk, options, params, promise) {
@@ -165,7 +166,8 @@ export default class Context {
 	}
 
 	getAttribute(attrName) {
-		return this._attrs.find((attr) => attr.name === attrName).value;
+		const reversedAttrs = [...this._attrs].reverse();
+		return reversedAttrs.find((attr) => attr.name === attrName).value;
 	}
 
 	attribute(attrName, value) {
@@ -456,20 +458,18 @@ export default class Context {
 	}
 
 	_variableValue(key, defaultValue) {
-		if (key in this._indexVariables) {
-			for (const i in this._indexVariables[key]) {
-				const experimentName = this._indexVariables[key][i].data.name;
-				const assignment = this._assign(experimentName);
-				if (assignment.variables !== undefined) {
-					if (!assignment.exposed) {
-						assignment.exposed = true;
+		for (const i in this._indexVariables[key]) {
+			const experimentName = this._indexVariables[key][i].data.name;
+			const assignment = this._assign(experimentName);
+			if (assignment.variables !== undefined) {
+				if (!assignment.exposed) {
+					assignment.exposed = true;
 
-						this._queueExposure(experimentName, assignment);
-					}
+					this._queueExposure(experimentName, assignment);
+				}
 
-					if (key in assignment.variables) {
-						return assignment.variables[key];
-					}
+				if (key in assignment.variables) {
+					return assignment.variables[key];
 				}
 			}
 		}
@@ -478,14 +478,12 @@ export default class Context {
 	}
 
 	_peekVariable(key, defaultValue) {
-		if (key in this._indexVariables) {
-			for (const i in this._indexVariables[key]) {
-				const experimentName = this._indexVariables[key][i].data.name;
-				const assignment = this._assign(experimentName);
-				if (assignment.variables !== undefined) {
-					if (key in assignment.variables) {
-						return assignment.variables[key];
-					}
+		for (const i in this._indexVariables[key]) {
+			const experimentName = this._indexVariables[key][i].data.name;
+			const assignment = this._assign(experimentName);
+			if (assignment.variables !== undefined) {
+				if (key in assignment.variables) {
+					return assignment.variables[key];
 				}
 			}
 		}
@@ -666,26 +664,6 @@ export default class Context {
 		const index = {};
 		const indexVariables = {};
 
-		const binarySearch = (arr, value, comparator) => {
-			let low = 0;
-			let high = arr.length - 1;
-
-			while (low <= high) {
-				const mid = Math.floor((low + high) / 2);
-				const cmp = comparator(arr[mid], value);
-
-				if (cmp < 0) {
-					low = mid + 1;
-				} else if (cmp > 0) {
-					high = mid - 1;
-				} else {
-					return mid;
-				}
-			}
-
-			return -1;
-		};
-
 		for (const experiment of data.experiments || []) {
 			const variables = [];
 			const entry = {
@@ -703,9 +681,7 @@ export default class Context {
 				for (const key of Object.keys(parsed)) {
 					const value = entry;
 					if (indexVariables[key]) {
-						const at = binarySearch(indexVariables[key], value, (a, b) => a.data.id - b.data.id);
-
-						if (at < 0) indexVariables[key].splice(-(at + 1), 0, value);
+						insertUniqueSorted(indexVariables[key], value, (a, b) => a.data.id - b.data.id);
 					} else indexVariables[key] = [value];
 				}
 
