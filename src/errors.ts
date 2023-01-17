@@ -19,8 +19,8 @@ export class RetryError extends Error {
 }
 
 export class AbortError extends Error {
-	constructor() {
-		super("The user aborted a request.");
+	constructor(message?: string) {
+		super(message);
 		this.name = "AbortError";
 	}
 }
