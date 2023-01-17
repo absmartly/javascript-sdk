@@ -3,7 +3,7 @@ module.exports = function (api) {
 
 	const target = process.env.TARGET || "cjs";
 
-	const presets = [];
+	const presets = ["@babel/preset-typescript"];
 	const plugins = [
 		"@babel/plugin-syntax-dynamic-import",
 		"@babel/plugin-syntax-import-meta",
