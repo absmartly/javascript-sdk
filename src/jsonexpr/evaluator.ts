@@ -1,12 +1,15 @@
 import { isEqualsDeep, isObject } from "../utils";
 
 export class Evaluator {
-	constructor(operators, vars) {
+	private readonly operators: Record<string, any>;
+	private readonly vars: Record<string, any>;
+
+	constructor(operators: Record<string, any>, vars: Record<string, any>) {
 		this.operators = operators;
 		this.vars = vars;
 	}
 
-	evaluate(expr) {
+	evaluate(expr: Record<string, unknown> | any[]) {
 		if (Array.isArray(expr)) {
 			return this.operators["and"].evaluate(this, expr);
 		} else if (isObject(expr)) {
@@ -22,7 +25,7 @@ export class Evaluator {
 		return null;
 	}
 
-	booleanConvert(x) {
+	booleanConvert(x: boolean | number | string) {
 		const type = typeof x;
 		switch (type) {
 			case "boolean":
@@ -36,15 +39,15 @@ export class Evaluator {
 		}
 	}
 
-	numberConvert(x) {
+	numberConvert(x: number | boolean | string) {
 		const type = typeof x;
 		switch (type) {
 			case "number":
-				return parseFloat(x);
+				return parseFloat(x.toString());
 			case "boolean":
 				return x ? 1 : 0;
 			case "string": {
-				const y = parseFloat(x);
+				const y = parseFloat(x.toString());
 				return Number.isFinite(y) ? y : null;
 			}
 			default:
@@ -52,7 +55,7 @@ export class Evaluator {
 		}
 	}
 
-	stringConvert(x) {
+	stringConvert(x: string | boolean | number) {
 		const type = typeof x;
 		switch (type) {
 			case "string":
@@ -60,16 +63,16 @@ export class Evaluator {
 			case "boolean":
 				return x.toString();
 			case "number":
-				return x.toFixed(15).replace(/\.?0{0,15}$/, "");
+				return (x as number).toFixed(15).replace(/\.?0{0,15}$/, "");
 			default:
 				return null;
 		}
 	}
 
-	extractVar(path) {
+	extractVar(path: string) {
 		const frags = path.split("/");
 
-		let target = this.vars ?? {};
+		let target: Record<string, any> = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
 
@@ -85,7 +88,7 @@ export class Evaluator {
 		return target;
 	}
 
-	compare(lhs, rhs) {
+	compare(lhs: any, rhs: any) {
 		if (lhs === null) {
 			return rhs === null ? 0 : null;
 		} else if (rhs === null) {

@@ -50,10 +50,10 @@ function arrayEqualsDeep(a: any, b: any, astack: any[] = [], bstack: any[] = [])
 	return true;
 }
 
-function objectEqualsDeep(a: any, b: any, keys: string[], astack: any[], bstack: any[]) {
+function objectEqualsDeep(a: any, b: any, keys: string[], astack?: any[], bstack?: any[]) {
 	let len = astack?.length ?? 0;
 	while (len--) {
-		if (astack[len] === a) return bstack[len] === b;
+		if (astack && astack[len] === a) return bstack && bstack[len] === b;
 	}
 
 	astack = astack ?? [];
@@ -78,7 +78,7 @@ function objectEqualsDeep(a: any, b: any, keys: string[], astack: any[], bstack:
 	return true;
 }
 
-export function isEqualsDeep(a: any, b: any, astack: any[], bstack: any[]) {
+export function isEqualsDeep(a: any, b: any, astack?: any[], bstack?: any[]) {
 	if (a === b) return true;
 	if (typeof a !== typeof b) return false;
 
