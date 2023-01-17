@@ -1,4 +1,4 @@
-export const insertUniqueSorted = (arr, value, isSorted) => {
+export const insertUniqueSorted = (arr: any[], value: any, isSorted: (a: any, b: any) => boolean) => {
 	let left = 0;
 	let right = arr.length - 1;
 
