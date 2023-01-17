@@ -30,6 +30,7 @@ export class AbortSignal {
 	}
 
 	dispatchEvent(evt: { type: string }) {
+		// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 		// @ts-ignore
 		this[`on${evt.type}`] && this[`on${evt.type}`](evt);
 		const listeners = this._events[evt.type];

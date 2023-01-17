@@ -17,7 +17,6 @@ module.exports = {
 	rules: {
 		"@typescript-eslint/no-explicit-any": "off",
 		"@typescript-eslint/no-empty-function": "off",
-		"@typescript-eslint/ban-ts-comment": "off",
 		"no-debugger": process.env.NODE_ENV === "production" ? "error" : "off",
 		"no-template-curly-in-string": "error",
 		"no-promise-executor-return": "error",
