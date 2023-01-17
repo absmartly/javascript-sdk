@@ -2,7 +2,7 @@ import { isObject } from "./utils";
 import { JsonExpr } from "./jsonexpr/jsonexpr";
 
 export class AudienceMatcher {
-	evaluate(audienceString, vars) {
+	evaluate(audienceString: string, vars: Record<string, unknown>) {
 		try {
 			const audience = JSON.parse(audienceString);
 			if (audience && audience.filter) {
