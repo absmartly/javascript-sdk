@@ -15,7 +15,7 @@ export default class Context {
 	private readonly _opts: Record<string, any>;
 	private readonly _attrs: { name: string; value: any; setAt: number }[];
 	private readonly _cassignments: Record<string, any>;
-	private readonly _units: Record<string, unknown>;
+	private readonly _units: Record<string, any>;
 	private readonly _assigners: Record<string, any>;
 	private readonly _audienceMatcher: AudienceMatcher;
 	private _pending: number;
@@ -326,7 +326,7 @@ export default class Context {
 	}
 
 	_assign(experimentName: string) {
-		const experimentMatches = (experiment: Record<string, unknown>, assignment: Record<string, any>) => {
+		const experimentMatches = (experiment: Record<string, any>, assignment: Record<string, any>) => {
 			return (
 				experiment.id === assignment.id &&
 				experiment.unitType === assignment.unitType &&
