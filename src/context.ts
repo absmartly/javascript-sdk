@@ -2,9 +2,44 @@ import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
+import SDK from "./sdk";
+import { ContextPublisher } from "./publisher";
+import { ContextDataProvider } from "./provider";
+import { EventLogger } from "./types";
 
 export default class Context {
-	constructor(sdk, options, params, promise) {
+	private readonly _sdk: SDK;
+	private readonly _publisher: ContextPublisher;
+	private readonly _dataProvider: ContextDataProvider;
+	private readonly _eventLogger: EventLogger;
+	private readonly _opts: Record<string, any>;
+	private readonly _attrs: { name: string; value: any; setAt: number }[];
+	private readonly _cassignments: Record<string, any>;
+	private readonly _units: Record<string, unknown>;
+	private readonly _assigners: Record<string, any>;
+	private readonly _audienceMatcher: AudienceMatcher;
+	private _pending: number;
+	private _publishTimeout?: ReturnType<typeof setTimeout>;
+	private _indexVariables: Record<string, any>;
+	private _index: Record<string, any>;
+	private _failed: boolean;
+	private _data: Record<string, any>;
+	private _finalized: boolean;
+	private _finalizing: boolean | Promise<void> | null;
+	private _goals: Record<string, unknown>[];
+	private _exposures: Record<string, unknown>[];
+	private _overrides: Record<string, any>;
+	private _assignments: Record<string, any>;
+	private _refreshInterval?: ReturnType<typeof setInterval>;
+	private _hashes: Record<string, string | null>;
+	private _promise?: Promise<any>;
+
+	constructor(
+		sdk: SDK,
+		options: Record<string, any>,
+		params: Record<string, any>,
+		promise: Promise<any> | Record<string, any>
+	) {
 		this._sdk = sdk;
 		this._publisher = options.publisher || this._sdk.getContextPublisher();
 		this._dataProvider = options.dataProvider || this._sdk.getContextDataProvider();
@@ -28,7 +63,7 @@ export default class Context {
 
 		if (isPromise(promise)) {
 			this._promise = promise
-				.then((data) => {
+				.then((data: Record<string, unknown>) => {
 					this._init(data);
 					delete this._promise;
 
@@ -38,7 +73,7 @@ export default class Context {
 						this._setTimeout();
 					}
 				})
-				.catch((error) => {
+				.catch((error: Error) => {
 					this._init({});
 
 					this._failed = true;
@@ -75,7 +110,7 @@ export default class Context {
 		}
 
 		return new Promise((resolve) => {
-			this._promise.then(() => resolve(true)).catch((e) => resolve(e));
+			this._promise?.then(() => resolve(true)).catch((e) => resolve(e));
 		});
 	}
 
@@ -101,11 +136,11 @@ export default class Context {
 		return this._dataProvider;
 	}
 
-	publish(requestOptions) {
+	publish(requestOptions: Record<string, unknown>) {
 		this._checkReady(true);
 
-		return new Promise((resolve, reject) => {
-			this._flush((error) => {
+		return new Promise<void>((resolve, reject) => {
+			this._flush((error?: Error) => {
 				if (error) {
 					reject(error);
 				} else {
@@ -115,11 +150,11 @@ export default class Context {
 		});
 	}
 
-	refresh(requestOptions) {
+	refresh(requestOptions: Record<string, unknown>) {
 		this._checkReady(true);
 
-		return new Promise((resolve, reject) => {
-			this._refresh((error) => {
+		return new Promise<void>((resolve, reject) => {
+			this._refresh((error?: Error) => {
 				if (error) {
 					reject(error);
 				} else {
@@ -129,11 +164,11 @@ export default class Context {
 		});
 	}
 
-	getUnit(unitType) {
+	getUnit(unitType: string) {
 		return this._units[unitType];
 	}
 
-	unit(unitType, uid) {
+	unit(unitType: string, uid: string | number) {
 		this._checkNotFinalized();
 
 		switch (typeof uid) {
@@ -159,13 +194,13 @@ export default class Context {
 		return this._units;
 	}
 
-	units(units) {
+	units(units: Record<string, number | string>) {
 		for (const [unitType, uid] of Object.entries(units)) {
 			this.unit(unitType, uid);
 		}
 	}
 
-	getAttribute(attrName) {
+	getAttribute(attrName: string) {
 		let result;
 
 		for (const attr of this._attrs) {
@@ -175,61 +210,61 @@ export default class Context {
 		return result;
 	}
 
-	attribute(attrName, value) {
+	attribute(attrName: string, value: any) {
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
 	}
 
 	getAttributes() {
-		const attributes = {};
+		const attributes: Record<string, unknown> = {};
 		for (const [key, value] of this._attrs.map((a) => [a.name, a.value])) {
 			attributes[key] = value;
 		}
 		return attributes;
 	}
 
-	attributes(attrs) {
+	attributes(attrs: Record<string, unknown>) {
 		for (const [attrName, value] of Object.entries(attrs)) {
 			this.attribute(attrName, value);
 		}
 	}
 
-	peek(experimentName) {
+	peek(experimentName: string) {
 		this._checkReady(true);
 
 		return this._peek(experimentName).variant;
 	}
 
-	treatment(experimentName) {
+	treatment(experimentName: string) {
 		this._checkReady(true);
 
 		return this._treatment(experimentName).variant;
 	}
 
-	track(goalName, properties) {
+	track(goalName: string, properties: Record<string, unknown>) {
 		this._checkNotFinalized();
 
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions) {
+	finalize(requestOptions: Record<string, any>) {
 		return this._finalize(requestOptions);
 	}
 
 	experiments() {
 		this._checkReady();
 
-		return this._data.experiments.map((x) => x.name);
+		return this._data.experiments.map((x: { name: string }) => x.name);
 	}
 
-	variableValue(key, defaultValue) {
+	variableValue(key: string, defaultValue: any) {
 		this._checkReady(true);
 
 		return this._variableValue(key, defaultValue);
 	}
 
-	peekVariableValue(key, defaultValue) {
+	peekVariableValue(key: string, defaultValue: any) {
 		this._checkReady(true);
 
 		return this._peekVariable(key, defaultValue);
@@ -238,7 +273,7 @@ export default class Context {
 	variableKeys() {
 		this._checkReady(true);
 
-		const variableExperiments = {};
+		const variableExperiments: Record<string, unknown[]> = {};
 
 		for (const [key, values] of Object.entries(this._indexVariables)) {
 			for (const i in values) {
@@ -250,23 +285,23 @@ export default class Context {
 		return variableExperiments;
 	}
 
-	override(experimentName, variant) {
+	override(experimentName: string, variant: number) {
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
-	overrides(experimentVariants) {
+	overrides(experimentVariants: Record<string, number>) {
 		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
 			this.override(experimentName, variant);
 		}
 	}
 
-	customAssignment(experimentName, variant) {
+	customAssignment(experimentName: string, variant: number) {
 		this._checkNotFinalized();
 
 		this._cassignments[experimentName] = variant;
 	}
 
-	customAssignments(experimentVariants) {
+	customAssignments(experimentVariants: Record<string, number>) {
 		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
 			this.customAssignment(experimentName, variant);
 		}
@@ -280,7 +315,7 @@ export default class Context {
 		}
 	}
 
-	_checkReady(expectNotFinalized) {
+	_checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
 			throw new Error("ABSmartly Context is not yet ready.");
 		}
@@ -290,8 +325,8 @@ export default class Context {
 		}
 	}
 
-	_assign(experimentName) {
-		const experimentMatches = (experiment, assignment) => {
+	_assign(experimentName: string) {
+		const experimentMatches = (experiment: Record<string, unknown>, assignment: Record<string, any>) => {
 			return (
 				experiment.id === assignment.id &&
 				experiment.unitType === assignment.unitType &&
@@ -325,7 +360,7 @@ export default class Context {
 			}
 		}
 
-		const assignment = {
+		const assignment: Record<string, any> = {
 			id: 0,
 			iteration: 0,
 			fullOnVariant: 0,
@@ -355,7 +390,7 @@ export default class Context {
 				const unitType = experiment.data.unitType;
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const attrs = {};
+					const attrs: Record<string, unknown> = {};
 					for (const attr of this._attrs) {
 						attrs[attr.name] = attr.value;
 					}
@@ -424,11 +459,11 @@ export default class Context {
 		return assignment;
 	}
 
-	_peek(experimentName) {
+	_peek(experimentName: string) {
 		return this._assign(experimentName);
 	}
 
-	_treatment(experimentName) {
+	_treatment(experimentName: string) {
 		const assignment = this._assign(experimentName);
 
 		if (!assignment.exposed) {
@@ -440,7 +475,7 @@ export default class Context {
 		return assignment;
 	}
 
-	_queueExposure(experimentName, assignment) {
+	_queueExposure(experimentName: string, assignment: Record<string, any>) {
 		const exposureEvent = {
 			id: assignment.id,
 			name: experimentName,
@@ -462,7 +497,7 @@ export default class Context {
 		this._setTimeout();
 	}
 
-	_variableValue(key, defaultValue) {
+	_variableValue(key: string, defaultValue: unknown) {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -482,7 +517,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_peekVariable(key, defaultValue) {
+	_peekVariable(key: string, defaultValue: unknown) {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -496,7 +531,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_validateGoal(goalName, properties) {
+	_validateGoal(goalName: string, properties: Record<string, unknown>) {
 		if (properties !== null && properties !== undefined) {
 			if (!isObject(properties)) {
 				throw new Error(`Goal '${goalName}' properties must be of type object.`);
@@ -508,7 +543,7 @@ export default class Context {
 		return null;
 	}
 
-	_track(goalName, properties) {
+	_track(goalName: string, properties: Record<string, unknown>) {
 		const props = this._validateGoal(goalName, properties);
 		const goalEvent = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
@@ -529,7 +564,7 @@ export default class Context {
 		}
 	}
 
-	_flush(callback, requestOptions) {
+	_flush(callback?: (error?: Error) => void, requestOptions?: Record<string, unknown>) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
@@ -541,7 +576,7 @@ export default class Context {
 			}
 		} else {
 			if (!this._failed) {
-				const request = {
+				const request: Record<string, unknown> = {
 					publishedAt: Date.now(),
 					units: Object.entries(this._units).map((entry) => ({
 						type: entry[0],
@@ -591,7 +626,7 @@ export default class Context {
 							callback();
 						}
 					})
-					.catch((e) => {
+					.catch((e: Error) => {
 						this._logError(e);
 
 						if (typeof callback === "function") {
@@ -610,11 +645,11 @@ export default class Context {
 		}
 	}
 
-	_refresh(callback, requestOptions) {
+	_refresh(callback?: (error?: Error) => void, requestOptions?: Record<string, unknown>) {
 		if (!this._failed) {
 			this._dataProvider
 				.getContextData(this._sdk, requestOptions)
-				.then((data) => {
+				.then((data: Record<string, unknown>) => {
 					this._init(data, this._assignments);
 
 					this._logEvent("refresh", data);
@@ -623,7 +658,7 @@ export default class Context {
 						callback();
 					}
 				})
-				.catch((e) => {
+				.catch((e: Error) => {
 					this._logError(e);
 
 					if (typeof callback === "function") {
@@ -637,19 +672,19 @@ export default class Context {
 		}
 	}
 
-	_logEvent(eventName, data) {
+	_logEvent(eventName: string, data?: any) {
 		if (this._eventLogger) {
 			this._eventLogger(this, eventName, data);
 		}
 	}
 
-	_logError(error) {
+	_logError(error: Error) {
 		if (this._eventLogger) {
 			this._eventLogger(this, "error", error);
 		}
 	}
 
-	_unitHash(unitType) {
+	_unitHash(unitType: string) {
 		if (!this._hashes) {
 			this._hashes = {};
 		}
@@ -663,14 +698,14 @@ export default class Context {
 		return this._hashes[unitType];
 	}
 
-	_init(data, assignments = {}) {
+	_init(data: Record<string, any>, assignments = {}) {
 		this._data = data;
 
-		const index = {};
-		const indexVariables = {};
+		const index: Record<string, any> = {};
+		const indexVariables: Record<string, any> = {};
 
 		for (const experiment of data.experiments || []) {
-			const variables = [];
+			const variables: any[] = [];
 			const entry = {
 				data: experiment,
 				variables,
@@ -686,7 +721,11 @@ export default class Context {
 				for (const key of Object.keys(parsed)) {
 					const value = entry;
 					if (indexVariables[key]) {
-						insertUniqueSorted(indexVariables[key], value, (a, b) => a.data.id < b.data.id);
+						insertUniqueSorted(
+							indexVariables[key],
+							value,
+							(a: Record<string, any>, b: Record<string, any>) => a.data.id < b.data.id
+						);
 					} else indexVariables[key] = [value];
 				}
 
@@ -703,7 +742,7 @@ export default class Context {
 		}
 	}
 
-	_finalize(requestOptions) {
+	_finalize(requestOptions: Record<string, unknown>) {
 		if (!this._finalized) {
 			if (!this._finalizing) {
 				if (this._refreshInterval !== undefined) {
@@ -712,7 +751,7 @@ export default class Context {
 				}
 
 				if (this.pending() > 0) {
-					this._finalizing = new Promise((resolve, reject) => {
+					this._finalizing = new Promise<void>((resolve, reject) => {
 						this._flush((error) => {
 							this._finalizing = null;
 
