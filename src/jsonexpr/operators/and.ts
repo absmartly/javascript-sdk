@@ -1,5 +1,7 @@
+import { Evaluator } from "../evaluator";
+
 export class AndCombinator {
-	evaluate(evaluator, args) {
+	evaluate(evaluator: Evaluator, args: any[]): boolean | null {
 		if (Array.isArray(args)) {
 			for (const expr of args) {
 				if (!evaluator.booleanConvert(evaluator.evaluate(expr))) {

@@ -1,7 +1,8 @@
 import { isObject } from "../../utils";
+import { Evaluator } from "../evaluator";
 
 export class VarOperator {
-	evaluate(evaluator, path) {
+	evaluate(evaluator: Evaluator, path: any) {
 		if (isObject(path)) {
 			path = path.path;
 		}

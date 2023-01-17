@@ -1,8 +1,9 @@
 import { BinaryOperator } from "./binary";
 import { isObject } from "../../utils";
+import { Evaluator } from "../evaluator";
 
 export class InOperator extends BinaryOperator {
-	binary(evaluator, haystack, needle) {
+	binary(evaluator: Evaluator, haystack: any, needle: any) {
 		if (Array.isArray(haystack)) {
 			for (const item of haystack) {
 				if (evaluator.compare(item, needle) === 0) {

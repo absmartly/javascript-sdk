@@ -55,11 +55,11 @@ export class Evaluator {
 		}
 	}
 
-	stringConvert(x: string | boolean | number) {
+	stringConvert(x: string | boolean | number): string | null {
 		const type = typeof x;
 		switch (type) {
 			case "string":
-				return x;
+				return x as string;
 			case "boolean":
 				return x.toString();
 			case "number":
