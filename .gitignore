@@ -4,4 +4,5 @@ node_modules
 dist/
 es/
 lib/
-src/js
+src/js/*
+!src/js/__tests__
