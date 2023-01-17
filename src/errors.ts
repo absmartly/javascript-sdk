@@ -1,5 +1,6 @@
 export class TimeoutError extends Error {
-	constructor(timeout) {
+	readonly timeout: number;
+	constructor(timeout: number) {
 		super("Timeout exceeded.");
 		this.name = "TimeoutError";
 		this.timeout = timeout;
@@ -7,7 +8,9 @@ export class TimeoutError extends Error {
 }
 
 export class RetryError extends Error {
-	constructor(retries, reason, url) {
+	readonly retries: number;
+	readonly exception: Error;
+	constructor(retries: number, reason: Error, url: string) {
 		super(`Retries exhausted. URL: ${url} - Last Error: ${reason.message}`);
 		this.name = "RetryError";
 		this.retries = retries;
