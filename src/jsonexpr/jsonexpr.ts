@@ -1,5 +1,3 @@
-/* eslint-disable no-use-before-define */
-
 import { ValueOperator } from "./operators/value";
 import { AndCombinator } from "./operators/and";
 import { OrCombinator } from "./operators/or";
@@ -32,12 +30,12 @@ const operators = {
 };
 
 export class JsonExpr {
-	evaluateBooleanExpr(expr, vars) {
+	evaluateBooleanExpr(expr: any[] | Record<string, unknown>, vars: Record<string, unknown>) {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.booleanConvert(evaluator.evaluate(expr));
 	}
 
-	evaluateExpr(expr, vars) {
+	evaluateExpr(expr: any[] | Record<string, unknown>, vars: Record<string, unknown>) {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.evaluate(expr);
 	}
