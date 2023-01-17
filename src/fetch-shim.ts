@@ -1,6 +1,7 @@
 // inspired by https://github.com/bradlc/unfetch-abortable
 import { AbortError } from "./errors";
 
+// eslint-disable-next-line no-shadow
 export function fetch(url: string, options: Record<string, any>) {
 	options = options || {};
 	return new Promise((resolve, reject) => {

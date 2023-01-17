@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-shadow
 export class AbortSignal {
 	aborted = false;
 	private readonly _events: Record<string, any>;

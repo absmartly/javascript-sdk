@@ -1,4 +1,5 @@
 import fetch from "./fetch"; // eslint-disable-line no-shadow
+// eslint-disable-next-line no-shadow
 import { AbortController } from "./abort";
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
