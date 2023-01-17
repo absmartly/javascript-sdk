@@ -1,8 +1,10 @@
 import { md5 } from "./md5";
 
-export const getApplicationName = (app) => (typeof app !== "string" ? app.name : app);
+export const getApplicationName = (app: string | { name: string; version: number }): string =>
+	typeof app !== "string" ? app.name : app;
 
-export const getApplicationVersion = (app) => (typeof app !== "string" ? app.version : 0);
+export const getApplicationVersion = (app: string | { name: string; version: number }): number =>
+	typeof app !== "string" ? app.version : 0;
 
 export function isBrowser() {
 	return typeof window !== "undefined" && typeof window.document !== "undefined";
@@ -12,19 +14,19 @@ export function isWorker() {
 	return typeof self === "object" && self.constructor && self.constructor.name === "DedicatedWorkerGlobalScope";
 }
 
-export function isNumeric(value) {
+export function isNumeric(value: any) {
 	return typeof value === "number";
 }
 
-export function isObject(value) {
+export function isObject(value: any) {
 	return value instanceof Object && value.constructor === Object;
 }
 
-export function isPromise(value) {
+export function isPromise(value: any) {
 	return value !== null && typeof value === "object" && typeof value.then === "function";
 }
 
-function arrayEqualsDeep(a, b, astack, bstack) {
+function arrayEqualsDeep(a: any, b: any, astack: any[] = [], bstack: any[] = []) {
 	let len = astack?.length ?? 0;
 	while (len--) {
 		if (astack[len] === a) return bstack[len] === b;
@@ -48,7 +50,7 @@ function arrayEqualsDeep(a, b, astack, bstack) {
 	return true;
 }
 
-function objectEqualsDeep(a, b, keys, astack, bstack) {
+function objectEqualsDeep(a: any, b: any, keys: string[], astack: any[], bstack: any[]) {
 	let len = astack?.length ?? 0;
 	while (len--) {
 		if (astack[len] === a) return bstack[len] === b;
@@ -76,7 +78,7 @@ function objectEqualsDeep(a, b, keys, astack, bstack) {
 	return true;
 }
 
-export function isEqualsDeep(a, b, astack, bstack) {
+export function isEqualsDeep(a: any, b: any, astack: any[], bstack: any[]) {
 	if (a === b) return true;
 	if (typeof a !== typeof b) return false;
 
@@ -115,11 +117,11 @@ export function isEqualsDeep(a, b, astack, bstack) {
 	return false;
 }
 
-export function arrayEqualsShallow(a, b) {
+export function arrayEqualsShallow(a: any[], b: any[]) {
 	return a === b || (a.length === b.length && !a.some((va, vi) => va !== b[vi]));
 }
 
-export function stringToUint8Array(value) {
+export function stringToUint8Array(value: string) {
 	const n = value.length;
 	const array = new Array(value.length);
 
@@ -142,7 +144,7 @@ export function stringToUint8Array(value) {
 
 const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-export function base64UrlNoPadding(value) {
+export function base64UrlNoPadding(value: Uint8Array) {
 	const chars = Base64URLNoPaddingChars;
 
 	const remaining = value.byteLength % 3;
@@ -184,12 +186,12 @@ export function base64UrlNoPadding(value) {
 	return result.join("");
 }
 
-export function hashUnit(value) {
+export function hashUnit(value: string | number) {
 	const unit = typeof value === "string" ? value : value.toFixed(0);
 	return base64UrlNoPadding(md5(stringToUint8Array(unit).buffer));
 }
 
-export function chooseVariant(split, prob) {
+export function chooseVariant(split: number[], prob: number) {
 	let cumSum = 0.0;
 	for (let i = 0; i < split.length; ++i) {
 		cumSum += split[i];
