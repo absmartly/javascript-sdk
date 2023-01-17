@@ -22,7 +22,7 @@ function scramble32(block: number) {
 	return imul32(rotl32(imul32(block, C1), 15), C2);
 }
 
-export function murmur3_32(key: ArrayBufferLike, hash: number) {
+export function murmur3_32(key: ArrayBufferLike, hash?: number) {
 	hash = (hash || 0) >>> 0;
 	const dataView = new DataView(key);
 

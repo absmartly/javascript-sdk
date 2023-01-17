@@ -410,7 +410,7 @@ export default class Context {
 						const assigner =
 							unitType in this._assigners
 								? this._assigners[unitType]
-								: (this._assigners[unitType] = new VariantAssigner(unit));
+								: unit !== null && (this._assigners[unitType] = new VariantAssigner(unit));
 						const eligible =
 							assigner.assign(
 								experiment.data.trafficSplit,

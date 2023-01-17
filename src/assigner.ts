@@ -2,16 +2,17 @@ import { chooseVariant, stringToUint8Array } from "./utils";
 import { murmur3_32 } from "./murmur3_32";
 
 export class VariantAssigner {
-	constructor(unit) {
+	private readonly _unitHash: number;
+	constructor(unit: string) {
 		this._unitHash = murmur3_32(stringToUint8Array(unit).buffer);
 	}
 
-	assign(split, seedHi, seedLo) {
+	assign(split: number[], seedHi: number, seedLo: number) {
 		const prob = this._probability(seedHi, seedLo);
 		return chooseVariant(split, prob);
 	}
 
-	_probability(seedHi, seedLo) {
+	_probability(seedHi: number, seedLo: number) {
 		const key = this._unitHash;
 		const buffer = new ArrayBuffer(12);
 		const view = new DataView(buffer);
