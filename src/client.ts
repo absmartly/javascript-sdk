@@ -1,10 +1,15 @@
 import fetch from "./fetch"; // eslint-disable-line no-shadow
-// eslint-disable-next-line no-shadow
 import { AbortController } from "./abort";
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
+import { ClientOptions } from "./types";
+import { getApplicationName, getApplicationVersion } from "./utils";
+
 export default class Client {
-	constructor(opts) {
+	private readonly _opts: ClientOptions;
+	private readonly _delay: number;
+
+	constructor(opts: ClientOptions) {
 		this._opts = Object.assign(
 			{
 				agent: "javascript-client",
@@ -19,7 +24,7 @@ export default class Client {
 			opts
 		);
 
-		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"]) {
+		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"] as const) {
 			if (key in this._opts && this._opts[key] !== undefined) {
 				const value = this._opts[key];
 				if (typeof value !== "string" || value.length === 0) {
@@ -45,18 +50,18 @@ export default class Client {
 		this._delay = 50;
 	}
 
-	getContext(options) {
+	getContext(options: Record<string, unknown>) {
 		return this.getUnauthed({
 			...options,
 			path: "/context",
 			query: {
-				application: this._opts.application.name,
+				application: getApplicationName(this._opts.application),
 				environment: this._opts.environment,
 			},
 		});
 	}
 
-	createContext(params, options) {
+	createContext(params: Record<string, unknown>, options: Record<string, unknown>) {
 		const body = {
 			units: params.units,
 		};
@@ -68,8 +73,8 @@ export default class Client {
 		});
 	}
 
-	publish(params, options) {
-		const body = {
+	publish(params: Record<string, unknown>, options: Record<string, unknown>) {
+		const body: Record<string, any> = {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
@@ -94,7 +99,7 @@ export default class Client {
 		});
 	}
 
-	request(options) {
+	request(options: Record<string, any>) {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
 			const keys = Object.keys(options.query);
@@ -107,7 +112,7 @@ export default class Client {
 		const controller = new AbortController();
 
 		const tryOnce = () => {
-			const opts = {
+			const opts: Record<string, unknown> = {
 				method: options.method,
 				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
 				signal: controller.signal,
@@ -120,17 +125,17 @@ export default class Client {
 					"X-API-Key": this._opts.apiKey,
 					"X-Agent": this._opts.agent,
 					"X-Environment": this._opts.environment,
-					"X-Application": this._opts.application.name,
-					"X-Application-Version": this._opts.application.version || 0,
+					"X-Application": getApplicationName(this._opts.application),
+					"X-Application-Version": getApplicationVersion(this._opts.application),
 				};
 			}
 
-			return fetch(url, opts).then((response) => {
+			return fetch(url, opts).then((response: Record<string, any>) => {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
-					return response.text().then((text) => {
+					return response.text().then((text: string) => {
 						const error = new Error(text !== null && text.length > 0 ? text : response.statusText);
-						error._bail = bail;
+						(error as any)._bail = bail;
 
 						return Promise.reject(error);
 					});
@@ -140,23 +145,23 @@ export default class Client {
 			});
 		};
 
-		const wait = (ms) =>
-			new Promise((resolve, reject) => {
+		const wait = (ms: number) =>
+			new Promise<void>((resolve, reject) => {
 				const timeoutId = setTimeout(() => {
-					delete wait.reject;
+					delete (wait as any).reject;
 					resolve();
 				}, ms);
 
-				wait.reject = (reason) => {
+				(wait as any).reject = (reason: string) => {
 					clearTimeout(timeoutId);
 					reject(reason);
 				};
 			});
 
-		const tryWith = (retries, timeout, tries = 0, waited = 0) => {
-			delete tryWith.timedout;
+		const tryWith = (retries: number, timeout: number, tries = 0, waited = 0) => {
+			delete (tryWith as any).timedout;
 
-			return tryOnce().catch((reason) => {
+			return tryOnce().catch((reason: Error & { _bail: boolean }) => {
 				console.warn(reason);
 
 				if (reason._bail || retries <= 0) {
@@ -164,7 +169,7 @@ export default class Client {
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
 				} else if (waited >= timeout || reason.name === "AbortError") {
-					if (tryWith.timedout) {
+					if ((tryWith as any).timedout) {
 						throw new TimeoutError(timeout);
 					}
 
@@ -181,8 +186,8 @@ export default class Client {
 		};
 
 		const abort = () => {
-			if (wait.reject) {
-				wait.reject(new AbortError());
+			if ((wait as any).reject) {
+				(wait as any).reject(new AbortError());
 			} else {
 				controller.abort();
 			}
@@ -196,7 +201,7 @@ export default class Client {
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
-						tryWith.timedout = true;
+						(tryWith as any).timedout = true;
 						abort();
 				  }, timeout)
 				: 0;
@@ -209,17 +214,17 @@ export default class Client {
 		};
 
 		return tryWith(this._opts.retries, this._opts.timeout)
-			.then((value) => {
+			.then((value: any) => {
 				finalCleanUp();
 				return value;
 			})
-			.catch((error) => {
+			.catch((error: Error) => {
 				finalCleanUp();
 				throw error;
 			});
 	}
 
-	post(options) {
+	post(options: Record<string, unknown>) {
 		return this.request({
 			...options,
 			auth: true,
@@ -227,7 +232,7 @@ export default class Client {
 		});
 	}
 
-	put(options) {
+	put(options: Record<string, unknown>) {
 		return this.request({
 			...options,
 			auth: true,
@@ -235,7 +240,7 @@ export default class Client {
 		});
 	}
 
-	getUnauthed(options) {
+	getUnauthed(options: Record<string, unknown>) {
 		return this.request({
 			...options,
 			method: "GET",

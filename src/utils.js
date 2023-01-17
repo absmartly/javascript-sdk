@@ -1,5 +1,9 @@
 import { md5 } from "./md5";
 
+export const getApplicationName = (app) => (typeof app !== "string" ? app.name : app);
+
+export const getApplicationVersion = (app) => (typeof app !== "string" ? app.version : 0);
+
 export function isBrowser() {
 	return typeof window !== "undefined" && typeof window.document !== "undefined";
 }
