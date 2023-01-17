@@ -1,12 +1,12 @@
-// eslint-disable-next-line no-shadow
 export class AbortSignal {
 	aborted = false;
+	private readonly _events: Record<string, any>;
 
 	constructor() {
 		this._events = {};
 	}
 
-	addEventListener(type, listener) {
+	addEventListener(type: string, listener: () => void) {
 		let listeners = this._events[type];
 		if (!listeners) {
 			listeners = [];
@@ -15,10 +15,10 @@ export class AbortSignal {
 		listeners.push(listener);
 	}
 
-	removeEventListener(type, listener) {
+	removeEventListener(type: string, listener: () => void) {
 		const listeners = this._events[type];
 		if (listeners) {
-			const index = listeners.find((x) => x === listener);
+			const index = listeners.find((x: () => void) => x === listener);
 			if (index !== -1) {
 				listeners.splice(index, 1);
 				if (listeners.length === 0) {
@@ -28,7 +28,8 @@ export class AbortSignal {
 		}
 	}
 
-	dispatchEvent(evt) {
+	dispatchEvent(evt: { type: string }) {
+		// @ts-ignore
 		this[`on${evt.type}`] && this[`on${evt.type}`](evt);
 		const listeners = this._events[evt.type];
 		if (listeners) {
@@ -48,7 +49,7 @@ export class AbortController {
 	signal = new AbortSignal();
 
 	abort() {
-		let evt;
+		let evt: Event | { type: string; bubbles: boolean; cancelable: boolean };
 		try {
 			evt = new Event("abort");
 		} catch (e) {
