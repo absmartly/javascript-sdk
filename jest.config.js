@@ -2,8 +2,8 @@ module.exports = {
 	clearMocks: true,
 	coverageDirectory: "coverage",
 	testEnvironment: "node",
-	testRegex: "/__tests__/.*\\.(test|spec)\\.jsx?$",
+	testRegex: "/__tests__/.*\\.(test|spec)\\.[t|j]sx?$",
 	transform: {
-		"^.+\\.jsx?$": "babel-jest",
+		"^.+\\.[t|j]sx?$": "babel-jest",
 	},
 };
