@@ -1,7 +1,8 @@
 import clone from "rfdc/default";
+import Context from "./context";
 import { isObject } from "./utils";
 
-export function mergeConfig(context, previousConfig) {
+export function mergeConfig(context: Context, previousConfig: Record<string, unknown>) {
 	const merged = clone(previousConfig);
 	const keys = context.variableKeys();
 
