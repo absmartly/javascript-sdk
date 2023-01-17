@@ -506,7 +506,8 @@ describe("Context", () => {
 		});
 
 		it("should start refresh timer after ready", (done) => {
-			jest.useFakeTimers();
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setInterval");
 
 			const refreshPeriod = 1000;
 			const context = new Context(
@@ -2241,7 +2242,8 @@ describe("Context", () => {
 		});
 
 		it("should start timeout after ready if queue is not empty", (done) => {
-			jest.useFakeTimers();
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setTimeout");
 
 			const publishDelay = 100;
 			const context = new Context(
@@ -2253,6 +2255,8 @@ describe("Context", () => {
 
 			expect(context.isReady()).toEqual(false);
 			expect(context.isFailed()).toEqual(false);
+
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin);
 
 			context.track("goal1", { amount: 125 });
 
@@ -2706,7 +2710,8 @@ describe("Context", () => {
 		});
 
 		it("should be called options.publishDelay ms after an exposure being queued", () => {
-			jest.useFakeTimers();
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setTimeout");
 
 			const publishDelay = 100;
 			const context = new Context(
@@ -2743,7 +2748,8 @@ describe("Context", () => {
 		});
 
 		it("should be called options.publishDelay ms after a goal being queued", () => {
-			jest.useFakeTimers();
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setTimeout");
 
 			const publishDelay = 100;
 			const context = new Context(
@@ -3040,7 +3046,9 @@ describe("Context", () => {
 		});
 
 		it("should cancel refresh timer", (done) => {
-			jest.useFakeTimers();
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setInterval");
+			jest.spyOn(global, "clearInterval");
 
 			const refreshPeriod = 1000;
 			const context = new Context(
