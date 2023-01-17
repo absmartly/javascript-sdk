@@ -73,7 +73,7 @@ export default class Client {
 		});
 	}
 
-	publish(params: Record<string, unknown>, options: Record<string, unknown>) {
+	publish(params: Record<string, unknown>, options?: Record<string, unknown>) {
 		const body: Record<string, any> = {
 			units: params.units,
 			hashed: params.hashed,
