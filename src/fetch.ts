@@ -12,7 +12,7 @@ const exported = isBrowser()
 	: global
 	? global.fetch
 		? global.fetch.bind(global)
-		: function (url, opts) {
+		: function (url: string, opts: Record<string, unknown>) {
 				return new Promise((resolve, reject) => {
 					import("node-fetch")
 						.then((fetchNode) => {
