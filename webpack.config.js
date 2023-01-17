@@ -8,7 +8,7 @@ module.exports = function () {
 	const config = {
 		devtool: "source-map",
 		entry: {
-			absmartly: ["./src/browser.ts"],
+			absmartly: ["./src/js/browser.js"],
 		},
 
 		target: "browserslist",
@@ -22,14 +22,9 @@ module.exports = function () {
 		module: {
 			rules: [
 				{
-					test: /\.[jt]s$/,
+					test: /\.js$/,
 					exclude: /node_modules/,
-					use: [
-						{
-							loader: "babel-loader",
-							options: { presets: ["@babel/preset-env", "@babel/preset-typescript"] },
-						},
-					],
+					use: ["babel-loader"],
 				},
 			],
 		},
