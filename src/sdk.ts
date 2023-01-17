@@ -3,15 +3,20 @@ import Context from "./context";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isBrowser } from "./utils";
+import { EventLogger } from "./types";
 
 export default class SDK {
-	static defaultEventLogger = (context, eventName, data) => {
+	static defaultEventLogger: EventLogger = (_: Context, eventName: string, data?: Record<string, unknown>) => {
 		if (eventName === "error") {
 			console.error(data);
 		}
 	};
+	private _eventLogger: EventLogger;
+	private _publisher: ContextPublisher;
+	private _provider: ContextDataProvider;
+	private readonly _client: Client;
 
-	constructor(options) {
+	constructor(options: Record<string, any>) {
 		const clientOptions = Object.assign(
 			{
 				agent: "absmartly-javascript-sdk",
@@ -19,16 +24,9 @@ export default class SDK {
 			...Object.entries(options || {})
 				.filter(
 					(x) =>
-						[
-							"application",
-							"agent",
-							"apiKey",
-							"endpoint",
-							"keepalive",
-							"environment",
-							"retries",
-							"timeout",
-						].indexOf(x[0]) !== -1
+						["application", "agent", "apiKey", "endpoint", "keepalive", "environment", "retries", "timeout"].indexOf(
+							x[0]
+						) !== -1
 				)
 				.map((x) => ({ [x[0]]: x[1] }))
 		);
@@ -41,11 +39,15 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	getContextData(requestOptions) {
+	getContextData(requestOptions: Record<string, unknown>) {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(params, options, requestOptions) {
+	createContext(
+		params: Record<string, unknown>,
+		options: Record<string, unknown>,
+		requestOptions: Record<string, unknown>
+	) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
@@ -53,7 +55,7 @@ export default class SDK {
 		return new Context(this, options, params, data);
 	}
 
-	setEventLogger(logger) {
+	setEventLogger(logger: EventLogger) {
 		this._eventLogger = logger;
 	}
 
@@ -61,7 +63,7 @@ export default class SDK {
 		return this._eventLogger;
 	}
 
-	setContextPublisher(publisher) {
+	setContextPublisher(publisher: ContextPublisher) {
 		this._publisher = publisher;
 	}
 
@@ -69,7 +71,7 @@ export default class SDK {
 		return this._publisher;
 	}
 
-	setContextDataProvider(provider) {
+	setContextDataProvider(provider: ContextDataProvider) {
 		this._provider = provider;
 	}
 
@@ -81,14 +83,14 @@ export default class SDK {
 		return this._client;
 	}
 
-	createContextWith(params, data, options) {
+	createContextWith(params: Record<string, unknown>, data: Record<string, unknown>, options: Record<string, unknown>) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
 		return new Context(this, options, params, data);
 	}
 
-	static _contextOptions(options) {
+	static _contextOptions(options: Record<string, unknown>) {
 		return Object.assign(
 			{
 				publishDelay: isBrowser() ? 100 : -1,
@@ -98,7 +100,7 @@ export default class SDK {
 		);
 	}
 
-	static _validateParams(params) {
+	static _validateParams(params: Record<string, any>) {
 		for (const entry of Object.entries(params.units)) {
 			const type = typeof entry[1];
 			if (type !== "string" && type !== "number") {
@@ -108,7 +110,7 @@ export default class SDK {
 			}
 
 			if (type === "string") {
-				if (entry[1].length === 0) {
+				if ((entry[1] as string).length === 0) {
 					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`);
 				}
 			}
