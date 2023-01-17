@@ -50,7 +50,7 @@ export default class Client {
 		this._delay = 50;
 	}
 
-	getContext(options: Record<string, unknown>) {
+	getContext(options?: Record<string, unknown>) {
 		return this.getUnauthed({
 			...options,
 			path: "/context",
