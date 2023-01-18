@@ -30,12 +30,12 @@ const operators = {
 };
 
 export class JsonExpr {
-	evaluateBooleanExpr(expr: any[] | Record<string, unknown>, vars: Record<string, unknown>) {
+	evaluateBooleanExpr(expr: unknown[] | Record<string, unknown>, vars: Record<string, unknown>) {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.booleanConvert(evaluator.evaluate(expr));
 	}
 
-	evaluateExpr(expr: any[] | Record<string, unknown>, vars: Record<string, unknown>) {
+	evaluateExpr(expr: unknown[] | Record<string, unknown>, vars: Record<string, unknown>) {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.evaluate(expr);
 	}

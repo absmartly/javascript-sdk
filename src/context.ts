@@ -5,41 +5,37 @@ import { insertUniqueSorted } from "./algorithm";
 import SDK from "./sdk";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { EventLogger } from "./types";
+import { ContextData, ContextOptions, ContextParams, EventLogger, Experiment, ExperimentData } from "./types";
+import { ClientRequestOptions } from "./types";
 
 export default class Context {
 	private readonly _sdk: SDK;
 	private readonly _publisher: ContextPublisher;
 	private readonly _dataProvider: ContextDataProvider;
 	private readonly _eventLogger: EventLogger;
-	private readonly _opts: Record<string, any>;
-	private readonly _attrs: { name: string; value: any; setAt: number }[];
-	private readonly _cassignments: Record<string, any>;
-	private readonly _units: Record<string, any>;
-	private readonly _assigners: Record<string, any>;
+	private readonly _opts: ContextOptions;
+	private readonly _attrs: { name: string; value: unknown; setAt: number }[];
+	private readonly _cassignments: Record<string, number>;
+	private readonly _units: Record<string, string | number>;
+	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _audienceMatcher: AudienceMatcher;
 	private _pending: number;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
-	private _indexVariables: Record<string, any>;
-	private _index: Record<string, any>;
+	private _indexVariables: Record<string, Experiment[]>;
+	private _index: Record<string, Experiment>;
 	private _failed: boolean;
-	private _data: Record<string, any>;
+	private _data: ContextData;
 	private _finalized: boolean;
 	private _finalizing: boolean | Promise<void> | null;
 	private _goals: Record<string, unknown>[];
 	private _exposures: Record<string, unknown>[];
-	private _overrides: Record<string, any>;
-	private _assignments: Record<string, any>;
+	private _overrides: Record<string, number>;
+	private _assignments: Record<string, ExperimentData>;
 	private _refreshInterval?: ReturnType<typeof setInterval>;
 	private _hashes: Record<string, string | null>;
-	private _promise?: Promise<any>;
+	private _promise?: Promise<unknown>;
 
-	constructor(
-		sdk: SDK,
-		options: Record<string, any>,
-		params: Record<string, any>,
-		promise: Promise<any> | Record<string, any>
-	) {
+	constructor(sdk: SDK, options: ContextOptions, params: ContextParams, promise: ContextData | Promise<ContextData>) {
 		this._sdk = sdk;
 		this._publisher = options.publisher || this._sdk.getContextPublisher();
 		this._dataProvider = options.dataProvider || this._sdk.getContextDataProvider();
@@ -62,8 +58,8 @@ export default class Context {
 		}
 
 		if (isPromise(promise)) {
-			this._promise = promise
-				.then((data: Record<string, unknown>) => {
+			this._promise = (promise as Promise<ContextData>)
+				.then((data) => {
 					this._init(data);
 					delete this._promise;
 
@@ -82,9 +78,9 @@ export default class Context {
 					this._logError(error);
 				});
 		} else {
-			this._init(promise);
+			this._init(promise as ContextData);
 
-			this._logEvent("ready", promise);
+			this._logEvent("ready", promise as ContextData);
 		}
 	}
 
@@ -150,7 +146,7 @@ export default class Context {
 		});
 	}
 
-	refresh(requestOptions: Record<string, unknown>) {
+	refresh(requestOptions: ClientRequestOptions) {
 		this._checkReady(true);
 
 		return new Promise<void>((resolve, reject) => {
@@ -210,7 +206,7 @@ export default class Context {
 		return result;
 	}
 
-	attribute(attrName: string, value: any) {
+	attribute(attrName: string, value: unknown) {
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
@@ -219,7 +215,7 @@ export default class Context {
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
 		for (const [key, value] of this._attrs.map((a) => [a.name, a.value])) {
-			attributes[key] = value;
+			attributes[key as string] = value;
 		}
 		return attributes;
 	}
@@ -248,23 +244,23 @@ export default class Context {
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions: Record<string, any>) {
+	finalize(requestOptions: Record<string, unknown>) {
 		return this._finalize(requestOptions);
 	}
 
 	experiments() {
 		this._checkReady();
 
-		return this._data.experiments.map((x: { name: string }) => x.name);
+		return this._data.experiments?.map((x) => x.name);
 	}
 
-	variableValue(key: string, defaultValue: any) {
+	variableValue(key: string, defaultValue: unknown) {
 		this._checkReady(true);
 
 		return this._variableValue(key, defaultValue);
 	}
 
-	peekVariableValue(key: string, defaultValue: any) {
+	peekVariableValue(key: string, defaultValue: unknown) {
 		this._checkReady(true);
 
 		return this._peekVariable(key, defaultValue);
@@ -326,7 +322,7 @@ export default class Context {
 	}
 
 	_assign(experimentName: string) {
-		const experimentMatches = (experiment: Record<string, any>, assignment: Record<string, any>) => {
+		const experimentMatches = (experiment: ExperimentData, assignment: ExperimentData) => {
 			return (
 				experiment.id === assignment.id &&
 				experiment.unitType === assignment.unitType &&
@@ -360,8 +356,20 @@ export default class Context {
 			}
 		}
 
-		const assignment: Record<string, any> = {
+		const assignment: ExperimentData = {
 			id: 0,
+			name: "",
+			audience: "",
+			audienceStrict: true,
+			split: [],
+			data: {},
+			variables: {},
+			variants: [],
+			seedHi: 0,
+			seedLo: 0,
+			trafficSplit: [],
+			trafficSeedHi: 0,
+			trafficSeedLo: 0,
 			iteration: 0,
 			fullOnVariant: 0,
 			unitType: null,
@@ -405,12 +413,12 @@ export default class Context {
 				if (experiment.data.audienceStrict && assignment.audienceMismatch !== false) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
-					if (unitType in this._units) {
-						const unit = this._unitHash(unitType);
+					if ((unitType as string) in this._units) {
+						const unit = this._unitHash(unitType as string);
 						const assigner =
-							unitType in this._assigners
-								? this._assigners[unitType]
-								: unit !== null && (this._assigners[unitType] = new VariantAssigner(unit));
+							(unitType as string) in this._assigners
+								? this._assigners[unitType as string]
+								: (this._assigners[unitType as string] = new VariantAssigner(unit as string));
 						const eligible =
 							assigner.assign(
 								experiment.data.trafficSplit,
@@ -475,7 +483,7 @@ export default class Context {
 		return assignment;
 	}
 
-	_queueExposure(experimentName: string, assignment: Record<string, any>) {
+	_queueExposure(experimentName: string, assignment: ExperimentData) {
 		const exposureEvent = {
 			id: assignment.id,
 			name: experimentName,
@@ -645,11 +653,11 @@ export default class Context {
 		}
 	}
 
-	_refresh(callback?: (error?: Error) => void, requestOptions?: Record<string, unknown>) {
+	_refresh(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
 		if (!this._failed) {
 			this._dataProvider
 				.getContextData(this._sdk, requestOptions)
-				.then((data: Record<string, unknown>) => {
+				.then((data: ContextData) => {
 					this._init(data, this._assignments);
 
 					this._logEvent("refresh", data);
@@ -672,7 +680,7 @@ export default class Context {
 		}
 	}
 
-	_logEvent(eventName: string, data?: any) {
+	_logEvent(eventName: string, data?: Record<string, unknown>) {
 		if (this._eventLogger) {
 			this._eventLogger(this, eventName, data);
 		}
@@ -698,14 +706,14 @@ export default class Context {
 		return this._hashes[unitType];
 	}
 
-	_init(data: Record<string, any>, assignments = {}) {
+	_init(data: ContextData, assignments: Record<string, ExperimentData> = {}) {
 		this._data = data;
 
-		const index: Record<string, any> = {};
-		const indexVariables: Record<string, any> = {};
+		const index: Record<string, Experiment> = {};
+		const indexVariables: Record<string, Experiment[]> = {};
 
 		for (const experiment of data.experiments || []) {
-			const variables: any[] = [];
+			const variables: Record<string, unknown>[] = [];
 			const entry = {
 				data: experiment,
 				variables,
@@ -724,7 +732,7 @@ export default class Context {
 						insertUniqueSorted(
 							indexVariables[key],
 							value,
-							(a: Record<string, any>, b: Record<string, any>) => a.data.id < b.data.id
+							(a, b) => (a as { data: { id: number } }).data.id < (b as { data: { id: number } }).data.id
 						);
 					} else indexVariables[key] = [value];
 				}

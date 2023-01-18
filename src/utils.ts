@@ -14,19 +14,19 @@ export function isWorker() {
 	return typeof self === "object" && self.constructor && self.constructor.name === "DedicatedWorkerGlobalScope";
 }
 
-export function isNumeric(value: any) {
+export function isNumeric(value: unknown) {
 	return typeof value === "number";
 }
 
-export function isObject(value: any) {
+export function isObject(value: unknown) {
 	return value instanceof Object && value.constructor === Object;
 }
 
-export function isPromise(value: any) {
-	return value !== null && typeof value === "object" && typeof value.then === "function";
+export function isPromise(value: unknown) {
+	return value !== null && typeof value === "object" && typeof (value as Promise<unknown>).then === "function";
 }
 
-function arrayEqualsDeep(a: any, b: any, astack: any[] = [], bstack: any[] = []) {
+function arrayEqualsDeep(a: unknown[], b: unknown[], astack: unknown[] = [], bstack: unknown[] = []) {
 	let len = astack?.length ?? 0;
 	while (len--) {
 		if (astack[len] === a) return bstack[len] === b;
@@ -50,7 +50,13 @@ function arrayEqualsDeep(a: any, b: any, astack: any[] = [], bstack: any[] = [])
 	return true;
 }
 
-function objectEqualsDeep(a: any, b: any, keys: string[], astack?: any[], bstack?: any[]) {
+function objectEqualsDeep(
+	a: Record<string | number | symbol, unknown>,
+	b: Record<string | number | symbol, unknown>,
+	keys: string[],
+	astack?: unknown[],
+	bstack?: unknown[]
+) {
 	let len = astack?.length ?? 0;
 	while (len--) {
 		if (astack && astack[len] === a) return bstack && bstack[len] === b;
@@ -78,7 +84,7 @@ function objectEqualsDeep(a: any, b: any, keys: string[], astack?: any[], bstack
 	return true;
 }
 
-export function isEqualsDeep(a: any, b: any, astack?: any[], bstack?: any[]) {
+export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?: unknown[]) {
 	if (a === b) return true;
 	if (typeof a !== typeof b) return false;
 
@@ -99,14 +105,22 @@ export function isEqualsDeep(a: any, b: any, astack?: any[], bstack?: any[]) {
 
 			if (!arrays && !objects) return false;
 
-			if (arrays) {
+			if (arrays && Array.isArray(b)) {
 				if (a.length === b.length) {
 					return arrayEqualsDeep(a, b, astack, bstack);
 				}
 			} else {
-				const keys = Object.keys(a);
-				if (keys.length === Object.keys(b).length) {
-					return objectEqualsDeep(a, b, keys, astack, bstack);
+				if (a && b) {
+					const keys = Object.keys(a);
+					if (keys.length === Object.keys(b).length) {
+						return objectEqualsDeep(
+							a as Record<string | number | symbol, unknown>,
+							b as Record<string | number | symbol, unknown>,
+							keys,
+							astack,
+							bstack
+						);
+					}
 				}
 			}
 			break;
@@ -117,8 +131,8 @@ export function isEqualsDeep(a: any, b: any, astack?: any[], bstack?: any[]) {
 	return false;
 }
 
-export function arrayEqualsShallow(a: any[], b: any[]) {
-	return a === b || (a.length === b.length && !a.some((va, vi) => va !== b[vi]));
+export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
+	return a === b || (a?.length === b?.length && !a?.some((va, vi) => b && va !== b[vi]));
 }
 
 export function stringToUint8Array(value: string) {

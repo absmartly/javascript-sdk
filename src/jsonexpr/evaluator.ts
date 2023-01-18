@@ -1,15 +1,16 @@
+/* eslint-disable */
 import { isEqualsDeep, isObject } from "../utils";
 
 export class Evaluator {
-	private readonly operators: Record<string, any>;
-	private readonly vars: Record<string, any>;
+	private readonly operators: any;
+	private readonly vars: any;
 
-	constructor(operators: Record<string, any>, vars: Record<string, any>) {
+	constructor(operators: any, vars: any) {
 		this.operators = operators;
 		this.vars = vars;
 	}
 
-	evaluate(expr: Record<string, unknown> | any[]) {
+	evaluate(expr: any) {
 		if (Array.isArray(expr)) {
 			return this.operators["and"].evaluate(this, expr);
 		} else if (isObject(expr)) {
@@ -25,7 +26,7 @@ export class Evaluator {
 		return null;
 	}
 
-	booleanConvert(x: boolean | number | string) {
+	booleanConvert(x: any) {
 		const type = typeof x;
 		switch (type) {
 			case "boolean":
@@ -39,15 +40,15 @@ export class Evaluator {
 		}
 	}
 
-	numberConvert(x: number | boolean | string) {
+	numberConvert(x: any) {
 		const type = typeof x;
 		switch (type) {
 			case "number":
-				return parseFloat(x.toString());
+				return parseFloat(x);
 			case "boolean":
 				return x ? 1 : 0;
 			case "string": {
-				const y = parseFloat(x.toString());
+				const y = parseFloat(x);
 				return Number.isFinite(y) ? y : null;
 			}
 			default:
@@ -55,24 +56,24 @@ export class Evaluator {
 		}
 	}
 
-	stringConvert(x: string | boolean | number): string | null {
+	stringConvert(x: any) {
 		const type = typeof x;
 		switch (type) {
 			case "string":
-				return x as string;
+				return x;
 			case "boolean":
 				return x.toString();
 			case "number":
-				return (x as number).toFixed(15).replace(/\.?0{0,15}$/, "");
+				return x.toFixed(15).replace(/\.?0{0,15}$/, "");
 			default:
 				return null;
 		}
 	}
 
-	extractVar(path: string) {
+	extractVar(path: any) {
 		const frags = path.split("/");
 
-		let target: Record<string, any> = this.vars ?? {};
+		let target = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
 

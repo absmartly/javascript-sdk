@@ -3,10 +3,10 @@ import Context from "./context";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isBrowser } from "./utils";
-import { EventLogger } from "./types";
+import { ClientRequestOptions, ContextData, ContextOptions, EventLogger, SDKOptions, ContextParams } from "./types";
 
 export default class SDK {
-	static defaultEventLogger: EventLogger = (_: Context, eventName: string, data?: Record<string, unknown>) => {
+	static defaultEventLogger: EventLogger = (_, eventName, data) => {
 		if (eventName === "error") {
 			console.error(data);
 		}
@@ -16,7 +16,7 @@ export default class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
-	constructor(options: Record<string, any>) {
+	constructor(options: SDKOptions) {
 		const clientOptions = Object.assign(
 			{
 				agent: "absmartly-javascript-sdk",
@@ -39,15 +39,11 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	getContextData(requestOptions: Record<string, unknown>) {
+	getContextData(requestOptions: ClientRequestOptions) {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(
-		params: Record<string, unknown>,
-		options: Record<string, unknown>,
-		requestOptions: Record<string, unknown>
-	) {
+	createContext(params: ContextParams, options: ContextOptions, requestOptions: ClientRequestOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
@@ -83,7 +79,7 @@ export default class SDK {
 		return this._client;
 	}
 
-	createContextWith(params: Record<string, unknown>, data: Record<string, unknown>, options: Record<string, unknown>) {
+	createContextWith(params: ContextParams, data: ContextData | Promise<ContextData>, options: ContextOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
@@ -100,7 +96,7 @@ export default class SDK {
 		);
 	}
 
-	static _validateParams(params: Record<string, any>) {
+	static _validateParams(params: ContextParams) {
 		for (const entry of Object.entries(params.units)) {
 			const type = typeof entry[1];
 			if (type !== "string" && type !== "number") {

@@ -1,20 +1,21 @@
 // inspired by https://github.com/bradlc/unfetch-abortable
 import { AbortError } from "./errors";
+import { FetchOptions } from "./types";
 
 // eslint-disable-next-line no-shadow
-export function fetch(url: string, options: Record<string, any>) {
+export function fetch(url: string, options: FetchOptions) {
 	options = options || {};
 	return new Promise((resolve, reject) => {
 		const request = new XMLHttpRequest();
 		const keys: string[] = [];
-		const all: [string, any][] = [];
+		const all: [string, unknown][] = [];
 		const headers: Record<string, unknown> = {};
 
 		const abort = () => {
 			request.abort();
 		};
 
-		const cleanup = options.signal ? () => options.signal.removeEventListener("abort", abort) : () => {};
+		const cleanup = options.signal ? () => options.signal?.removeEventListener("abort", abort) : () => {};
 
 		const response = () => ({
 			ok: ((request.status / 100) | 0) === 2,

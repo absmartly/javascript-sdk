@@ -15,7 +15,6 @@ module.exports = {
 		"plugin:@typescript-eslint/recommended",
 	],
 	rules: {
-		"@typescript-eslint/no-explicit-any": "off",
 		"@typescript-eslint/no-empty-function": "off",
 		"no-debugger": process.env.NODE_ENV === "production" ? "error" : "off",
 		"no-template-curly-in-string": "error",

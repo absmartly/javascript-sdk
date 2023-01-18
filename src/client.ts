@@ -1,9 +1,10 @@
 import fetch from "./fetch"; // eslint-disable-line no-shadow
 // eslint-disable-next-line no-shadow
 import { AbortController } from "./abort";
+// eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import { ClientOptions } from "./types";
+import { ClientOptions, ClientRequestOptions, FetchResponse } from "./types";
 import { getApplicationName, getApplicationVersion } from "./utils";
 
 export default class Client {
@@ -51,7 +52,7 @@ export default class Client {
 		this._delay = 50;
 	}
 
-	getContext(options?: Record<string, unknown>) {
+	getContext(options?: ClientRequestOptions) {
 		return this.getUnauthed({
 			...options,
 			path: "/context",
@@ -75,7 +76,7 @@ export default class Client {
 	}
 
 	publish(params: Record<string, unknown>, options?: Record<string, unknown>) {
-		const body: Record<string, any> = {
+		const body: Record<string, unknown> = {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
@@ -100,12 +101,14 @@ export default class Client {
 		});
 	}
 
-	request(options: Record<string, any>) {
+	request(options: ClientRequestOptions) {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
 			const keys = Object.keys(options.query);
 			if (keys.length > 0) {
-				const encoded = keys.map((k) => `${k}=${encodeURIComponent(options.query[k])}`).join("&");
+				const encoded = keys
+					.map((k) => (options.query ? `${k}=${encodeURIComponent(options.query[k])}` : null))
+					.join("&");
 				url = `${url}?${encoded}`;
 			}
 		}
@@ -131,12 +134,12 @@ export default class Client {
 				};
 			}
 
-			return fetch(url, opts).then((response: Record<string, any>) => {
+			return fetch(url, opts).then((response: FetchResponse) => {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text: string) => {
 						const error = new Error(text !== null && text.length > 0 ? text : response.statusText);
-						(error as any)._bail = bail;
+						(error as Error & { _bail: boolean })._bail = bail;
 
 						return Promise.reject(error);
 					});
@@ -149,18 +152,18 @@ export default class Client {
 		const wait = (ms: number) =>
 			new Promise<void>((resolve, reject) => {
 				const timeoutId = setTimeout(() => {
-					delete (wait as any).reject;
+					delete (wait as { reject?: () => void }).reject;
 					resolve();
 				}, ms);
 
-				(wait as any).reject = (reason: string) => {
+				(wait as { reject?: (reason: string) => void }).reject = (reason: string) => {
 					clearTimeout(timeoutId);
 					reject(reason);
 				};
 			});
 
 		const tryWith = (retries: number, timeout: number, tries = 0, waited = 0) => {
-			delete (tryWith as any).timedout;
+			delete (tryWith as { timedout?: boolean }).timedout;
 
 			return tryOnce().catch((reason: Error & { _bail: boolean }) => {
 				console.warn(reason);
@@ -170,7 +173,7 @@ export default class Client {
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
 				} else if (waited >= timeout || reason.name === "AbortError") {
-					if ((tryWith as any).timedout) {
+					if ((tryWith as { timedout?: boolean }).timedout) {
 						throw new TimeoutError(timeout);
 					}
 
@@ -187,8 +190,8 @@ export default class Client {
 		};
 
 		const abort = () => {
-			if ((wait as any).reject) {
-				(wait as any).reject(new AbortError());
+			if ((wait as unknown as { reject: (reason: AbortError) => void }).reject) {
+				(wait as unknown as { reject: (reason: AbortError) => void }).reject(new AbortError());
 			} else {
 				controller.abort();
 			}
@@ -202,7 +205,7 @@ export default class Client {
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
-						(tryWith as any).timedout = true;
+						(tryWith as unknown as { timedout: boolean }).timedout = true;
 						abort();
 				  }, timeout)
 				: 0;
@@ -215,7 +218,7 @@ export default class Client {
 		};
 
 		return tryWith(this._opts.retries, this._opts.timeout)
-			.then((value: any) => {
+			.then((value: string) => {
 				finalCleanUp();
 				return value;
 			})
@@ -225,7 +228,7 @@ export default class Client {
 			});
 	}
 
-	post(options: Record<string, unknown>) {
+	post(options: ClientRequestOptions) {
 		return this.request({
 			...options,
 			auth: true,
@@ -233,7 +236,7 @@ export default class Client {
 		});
 	}
 
-	put(options: Record<string, unknown>) {
+	put(options: ClientRequestOptions) {
 		return this.request({
 			...options,
 			auth: true,
@@ -241,7 +244,7 @@ export default class Client {
 		});
 	}
 
-	getUnauthed(options: Record<string, unknown>) {
+	getUnauthed(options: ClientRequestOptions) {
 		return this.request({
 			...options,
 			method: "GET",
