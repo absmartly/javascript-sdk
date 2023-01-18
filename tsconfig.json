@@ -5,7 +5,7 @@
 		"lib": ["dom", "es6", "es2017", "esnext.asynciterable"],
 		"skipLibCheck": true,
 		"sourceMap": true,
-		"outDir": "./src/js",
+		"outDir": "./js",
 		"allowJs": true,
 		"declaration": true,
 		"declarationMap": true,
