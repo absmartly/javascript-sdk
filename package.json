@@ -19,6 +19,7 @@
 	"main": "lib/index.js",
 	"module": "es/index.js",
 	"browser": "dist/absmartly.min.js",
+	"types": "types/index.d.ts",
 	"engines": {
 		"npm": ">=3",
 		"node": ">=6"
@@ -31,6 +32,7 @@
 		"lint": "eslint -f stylish 'src/**/*.{js,mjs,jsx,ts,mts,tsx}'",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
 		"test": "jest --coverage",
+		"prepack": "npm -s upgrade && npm run -s build",
 		"compile": "tsc"
 	},
 	"dependencies": {
