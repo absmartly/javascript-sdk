@@ -79,7 +79,7 @@ export default class SDK {
 		return this._client;
 	}
 
-	createContextWith(params: ContextParams, data: ContextData | Promise<ContextData>, options: ContextOptions) {
+	createContextWith(params: ContextParams, data: Promise<ContextData>, options: ContextOptions) {
 		SDK._validateParams(params);
 
 		options = SDK._contextOptions(options);
@@ -105,8 +105,8 @@ export default class SDK {
 				);
 			}
 
-			if (type === "string") {
-				if ((entry[1] as string).length === 0) {
+			if (typeof entry[1] === "string") {
+				if (entry[1].length === 0) {
 					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`);
 				}
 			}

@@ -78,9 +78,10 @@ export default class Context {
 					this._logError(error);
 				});
 		} else {
-			this._init(promise as ContextData);
+			promise = promise as ContextData;
+			this._init(promise);
 
-			this._logEvent("ready", promise as ContextData);
+			this._logEvent("ready", promise);
 		}
 	}
 
@@ -413,35 +414,39 @@ export default class Context {
 				if (experiment.data.audienceStrict && assignment.audienceMismatch !== false) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
-					if ((unitType as string) in this._units) {
-						const unit = this._unitHash(unitType as string);
-						const assigner =
-							(unitType as string) in this._assigners
-								? this._assigners[unitType as string]
-								: (this._assigners[unitType as string] = new VariantAssigner(unit as string));
-						const eligible =
-							assigner.assign(
-								experiment.data.trafficSplit,
-								experiment.data.trafficSeedHi,
-								experiment.data.trafficSeedLo
-							) === 1;
+					if (unitType !== null) {
+						if (unitType in this._units) {
+							const unit = this._unitHash(unitType);
+							if (unit !== null) {
+								const assigner =
+									unitType in this._assigners
+										? this._assigners[unitType]
+										: (this._assigners[unitType] = new VariantAssigner(unit));
+								const eligible =
+									assigner.assign(
+										experiment.data.trafficSplit,
+										experiment.data.trafficSeedHi,
+										experiment.data.trafficSeedLo
+									) === 1;
 
-						assignment.assigned = true;
-						assignment.eligible = eligible;
+								assignment.assigned = true;
+								assignment.eligible = eligible;
 
-						if (eligible) {
-							if (hasCustom) {
-								assignment.variant = this._cassignments[experimentName];
-								assignment.custom = true;
-							} else {
-								assignment.variant = assigner.assign(
-									experiment.data.split,
-									experiment.data.seedHi,
-									experiment.data.seedLo
-								);
+								if (eligible) {
+									if (hasCustom) {
+										assignment.variant = this._cassignments[experimentName];
+										assignment.custom = true;
+									} else {
+										assignment.variant = assigner.assign(
+											experiment.data.split,
+											experiment.data.seedHi,
+											experiment.data.seedLo
+										);
+									}
+								} else {
+									assignment.variant = 0;
+								}
 							}
-						} else {
-							assignment.variant = 0;
 						}
 					}
 				} else {
@@ -732,7 +737,7 @@ export default class Context {
 						insertUniqueSorted(
 							indexVariables[key],
 							value,
-							(a, b) => (a as { data: { id: number } }).data.id < (b as { data: { id: number } }).data.id
+							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
 					} else indexVariables[key] = [value];
 				}
