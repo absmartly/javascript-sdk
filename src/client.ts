@@ -138,8 +138,10 @@ export default class Client {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text: string) => {
-						const error = new Error(text !== null && text.length > 0 ? text : response.statusText);
-						(error as Error & { _bail: boolean })._bail = bail;
+						const error: Error & { _bail?: boolean } = new Error(
+							text !== null && text.length > 0 ? text : response.statusText
+						);
+						error._bail = bail;
 
 						return Promise.reject(error);
 					});
@@ -149,23 +151,33 @@ export default class Client {
 			});
 		};
 
-		const wait = (ms: number) =>
-			new Promise<void>((resolve, reject) => {
+		type WaitFn = ((ms: number) => Promise<void>) & { reject?: (reason: AbortError) => void };
+		type TryWithFn = ((
+			retries: number,
+			timeout: number,
+			tries?: number,
+			waited?: number
+		) => ReturnType<typeof tryOnce>) & {
+			timedout?: boolean;
+		};
+
+		const wait: WaitFn = (ms) =>
+			new Promise((resolve, reject) => {
 				const timeoutId = setTimeout(() => {
-					delete (wait as { reject?: () => void }).reject;
+					delete wait.reject;
 					resolve();
 				}, ms);
 
-				(wait as { reject?: (reason: string) => void }).reject = (reason: string) => {
+				wait.reject = (reason) => {
 					clearTimeout(timeoutId);
 					reject(reason);
 				};
 			});
 
-		const tryWith = (retries: number, timeout: number, tries = 0, waited = 0) => {
-			delete (tryWith as { timedout?: boolean }).timedout;
+		const tryWith: TryWithFn = (retries, timeout, tries = 0, waited = 0) => {
+			delete tryWith.timedout;
 
-			return tryOnce().catch((reason: Error & { _bail: boolean }) => {
+			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
 				console.warn(reason);
 
 				if (reason._bail || retries <= 0) {
@@ -173,7 +185,7 @@ export default class Client {
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
 				} else if (waited >= timeout || reason.name === "AbortError") {
-					if ((tryWith as { timedout?: boolean }).timedout) {
+					if (tryWith.timedout) {
 						throw new TimeoutError(timeout);
 					}
 
@@ -190,8 +202,8 @@ export default class Client {
 		};
 
 		const abort = () => {
-			if ((wait as unknown as { reject: (reason: AbortError) => void }).reject) {
-				(wait as unknown as { reject: (reason: AbortError) => void }).reject(new AbortError());
+			if (wait.reject) {
+				wait.reject(new AbortError());
 			} else {
 				controller.abort();
 			}
@@ -205,7 +217,7 @@ export default class Client {
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
-						(tryWith as unknown as { timedout: boolean }).timedout = true;
+						tryWith.timedout = true;
 						abort();
 				  }, timeout)
 				: 0;
