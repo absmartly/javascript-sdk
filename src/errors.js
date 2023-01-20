@@ -7,10 +7,11 @@ export class TimeoutError extends Error {
 }
 
 export class RetryError extends Error {
-	constructor(retries) {
+	constructor(retries, reason) {
 		super("Retries exhausted.");
 		this.name = "RetryError";
 		this.retries = retries;
+		this.exception = reason;
 	}
 }
 

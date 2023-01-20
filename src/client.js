@@ -162,7 +162,7 @@ export default class Client {
 				if (reason._bail || retries <= 0) {
 					throw new Error(reason.message);
 				} else if (tries >= retries) {
-					throw new RetryError(tries);
+					throw new RetryError(tries, reason);
 				} else if (waited >= timeout || reason.name === "AbortError") {
 					if (tryWith.timedout) {
 						throw new TimeoutError(timeout);
