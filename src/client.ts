@@ -4,7 +4,14 @@ import { AbortController } from "./abort";
 // eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import { ClientOptions, ClientRequestOptions, FetchResponse } from "./types";
+import {
+	ClientOptions,
+	ClientRequestOptions,
+	ContextOptions,
+	ContextParams,
+	FetchResponse,
+	PublishParams,
+} from "./types";
 import { getApplicationName, getApplicationVersion } from "./utils";
 
 export default class Client {
@@ -63,7 +70,7 @@ export default class Client {
 		});
 	}
 
-	createContext(params: Record<string, unknown>, options: Record<string, unknown>) {
+	createContext(params: ContextParams, options: ContextOptions) {
 		const body = {
 			units: params.units,
 		};
@@ -75,8 +82,8 @@ export default class Client {
 		});
 	}
 
-	publish(params: Record<string, unknown>, options?: Record<string, unknown>) {
-		const body: Record<string, unknown> = {
+	publish(params: PublishParams, options?: ClientRequestOptions) {
+		const body: PublishParams = {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),

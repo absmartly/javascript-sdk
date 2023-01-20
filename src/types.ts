@@ -132,3 +132,17 @@ export type FetchOptions = {
 	headers?: Record<string, string>;
 	body?: XMLHttpRequestBodyInit;
 };
+
+export type Unit = {
+	type: string;
+	uid: string | null;
+};
+
+export type PublishParams = {
+	units: Unit[];
+	publishedAt: number;
+	hashed: boolean;
+	attributes?: Attribute[];
+	goals?: Goal[];
+	exposures?: Exposure[];
+};

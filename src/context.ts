@@ -15,6 +15,7 @@ import {
 	ExperimentData,
 	Exposure,
 	Goal,
+	PublishParams,
 	Units,
 } from "./types";
 import { ClientRequestOptions } from "./types";
@@ -144,7 +145,7 @@ export default class Context {
 		return this._dataProvider;
 	}
 
-	publish(requestOptions: Record<string, unknown>) {
+	publish(requestOptions: ClientRequestOptions) {
 		this._checkReady(true);
 
 		return new Promise<void>((resolve, reject) => {
@@ -256,7 +257,7 @@ export default class Context {
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions: Record<string, unknown>) {
+	finalize(requestOptions: ClientRequestOptions) {
 		return this._finalize(requestOptions);
 	}
 
@@ -588,7 +589,7 @@ export default class Context {
 		}
 	}
 
-	_flush(callback?: (error?: Error) => void, requestOptions?: Record<string, unknown>) {
+	_flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
@@ -600,7 +601,7 @@ export default class Context {
 			}
 		} else {
 			if (!this._failed) {
-				const request: Record<string, unknown> = {
+				const request: PublishParams = {
 					publishedAt: Date.now(),
 					units: Object.entries(this._units).map((entry) => ({
 						type: entry[0],
@@ -766,7 +767,7 @@ export default class Context {
 		}
 	}
 
-	_finalize(requestOptions: Record<string, unknown>) {
+	_finalize(requestOptions: ClientRequestOptions) {
 		if (!this._finalized) {
 			if (!this._finalizing) {
 				if (this._refreshInterval !== undefined) {
