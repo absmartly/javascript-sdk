@@ -86,7 +86,7 @@ export default class SDK {
 		return new Context(this, options, params, data);
 	}
 
-	static _contextOptions(options: Record<string, unknown>) {
+	static _contextOptions(options: ContextOptions): ContextOptions {
 		return Object.assign(
 			{
 				publishDelay: isBrowser() ? 100 : -1,
