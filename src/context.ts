@@ -5,35 +5,46 @@ import { insertUniqueSorted } from "./algorithm";
 import SDK from "./sdk";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { ContextData, ContextOptions, ContextParams, EventLogger, Experiment, ExperimentData } from "./types";
+import {
+	Attribute,
+	ContextData,
+	ContextOptions,
+	ContextParams,
+	EventLogger,
+	Experiment,
+	ExperimentData,
+	Exposure,
+	Goal,
+	Units,
+} from "./types";
 import { ClientRequestOptions } from "./types";
 
 export default class Context {
-	private readonly _sdk: SDK;
-	private readonly _publisher: ContextPublisher;
+	private readonly _assigners: Record<string, VariantAssigner>;
+	private readonly _attrs: Attribute[];
+	private readonly _audienceMatcher: AudienceMatcher;
+	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
 	private readonly _eventLogger: EventLogger;
 	private readonly _opts: ContextOptions;
-	private readonly _attrs: { name: string; value: unknown; setAt: number }[];
-	private readonly _cassignments: Record<string, number>;
-	private readonly _units: Record<string, string | number>;
-	private readonly _assigners: Record<string, VariantAssigner>;
-	private readonly _audienceMatcher: AudienceMatcher;
-	private _pending: number;
-	private _publishTimeout?: ReturnType<typeof setTimeout>;
-	private _indexVariables: Record<string, Experiment[]>;
-	private _index: Record<string, Experiment>;
-	private _failed: boolean;
+	private readonly _publisher: ContextPublisher;
+	private readonly _sdk: SDK;
+	private readonly _units: Units;
+	private _assignments: Record<string, ExperimentData>;
 	private _data: ContextData;
+	private _exposures: Exposure[];
+	private _failed: boolean;
 	private _finalized: boolean;
 	private _finalizing: boolean | Promise<void> | null;
-	private _goals: Record<string, unknown>[];
-	private _exposures: Record<string, unknown>[];
+	private _goals: Goal[];
+	private _index: Record<string, Experiment>;
+	private _indexVariables: Record<string, Experiment[]>;
 	private _overrides: Record<string, number>;
-	private _assignments: Record<string, ExperimentData>;
+	private _pending: number;
+	private _hashes?: Record<string, string | null>;
+	private _promise?: Promise<ContextData | void>;
+	private _publishTimeout?: ReturnType<typeof setTimeout>;
 	private _refreshInterval?: ReturnType<typeof setInterval>;
-	private _hashes: Record<string, string | null>;
-	private _promise?: Promise<unknown>;
 
 	constructor(sdk: SDK, options: ContextOptions, params: ContextParams, promise: ContextData | Promise<ContextData>) {
 		this._sdk = sdk;

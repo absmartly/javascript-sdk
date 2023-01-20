@@ -9,6 +9,36 @@ export type AbortControllerEvents = {
 	[key: string]: Array<() => unknown>;
 };
 
+export type Exposure = {
+	id: number;
+	name: string;
+	exposedAt: number;
+	unit: string | null;
+	variant: number;
+	assigned: boolean;
+	eligible: boolean;
+	overridden: boolean;
+	fullOn: boolean;
+	custom: boolean;
+	audienceMismatch: boolean;
+};
+
+export type Attribute = {
+	name: string;
+	value: unknown;
+	setAt: number;
+};
+
+export type Units = {
+	[key: string]: string | number;
+};
+
+export type Goal = {
+	name: string;
+	properties: Record<string, unknown> | null;
+	achievedAt: number;
+};
+
 export type EventLogger = (context: Context, eventName: string, data?: Record<string, unknown> | Error) => void;
 
 export type FetchResponse = {
