@@ -30,7 +30,7 @@
 		"build": "npm run -s format && npm run -s lint && npm run -s test && npm run -s build-mjs && npm run -s build-cjs && npm run -s build-browser",
 		"lint": "eslint -f stylish 'src/**/*.{js,mjs,jsx}'",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json}'",
-		"prepack": "npm -s upgrade && npm run -s build",
+		"prepack": "npm run -s build",
 		"test": "jest --coverage"
 	},
 	"dependencies": {
