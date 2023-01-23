@@ -7,8 +7,8 @@ export class TimeoutError extends Error {
 }
 
 export class RetryError extends Error {
-	constructor(retries, reason) {
-		super(`Retries exhausted. Last Error: ${reason.message}`);
+	constructor(retries, reason, url) {
+		super(`Retries exhausted. URL: ${url} - Last Error: ${reason.message}`);
 		this.name = "RetryError";
 		this.retries = retries;
 		this.exception = reason;
