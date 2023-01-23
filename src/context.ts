@@ -204,17 +204,17 @@ export default class Context {
 	}
 
 	units(units: Record<string, number | string>) {
-		for (const [unitType, uid] of Object.entries(units)) {
+		Object.entries(units).forEach(([unitType, uid]) => {
 			this.unit(unitType, uid);
-		}
+		});
 	}
 
 	getAttribute(attrName: string) {
 		let result;
 
-		for (const attr of this._attrs) {
+		this._attrs.forEach((attr) => {
 			if (attr.name === attrName) result = attr.value;
-		}
+		});
 
 		return result;
 	}
@@ -227,16 +227,18 @@ export default class Context {
 
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
-		for (const [key, value] of this._attrs.map((a) => [a.name, a.value])) {
-			attributes[key as string] = value;
-		}
+		this._attrs
+			.map((a) => [a.name, a.value])
+			.forEach(([key, value]) => {
+				attributes[key as string] = value;
+			});
 		return attributes;
 	}
 
 	attributes(attrs: Record<string, unknown>) {
-		for (const [attrName, value] of Object.entries(attrs)) {
+		Object.entries(attrs).forEach(([attrName, value]) => {
 			this.attribute(attrName, value);
-		}
+		});
 	}
 
 	peek(experimentName: string) {
@@ -284,12 +286,12 @@ export default class Context {
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
-		for (const [key, values] of Object.entries(this._indexVariables)) {
-			for (const i in values) {
-				if (variableExperiments[key]) variableExperiments[key].push(values[i].data.name);
-				else variableExperiments[key] = [values[i].data.name];
-			}
-		}
+		Object.entries(this._indexVariables).forEach(([key, values]) => {
+			values.forEach((value) => {
+				if (variableExperiments[key]) variableExperiments[key].push(value.data.name);
+				else variableExperiments[key] = [value.data.name];
+			});
+		});
 
 		return variableExperiments;
 	}
@@ -299,9 +301,9 @@ export default class Context {
 	}
 
 	overrides(experimentVariants: Record<string, number>) {
-		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
+		Object.entries(experimentVariants).forEach(([experimentName, variant]) => {
 			this.override(experimentName, variant);
-		}
+		});
 	}
 
 	customAssignment(experimentName: string, variant: number) {
@@ -311,9 +313,9 @@ export default class Context {
 	}
 
 	customAssignments(experimentVariants: Record<string, number>) {
-		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
+		Object.entries(experimentVariants).forEach(([experimentName, variant]) => {
 			this.customAssignment(experimentName, variant);
-		}
+		});
 	}
 
 	_checkNotFinalized() {
@@ -412,9 +414,9 @@ export default class Context {
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
 					const attrs: Record<string, unknown> = {};
-					for (const attr of this._attrs) {
+					this._attrs.forEach((attr) => {
 						attrs[attr.name] = attr.value;
-					}
+					});
 
 					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
@@ -523,19 +525,25 @@ export default class Context {
 	}
 
 	_variableValue(key: string, defaultValue: unknown) {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (!assignment.exposed) {
-					assignment.exposed = true;
+		const experiments = this._indexVariables[key];
+		if (!experiments) {
+			return defaultValue;
+		}
 
-					this._queueExposure(experimentName, assignment);
-				}
+		for (let i = 0; i < experiments.length; i++) {
+			const experiment = experiments[i];
+			const assignment = this._assign(experiment.data.name);
+			if (!assignment) {
+				continue;
+			}
 
-				if (key in assignment.variables) {
-					return assignment.variables[key];
-				}
+			if (!assignment.exposed) {
+				assignment.exposed = true;
+				this._queueExposure(experiment.data.name, assignment);
+			}
+
+			if (key in assignment.variables) {
+				return assignment.variables[key];
 			}
 		}
 
@@ -543,13 +551,20 @@ export default class Context {
 	}
 
 	_peekVariable(key: string, defaultValue: unknown) {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (key in assignment.variables) {
-					return assignment.variables[key];
-				}
+		const experiments = this._indexVariables[key];
+		if (!experiments) {
+			return defaultValue;
+		}
+
+		for (let i = 0; i < experiments.length; i++) {
+			const experiment = experiments[i];
+			const assignment = this._assign(experiment.data.name);
+			if (!assignment) {
+				continue;
+			}
+
+			if (key in assignment.variables) {
+				return assignment.variables[key];
 			}
 		}
 
@@ -729,7 +744,7 @@ export default class Context {
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
 
-		for (const experiment of data.experiments || []) {
+		(data.experiments || []).forEach((experiment) => {
 			const variables: Record<string, unknown>[] = [];
 			const entry = {
 				data: experiment,
@@ -738,12 +753,11 @@ export default class Context {
 
 			index[experiment.name] = entry;
 
-			for (let i = 0; i < experiment.variants.length; ++i) {
-				const variant = experiment.variants[i];
+			experiment.variants.forEach((variant, i) => {
 				const config = variant.config;
 				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
 
-				for (const key of Object.keys(parsed)) {
+				Object.keys(parsed).forEach((key) => {
 					const value = entry;
 					if (indexVariables[key]) {
 						insertUniqueSorted(
@@ -752,11 +766,11 @@ export default class Context {
 							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
 					} else indexVariables[key] = [value];
-				}
+				});
 
 				variables[i] = parsed;
-			}
-		}
+			});
+		});
 
 		this._index = index;
 		this._indexVariables = indexVariables;

@@ -97,7 +97,7 @@ export default class SDK {
 	}
 
 	static _validateParams(params: ContextParams) {
-		for (const entry of Object.entries(params.units)) {
+		Object.entries(params.units).forEach((entry) => {
 			const type = typeof entry[1];
 			if (type !== "string" && type !== "number") {
 				throw new Error(
@@ -110,6 +110,6 @@ export default class SDK {
 					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`);
 				}
 			}
-		}
+		});
 	}
 }
