@@ -111,7 +111,7 @@ describe("Context", () => {
 				variants: [
 					{
 						name: "A",
-						config: null,
+						config: '{ "card.width": "100%" }',
 					},
 					{
 						name: "B",
