@@ -111,7 +111,7 @@ describe("Context", () => {
 				variants: [
 					{
 						name: "A",
-						config: '{ "card.width": "100%" }',
+						config: null,
 					},
 					{
 						name: "B",
@@ -219,6 +219,12 @@ describe("Context", () => {
 				return {
 					...x,
 					audienceStrict: true,
+					variants: x.variants.map((v) => {
+						if (v.name === "A") {
+							return { name: "A", config: '{"banner.size":"small"}' }
+						}
+						return v;
+					})
 				};
 			}
 			return x;
@@ -1606,6 +1612,26 @@ describe("Context", () => {
 	});
 
 	describe("variableValue()", () => {
+		it("should not return variable values when unassigned", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.pending()).toEqual(0);
+
+			expect(context.variableValue("banner.size", 17)).toEqual(17)
+
+			done()
+		})
+		it("should return variable values when overridden", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.pending()).toEqual(0);
+
+			context.override("exp_test_ab", 0);
+
+			expect(context.variableValue("banner.size", 17)).toEqual("small")
+
+			done()
+		})
 		it("conflicting key disjoint audiences", (done) => {
 			const context1 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
 			const context2 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
