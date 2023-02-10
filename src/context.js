@@ -487,7 +487,7 @@ export default class Context {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
-				if (key in assignment.variables) {
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
 					return assignment.variables[key];
 				}
 			}
