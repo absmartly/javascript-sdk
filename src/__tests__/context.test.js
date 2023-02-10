@@ -221,7 +221,7 @@ describe("Context", () => {
 					audienceStrict: true,
 					variants: x.variants.map((v) => {
 						if (v.name === "A") {
-							return { name: "A", config: '{"banner.size":"small"}' }
+							return { name: "A", config: '{"banner.size":"tiny"}' }
 						}
 						return v;
 					})
@@ -1628,7 +1628,7 @@ describe("Context", () => {
 
 			context.override("exp_test_ab", 0);
 
-			expect(context.variableValue("banner.size", 17)).toEqual("small")
+			expect(context.variableValue("banner.size", 17)).toEqual("tiny")
 
 			done()
 		})
@@ -2036,7 +2036,7 @@ describe("Context", () => {
 
 			context.override("exp_test_ab", 0);
 
-			expect(context.peekVariableValue("banner.size", 17)).toEqual("small")
+			expect(context.peekVariableValue("banner.size", 17)).toEqual("tiny")
 
 			done()
 		})
