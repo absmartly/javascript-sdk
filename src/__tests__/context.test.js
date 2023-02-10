@@ -2020,6 +2020,26 @@ describe("Context", () => {
 	});
 
 	describe("peekVariableValue()", () => {
+		it("should not return variable values when unassigned", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.pending()).toEqual(0);
+
+			expect(context.peekVariableValue("banner.size", 17)).toEqual(17)
+
+			done()
+		})
+		it("should return variable values when overridden", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			expect(context.pending()).toEqual(0);
+
+			context.override("exp_test_ab", 0);
+
+			expect(context.peekVariableValue("banner.size", 17)).toEqual("small")
+
+			done()
+		})
 		it("conflicting key disjoint audiences", (done) => {
 			const context1 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
 			const context2 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
