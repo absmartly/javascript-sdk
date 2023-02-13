@@ -236,7 +236,7 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries, this._opts.timeout)
+		return tryWith(this._opts.retries ?? 5, this._opts.timeout ?? 3000)
 			.then((value: string) => {
 				finalCleanUp();
 				return value;
