@@ -14,15 +14,15 @@ export function isWorker() {
 	return typeof self === "object" && self.constructor && self.constructor.name === "DedicatedWorkerGlobalScope";
 }
 
-export function isNumeric(value: unknown) {
+export function isNumeric(value: unknown): value is number {
 	return typeof value === "number";
 }
 
-export function isObject(value: unknown) {
+export function isObject(value: unknown): value is Record<string, unknown> {
 	return value instanceof Object && value.constructor === Object;
 }
 
-export function isPromise(value: unknown) {
+export function isPromise(value: unknown): value is Promise<unknown> {
 	return value !== null && typeof value === "object" && typeof (value as Promise<unknown>).then === "function";
 }
 
