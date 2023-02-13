@@ -377,7 +377,6 @@ export default class Context {
 			audience: "",
 			audienceStrict: true,
 			split: [],
-			data: {},
 			variables: {},
 			variants: [],
 			seedHi: 0,
@@ -503,7 +502,7 @@ export default class Context {
 	}
 
 	_queueExposure(experimentName: string, assignment: ExperimentData) {
-		const exposureEvent = {
+		const exposureEvent: Exposure = {
 			id: assignment.id,
 			name: experimentName,
 			exposedAt: Date.now(),
@@ -585,7 +584,7 @@ export default class Context {
 
 	_track(goalName: string, properties: Record<string, unknown>) {
 		const props = this._validateGoal(goalName, properties);
-		const goalEvent = { name: goalName, properties: props, achievedAt: Date.now() };
+		const goalEvent: Goal = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
 
 		this._goals.push(goalEvent);
