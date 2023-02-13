@@ -9,6 +9,41 @@ export type AbortControllerEvents = {
 	[key: string]: Array<() => unknown>;
 };
 
+export type Unit = {
+	type: string;
+	uid: string | null;
+};
+
+export type ExperimentData = {
+	id: number;
+	name: string;
+	unitType: string | null;
+	iteration: number;
+	fullOnVariant: number;
+	trafficSplit: number[];
+	trafficSeedHi: number;
+	trafficSeedLo: number;
+	audience: string;
+	audienceStrict: boolean;
+	split: number[];
+	seedHi: number;
+	seedLo: number;
+	variants: { config: null | string }[];
+	variables: Record<string, unknown>;
+	variant: number;
+	overridden: boolean;
+	assigned: boolean;
+	exposed: boolean;
+	eligible: boolean;
+	fullOn: boolean;
+	custom: boolean;
+	audienceMismatch: boolean;
+};
+
+export type ContextData = {
+	experiments?: ExperimentData[];
+};
+
 export type Exposure = {
 	id: number;
 	name: string;
@@ -39,7 +74,18 @@ export type Goal = {
 	achievedAt: number;
 };
 
-export type EventLogger = (context: Context, eventName: string, data?: Record<string, unknown> | Error) => void;
+export type PublishParams = {
+	units: Unit[];
+	publishedAt: number;
+	hashed: boolean;
+	attributes?: Attribute[];
+	goals?: Goal[];
+	exposures?: Exposure[];
+};
+
+export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
+
+export type EventLogger = (context: Context, eventName: string, data?: EventLoggerData) => void;
 
 export type FetchResponse = {
 	status: number;
@@ -60,14 +106,14 @@ export type ClientRequestOptions = {
 };
 
 export type ClientOptions = {
-	agent: "javascript-client";
+	agent?: "javascript-client";
 	apiKey: string;
 	application: string | { name: string; version: number };
 	endpoint: string;
 	environment: string;
-	retries: number;
-	timeout: number;
-	keepalive: boolean;
+	retries?: number;
+	timeout?: number;
+	keepalive?: boolean;
 };
 
 export type SDKOptions = {
@@ -89,37 +135,6 @@ export type ContextOptions = {
 	publishDelay: number;
 };
 
-export type ExperimentData = {
-	id: number;
-	name: string;
-	unitType: string | null;
-	iteration: number;
-	fullOnVariant: number;
-	trafficSplit: number[];
-	trafficSeedHi: number;
-	trafficSeedLo: number;
-	audience: string;
-	audienceStrict: boolean;
-	split: number[];
-	seedHi: number;
-	seedLo: number;
-	data: Record<string, unknown>;
-	variants: { config: null | string }[];
-	variables: Record<string, unknown>;
-	variant: number;
-	overridden: boolean;
-	assigned: boolean;
-	exposed: boolean;
-	eligible: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-};
-
-export type ContextData = {
-	experiments?: ExperimentData[];
-};
-
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
@@ -131,18 +146,4 @@ export type FetchOptions = {
 	credentials?: "include";
 	headers?: Record<string, string>;
 	body?: XMLHttpRequestBodyInit;
-};
-
-export type Unit = {
-	type: string;
-	uid: string | null;
-};
-
-export type PublishParams = {
-	units: Unit[];
-	publishedAt: number;
-	hashed: boolean;
-	attributes?: Attribute[];
-	goals?: Goal[];
-	exposures?: Exposure[];
 };
