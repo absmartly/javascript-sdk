@@ -3,7 +3,15 @@ import Context from "./context";
 import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isBrowser } from "./utils";
-import { ClientRequestOptions, ContextData, ContextOptions, EventLogger, SDKOptions, ContextParams } from "./types";
+import {
+	ClientRequestOptions,
+	ContextData,
+	ContextOptions,
+	EventLogger,
+	SDKOptions,
+	ContextParams,
+	ClientOptions,
+} from "./types";
 
 export default class SDK {
 	static defaultEventLogger: EventLogger = (_, eventName, data) => {
@@ -16,7 +24,7 @@ export default class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
-	constructor(options: SDKOptions) {
+	constructor(options: ClientOptions & SDKOptions) {
 		const clientOptions = Object.assign(
 			{
 				agent: "absmartly-javascript-sdk",
@@ -43,12 +51,12 @@ export default class SDK {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(params: ContextParams, options: ContextOptions, requestOptions: ClientRequestOptions) {
+	createContext(params: ContextParams, options?: Partial<ContextOptions>, requestOptions?: ClientRequestOptions) {
 		SDK._validateParams(params);
 
-		options = SDK._contextOptions(options);
+		const fullOptions = SDK._contextOptions(options);
 		const data = this._provider.getContextData(this, requestOptions);
-		return new Context(this, options, params, data);
+		return new Context(this, fullOptions, params, data);
 	}
 
 	setEventLogger(logger: EventLogger) {
@@ -86,7 +94,7 @@ export default class SDK {
 		return new Context(this, options, params, data);
 	}
 
-	static _contextOptions(options: ContextOptions): ContextOptions {
+	static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
 		return Object.assign(
 			{
 				publishDelay: isBrowser() ? 100 : -1,
