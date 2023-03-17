@@ -221,10 +221,10 @@ describe("Context", () => {
 					audienceStrict: true,
 					variants: x.variants.map((v) => {
 						if (v.name === "A") {
-							return { name: "A", config: '{"banner.size":"tiny"}' }
+							return { name: "A", config: '{"banner.size":"tiny"}' };
 						}
 						return v;
-					})
+					}),
 				};
 			}
 			return x;
@@ -1617,10 +1617,10 @@ describe("Context", () => {
 
 			expect(context.pending()).toEqual(0);
 
-			expect(context.variableValue("banner.size", 17)).toEqual(17)
+			expect(context.variableValue("banner.size", 17)).toEqual(17);
 
-			done()
-		})
+			done();
+		});
 		it("should return variable values when overridden", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
 
@@ -1628,10 +1628,10 @@ describe("Context", () => {
 
 			context.override("exp_test_ab", 0);
 
-			expect(context.variableValue("banner.size", 17)).toEqual("tiny")
+			expect(context.variableValue("banner.size", 17)).toEqual("tiny");
 
-			done()
-		})
+			done();
+		});
 		it("conflicting key disjoint audiences", (done) => {
 			const context1 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
 			const context2 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
@@ -2025,10 +2025,10 @@ describe("Context", () => {
 
 			expect(context.pending()).toEqual(0);
 
-			expect(context.peekVariableValue("banner.size", 17)).toEqual(17)
+			expect(context.peekVariableValue("banner.size", 17)).toEqual(17);
 
-			done()
-		})
+			done();
+		});
 		it("should return variable values when overridden", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
 
@@ -2036,10 +2036,10 @@ describe("Context", () => {
 
 			context.override("exp_test_ab", 0);
 
-			expect(context.peekVariableValue("banner.size", 17)).toEqual("tiny")
+			expect(context.peekVariableValue("banner.size", 17)).toEqual("tiny");
 
-			done()
-		})
+			done();
+		});
 		it("conflicting key disjoint audiences", (done) => {
 			const context1 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
 			const context2 = new Context(sdk, contextOptions, contextParams, disjointedContextResponse);
