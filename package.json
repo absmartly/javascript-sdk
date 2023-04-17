@@ -17,7 +17,7 @@
 	],
 	"license": "Apache-2.0",
 	"main": "lib/index.js",
-	"module": "es/index.js",
+	"module": "es/index.mjs",
 	"browser": "dist/absmartly.min.js",
 	"engines": {
 		"npm": ">=3",
