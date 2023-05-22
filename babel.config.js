@@ -75,7 +75,7 @@ module.exports = function (api) {
 			});
 			break;
 
-		case "mjs":
+		case "es":
 			Object.assign(runtime[1], {
 				useESModules: true,
 			});
