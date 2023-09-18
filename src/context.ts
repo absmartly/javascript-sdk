@@ -33,6 +33,23 @@ export type ExperimentData = {
 	audienceMismatch: boolean;
 };
 
+type Assignment = {
+	id: number;
+	iteration: number;
+	fullOnVariant: number;
+	unitType: string | null;
+	variant: number;
+	overridden: boolean;
+	assigned: boolean;
+	exposed: boolean;
+	eligible: boolean;
+	fullOn: boolean;
+	custom: boolean;
+	audienceMismatch: boolean;
+	trafficSplit?: number[];
+	variables?: Record<string, unknown>;
+}
+
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
@@ -100,7 +117,7 @@ export default class Context {
 	private readonly _publisher: ContextPublisher;
 	private readonly _sdk: SDK;
 	private readonly _units: Units;
-	private _assignments: Record<string, ExperimentData>;
+	private _assignments: Record<string, Assignment>;
 	private _data: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
@@ -406,7 +423,7 @@ export default class Context {
 	}
 
 	private _assign(experimentName: string) {
-		const experimentMatches = (experiment: ExperimentData, assignment: ExperimentData) => {
+		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
 				experiment.id === assignment.id &&
 				experiment.unitType === assignment.unitType &&
@@ -440,19 +457,8 @@ export default class Context {
 			}
 		}
 
-		const assignment: ExperimentData = {
+		const assignment: Assignment = {
 			id: 0,
-			name: "",
-			audience: "",
-			audienceStrict: true,
-			split: [],
-			variables: {},
-			variants: [],
-			seedHi: 0,
-			seedLo: 0,
-			trafficSplit: [],
-			trafficSeedHi: 0,
-			trafficSeedLo: 0,
 			iteration: 0,
 			fullOnVariant: 0,
 			unitType: null,
@@ -493,7 +499,7 @@ export default class Context {
 					}
 				}
 
-				if (experiment.data.audienceStrict && assignment.audienceMismatch !== false) {
+				if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
 					if (unitType !== null) {
@@ -570,7 +576,7 @@ export default class Context {
 		return assignment;
 	}
 
-	private _queueExposure(experimentName: string, assignment: ExperimentData) {
+	private _queueExposure(experimentName: string, assignment: Assignment) {
 		const exposureEvent: Exposure = {
 			id: assignment.id,
 			name: experimentName,
@@ -793,7 +799,7 @@ export default class Context {
 		return this._hashes[unitType];
 	}
 
-	private _init(data: ContextData, assignments: Record<string, ExperimentData> = {}) {
+	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
 		this._data = data;
 
 		const index: Record<string, Experiment> = {};
