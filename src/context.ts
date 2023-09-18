@@ -48,7 +48,7 @@ type Assignment = {
 	audienceMismatch: boolean;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
-}
+};
 
 export type Experiment = {
 	data: ExperimentData;
