@@ -59,7 +59,7 @@ export default class Client {
 		this._delay = 50;
 	}
 
-	getContext(options?: ClientRequestOptions) {
+	getContext(options?: Partial<ClientRequestOptions>) {
 		return this.getUnauthed({
 			...options,
 			path: "/context",

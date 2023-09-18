@@ -51,7 +51,11 @@ export default class SDK {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	createContext(params: ContextParams, options?: Partial<ContextOptions>, requestOptions?: ClientRequestOptions) {
+	createContext(
+		params: ContextParams,
+		options?: Partial<ContextOptions>,
+		requestOptions?: Partial<ClientRequestOptions>
+	) {
 		SDK._validateParams(params);
 
 		const fullOptions = SDK._contextOptions(options);
