@@ -160,7 +160,7 @@ export default class Context {
 		});
 	}
 
-	refresh(requestOptions: ClientRequestOptions) {
+	refresh(requestOptions?: ClientRequestOptions) {
 		this._checkReady(true);
 
 		return new Promise<void>((resolve, reject) => {
