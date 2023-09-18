@@ -1,6 +1,6 @@
 {
 	"name": "@absmartly/javascript-sdk",
-	"version": "1.11.3",
+	"version": "1.11.5",
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
@@ -27,12 +27,12 @@
 	"scripts": {
 		"build-browser": "TARGET=browser webpack --progress --config webpack.config.js && TARGET=browser NODE_ENV=production webpack --progress --config webpack.config.js",
 		"build-cjs": "TARGET=cjs babel js --delete-dir-on-start --ignore 'browser.js' -d lib",
-		"build-mjs": "TARGET=mjs babel js --delete-dir-on-start --ignore 'browser.js' --out-file-extension=.mjs -d es",
-		"build": "npm run -s format && npm run -s lint && npm run -s compile && npm run -s test && npm run -s build-mjs && npm run -s build-cjs && npm run -s build-browser",
+		"build-es": "TARGET=es babel js --delete-dir-on-start --ignore 'browser.js' -d es",
+		"build": "npm run -s format && npm run -s lint && npm run -s compile && npm run -s test && npm run -s build-es && npm run -s build-cjs && npm run -s build-browser",
 		"lint": "eslint -f stylish 'src/**/*.{js,mjs,jsx,ts,mts,tsx}'",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
 		"test": "jest --coverage",
-		"prepack": "npm -s upgrade && npm run -s build",
+		"prepack": "npm run -s build",
 		"compile": "tsc"
 	},
 	"dependencies": {
