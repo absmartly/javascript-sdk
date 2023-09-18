@@ -4,15 +4,39 @@ import { AbortController } from "./abort";
 // eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import {
-	ClientOptions,
-	ClientRequestOptions,
-	ContextOptions,
-	ContextParams,
-	FetchResponse,
-	PublishParams,
-} from "./types";
 import { getApplicationName, getApplicationVersion } from "./utils";
+import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
+import { ContextOptions, ContextParams } from "./context";
+import { PublishParams } from "./publisher";
+
+export type FetchResponse = {
+	status: number;
+	ok: boolean;
+	text: () => Promise<string>;
+	statusText: string;
+	json: () => Promise<string>;
+};
+
+export type ClientRequestOptions = {
+	query?: Record<string, string | number | boolean>;
+	path: string;
+	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+	body?: Record<string, unknown>;
+	auth?: boolean;
+	signal?: AbortSignal | ABsmartlyAbortSignal;
+	timeout?: number;
+};
+
+export type ClientOptions = {
+	agent?: "javascript-client";
+	apiKey: string;
+	application: string | { name: string; version: number };
+	endpoint: string;
+	environment: string;
+	retries?: number;
+	timeout?: number;
+	keepalive?: boolean;
+};
 
 export default class Client {
 	private readonly _opts: ClientOptions;

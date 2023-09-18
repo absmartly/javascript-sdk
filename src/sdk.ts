@@ -1,17 +1,21 @@
-import Client from "./client";
-import Context from "./context";
-import { ContextPublisher } from "./publisher";
+import Client, { ClientOptions, ClientRequestOptions } from "./client";
+import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
+import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isBrowser } from "./utils";
-import {
-	ClientRequestOptions,
-	ContextData,
-	ContextOptions,
-	EventLogger,
-	SDKOptions,
-	ContextParams,
-	ClientOptions,
-} from "./types";
+
+export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
+
+export type EventName = "error" | "ready" | "refresh" | "publish" | "exposure" | "goal" | "finalize";
+
+export type EventLogger = (context: Context, eventName: EventName, data?: EventLoggerData) => void;
+
+export type SDKOptions = {
+	client?: Client;
+	eventLogger?: EventLogger;
+	publisher?: ContextPublisher;
+	provider?: ContextDataProvider;
+};
 
 export default class SDK {
 	static defaultEventLogger: EventLogger = (_, eventName, data) => {

@@ -1,4 +1,6 @@
-import { AbortControllerEvents } from "./types";
+export type AbortControllerEvents = {
+	[key: string]: Array<() => unknown>;
+};
 
 // eslint-disable-next-line no-shadow
 export class AbortSignal {

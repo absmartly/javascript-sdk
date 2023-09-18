@@ -1,7 +1,13 @@
 // inspired by https://github.com/bradlc/unfetch-abortable
 import { AbortError } from "./errors";
-import { FetchOptions } from "./types";
 
+export type FetchOptions = {
+	signal?: AbortSignal;
+	method?: "get" | "post" | "put" | "patch" | "delete" | "head" | "options";
+	credentials?: "include";
+	headers?: Record<string, string>;
+	body?: XMLHttpRequestBodyInit;
+};
 // eslint-disable-next-line no-shadow
 export function fetch(url: string, options: FetchOptions) {
 	options = options || {};

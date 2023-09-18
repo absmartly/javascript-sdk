@@ -2,24 +2,92 @@ import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
-import SDK from "./sdk";
-import { ContextPublisher } from "./publisher";
+import SDK, { EventLogger, EventName } from "./sdk";
+import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import {
-	Attribute,
-	ContextData,
-	ContextOptions,
-	ContextParams,
-	EventLogger,
-	EventName,
-	Experiment,
-	ExperimentData,
-	Exposure,
-	Goal,
-	PublishParams,
-	Units,
-} from "./types";
-import { ClientRequestOptions } from "./types";
+import { ClientRequestOptions } from "./client";
+
+export type ExperimentData = {
+	id: number;
+	name: string;
+	unitType: string | null;
+	iteration: number;
+	fullOnVariant: number;
+	trafficSplit: number[];
+	trafficSeedHi: number;
+	trafficSeedLo: number;
+	audience: string;
+	audienceStrict: boolean;
+	split: number[];
+	seedHi: number;
+	seedLo: number;
+	variants: { config: null | string }[];
+	variables: Record<string, unknown>;
+	variant: number;
+	overridden: boolean;
+	assigned: boolean;
+	exposed: boolean;
+	eligible: boolean;
+	fullOn: boolean;
+	custom: boolean;
+	audienceMismatch: boolean;
+};
+
+export type Experiment = {
+	data: ExperimentData;
+	variables: Record<string, unknown>[];
+};
+
+export type Unit = {
+	type: string;
+	uid: string | null;
+};
+
+export type Exposure = {
+	id: number;
+	name: string;
+	exposedAt: number;
+	unit: string | null;
+	variant: number;
+	assigned: boolean;
+	eligible: boolean;
+	overridden: boolean;
+	fullOn: boolean;
+	custom: boolean;
+	audienceMismatch: boolean;
+};
+
+export type Attribute = {
+	name: string;
+	value: unknown;
+	setAt: number;
+};
+
+export type Units = {
+	[key: string]: string | number;
+};
+
+export type Goal = {
+	name: string;
+	properties: Record<string, unknown> | null;
+	achievedAt: number;
+};
+
+export type ContextParams = {
+	units: Record<string, string | number>;
+};
+
+export type ContextOptions = {
+	publisher?: ContextPublisher;
+	dataProvider?: ContextDataProvider;
+	eventLogger?: EventLogger;
+	refreshPeriod: number;
+	publishDelay: number;
+};
+
+export type ContextData = {
+	experiments?: ExperimentData[];
+};
 
 export default class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
