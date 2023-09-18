@@ -260,7 +260,7 @@ export default class Context {
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions: ClientRequestOptions) {
+	finalize(requestOptions?: ClientRequestOptions) {
 		return this._finalize(requestOptions);
 	}
 
@@ -768,7 +768,7 @@ export default class Context {
 		}
 	}
 
-	_finalize(requestOptions: ClientRequestOptions) {
+	_finalize(requestOptions?: ClientRequestOptions) {
 		if (!this._finalized) {
 			if (!this._finalizing) {
 				if (this._refreshInterval !== undefined) {
