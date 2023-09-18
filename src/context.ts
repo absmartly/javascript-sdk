@@ -146,7 +146,7 @@ export default class Context {
 		return this._dataProvider;
 	}
 
-	publish(requestOptions: ClientRequestOptions) {
+	publish(requestOptions?: ClientRequestOptions) {
 		this._checkReady(true);
 
 		return new Promise<void>((resolve, reject) => {
@@ -270,13 +270,13 @@ export default class Context {
 		return this._data.experiments?.map((x) => x.name);
 	}
 
-	variableValue(key: string, defaultValue: unknown) {
+	variableValue(key: string, defaultValue: string): string {
 		this._checkReady(true);
 
 		return this._variableValue(key, defaultValue);
 	}
 
-	peekVariableValue(key: string, defaultValue: unknown) {
+	peekVariableValue(key: string, defaultValue: string): string {
 		this._checkReady(true);
 
 		return this._peekVariable(key, defaultValue);
@@ -524,7 +524,7 @@ export default class Context {
 		this._setTimeout();
 	}
 
-	_variableValue<T>(key: string, defaultValue: T) {
+	_variableValue(key: string, defaultValue: string): string {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -536,7 +536,7 @@ export default class Context {
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
-					return assignment.variables[key];
+					return assignment.variables[key] as string;
 				}
 			}
 		}
@@ -544,13 +544,13 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_peekVariable<T>(key: string, defaultValue: T) {
+	_peekVariable(key: string, defaultValue: string): string {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
-					return assignment.variables[key];
+					return assignment.variables[key] as string;
 				}
 			}
 		}
