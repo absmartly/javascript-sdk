@@ -23,7 +23,7 @@ export class AbortSignal {
 	removeEventListener(type: string, listener: () => void) {
 		const listeners = this._events[type];
 		if (listeners) {
-			const index = listeners.findIndex((x: () => void) => x === listener);
+			const index = listeners.findIndex((x) => x === listener);
 			if (index !== -1) {
 				listeners.splice(index, 1);
 				if (listeners.length === 0) {
