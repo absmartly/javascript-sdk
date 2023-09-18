@@ -103,7 +103,7 @@ export default class SDK {
 		return new Context(this, fullOptions, params, data);
 	}
 
-	static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
+	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
 		return Object.assign(
 			{
 				publishDelay: isBrowser() ? 100 : -1,
@@ -113,7 +113,7 @@ export default class SDK {
 		);
 	}
 
-	static _validateParams(params: ContextParams) {
+	private static _validateParams(params: ContextParams) {
 		Object.entries(params.units).forEach((entry) => {
 			const type = typeof entry[1];
 			if (type !== "string" && type !== "number") {

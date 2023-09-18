@@ -319,7 +319,7 @@ export default class Context {
 		});
 	}
 
-	_checkNotFinalized() {
+	private _checkNotFinalized() {
 		if (this.isFinalized()) {
 			throw new Error("ABSmartly Context is finalized.");
 		} else if (this.isFinalizing()) {
@@ -327,7 +327,7 @@ export default class Context {
 		}
 	}
 
-	_checkReady(expectNotFinalized?: boolean) {
+	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
 			throw new Error("ABSmartly Context is not yet ready.");
 		}
@@ -337,7 +337,7 @@ export default class Context {
 		}
 	}
 
-	_assign(experimentName: string) {
+	private _assign(experimentName: string) {
 		const experimentMatches = (experiment: ExperimentData, assignment: ExperimentData) => {
 			return (
 				experiment.id === assignment.id &&
@@ -486,11 +486,11 @@ export default class Context {
 		return assignment;
 	}
 
-	_peek(experimentName: string) {
+	private _peek(experimentName: string) {
 		return this._assign(experimentName);
 	}
 
-	_treatment(experimentName: string) {
+	private _treatment(experimentName: string) {
 		const assignment = this._assign(experimentName);
 
 		if (!assignment.exposed) {
@@ -502,7 +502,7 @@ export default class Context {
 		return assignment;
 	}
 
-	_queueExposure(experimentName: string, assignment: ExperimentData) {
+	private _queueExposure(experimentName: string, assignment: ExperimentData) {
 		const exposureEvent: Exposure = {
 			id: assignment.id,
 			name: experimentName,
@@ -524,7 +524,7 @@ export default class Context {
 		this._setTimeout();
 	}
 
-	_variableValue(key: string, defaultValue: string): string {
+	private _variableValue(key: string, defaultValue: string): string {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -544,7 +544,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_peekVariable(key: string, defaultValue: string): string {
+	private _peekVariable(key: string, defaultValue: string): string {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -558,7 +558,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	_validateGoal(goalName: string, properties: Record<string, unknown>) {
+	private _validateGoal(goalName: string, properties: Record<string, unknown>) {
 		if (properties !== null && properties !== undefined) {
 			if (!isObject(properties)) {
 				throw new Error(`Goal '${goalName}' properties must be of type object.`);
@@ -570,7 +570,7 @@ export default class Context {
 		return null;
 	}
 
-	_track(goalName: string, properties: Record<string, unknown>) {
+	private _track(goalName: string, properties: Record<string, unknown>) {
 		const props = this._validateGoal(goalName, properties);
 		const goalEvent: Goal = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
@@ -581,7 +581,7 @@ export default class Context {
 		this._setTimeout();
 	}
 
-	_setTimeout() {
+	private _setTimeout() {
 		if (this.isReady()) {
 			if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
 				this._publishTimeout = setTimeout(() => {
@@ -591,7 +591,7 @@ export default class Context {
 		}
 	}
 
-	_flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
+	private _flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
@@ -672,7 +672,7 @@ export default class Context {
 		}
 	}
 
-	_refresh(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
+	private _refresh(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
 		if (!this._failed) {
 			this._dataProvider
 				.getContextData(this._sdk, requestOptions)
@@ -699,19 +699,19 @@ export default class Context {
 		}
 	}
 
-	_logEvent(eventName: EventName, data?: Record<string, unknown>) {
+	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
 		if (this._eventLogger) {
 			this._eventLogger(this, eventName, data);
 		}
 	}
 
-	_logError(error: Error) {
+	private _logError(error: Error) {
 		if (this._eventLogger) {
 			this._eventLogger(this, "error", error);
 		}
 	}
 
-	_unitHash(unitType: string) {
+	private _unitHash(unitType: string) {
 		if (!this._hashes) {
 			this._hashes = {};
 		}
@@ -725,7 +725,7 @@ export default class Context {
 		return this._hashes[unitType];
 	}
 
-	_init(data: ContextData, assignments: Record<string, ExperimentData> = {}) {
+	private _init(data: ContextData, assignments: Record<string, ExperimentData> = {}) {
 		this._data = data;
 
 		const index: Record<string, Experiment> = {};
@@ -768,7 +768,7 @@ export default class Context {
 		}
 	}
 
-	_finalize(requestOptions?: ClientRequestOptions) {
+	private _finalize(requestOptions?: ClientRequestOptions) {
 		if (!this._finalized) {
 			if (!this._finalizing) {
 				if (this._refreshInterval !== undefined) {

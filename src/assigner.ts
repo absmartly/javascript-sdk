@@ -12,7 +12,7 @@ export class VariantAssigner {
 		return chooseVariant(split, prob);
 	}
 
-	_probability(seedHi: number, seedLo: number) {
+	private _probability(seedHi: number, seedLo: number) {
 		const key = this._unitHash;
 		const buffer = new ArrayBuffer(12);
 		const view = new DataView(buffer);
