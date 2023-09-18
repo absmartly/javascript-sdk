@@ -10,7 +10,7 @@ export class Evaluator {
 		this.vars = vars;
 	}
 
-	evaluate(expr: any) {
+	evaluate<TExpr>(expr: TExpr) {
 		if (Array.isArray(expr)) {
 			return this.operators["and"].evaluate(this, expr);
 		} else if (isObject(expr)) {
@@ -26,7 +26,7 @@ export class Evaluator {
 		return null;
 	}
 
-	booleanConvert(x: any) {
+	booleanConvert<TData>(x: TData) {
 		const type = typeof x;
 		switch (type) {
 			case "boolean":
@@ -40,11 +40,10 @@ export class Evaluator {
 		}
 	}
 
-	numberConvert(x: any) {
-		const type = typeof x;
-		switch (type) {
+	numberConvert<TData>(x: TData) {
+		switch (typeof x) {
 			case "number":
-				return parseFloat(x);
+				return x;
 			case "boolean":
 				return x ? 1 : 0;
 			case "string": {
@@ -56,9 +55,8 @@ export class Evaluator {
 		}
 	}
 
-	stringConvert(x: any) {
-		const type = typeof x;
-		switch (type) {
+	stringConvert<TData>(x: TData) {
+		switch (typeof x) {
 			case "string":
 				return x;
 			case "boolean":
@@ -70,7 +68,7 @@ export class Evaluator {
 		}
 	}
 
-	extractVar(path: any) {
+	extractVar(path: string) {
 		const frags = path.split("/");
 
 		let target = this.vars ?? {};
@@ -89,7 +87,7 @@ export class Evaluator {
 		return target;
 	}
 
-	compare(lhs: any, rhs: any) {
+	compare<TData>(lhs: TData, rhs: TData) {
 		if (lhs === null) {
 			return rhs === null ? 0 : null;
 		} else if (rhs === null) {
@@ -113,7 +111,7 @@ export class Evaluator {
 			}
 			case "boolean": {
 				const rvalue = this.booleanConvert(rhs);
-				if (rvalue !== null) {
+				if (rvalue != null) {
 					return lhs === rvalue ? 0 : lhs > rvalue ? 1 : -1;
 				}
 				break;

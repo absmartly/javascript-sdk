@@ -1,4 +1,4 @@
-export const insertUniqueSorted = (arr: unknown[], value: unknown, isSorted: (a: unknown, b: unknown) => boolean) => {
+export const insertUniqueSorted = <TData>(arr: TData[], value: TData, isSorted: (a: TData, b: TData) => boolean) => {
 	let left = 0;
 	let right = arr.length - 1;
 
