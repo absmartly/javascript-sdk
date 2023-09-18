@@ -87,11 +87,16 @@ export default class SDK {
 		return this._client;
 	}
 
-	createContextWith(params: ContextParams, data: Promise<ContextData>, options: ContextOptions) {
+	createContextWith(
+		params: ContextParams,
+		data: ContextData | Promise<ContextData>,
+		options?: Partial<ContextOptions>
+	) {
 		SDK._validateParams(params);
 
-		options = SDK._contextOptions(options);
-		return new Context(this, options, params, data);
+		const fullOptions = SDK._contextOptions(options);
+
+		return new Context(this, fullOptions, params, data);
 	}
 
 	static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
