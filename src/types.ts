@@ -3,7 +3,7 @@ import Context from "./context";
 import { ContextDataProvider } from "./provider";
 import { ContextPublisher } from "./publisher";
 // eslint-disable-next-line no-shadow
-import { AbortSignal } from "./abort-controller-shim";
+import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
 
 export type AbortControllerEvents = {
 	[key: string]: Array<() => unknown>;
@@ -103,7 +103,7 @@ export type ClientRequestOptions = {
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
 	auth?: boolean;
-	signal?: AbortSignal;
+	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
 };
 
