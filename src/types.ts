@@ -85,7 +85,9 @@ export type PublishParams = {
 
 export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
 
-export type EventLogger = (context: Context, eventName: string, data?: EventLoggerData) => void;
+export type EventName = "error" | "ready" | "refresh" | "publish" | "exposure" | "goal" | "finalize";
+
+export type EventLogger = (context: Context, eventName: EventName, data?: EventLoggerData) => void;
 
 export type FetchResponse = {
 	status: number;

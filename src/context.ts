@@ -11,6 +11,7 @@ import {
 	ContextOptions,
 	ContextParams,
 	EventLogger,
+	EventName,
 	Experiment,
 	ExperimentData,
 	Exposure,
@@ -698,7 +699,7 @@ export default class Context {
 		}
 	}
 
-	_logEvent(eventName: string, data?: Record<string, unknown>) {
+	_logEvent(eventName: EventName, data?: Record<string, unknown>) {
 		if (this._eventLogger) {
 			this._eventLogger(this, eventName, data);
 		}
