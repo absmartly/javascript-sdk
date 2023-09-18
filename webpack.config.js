@@ -8,7 +8,7 @@ module.exports = function () {
 	const config = {
 		devtool: "source-map",
 		entry: {
-			absmartly: ["./src/browser.js"],
+			absmartly: ["./js/browser.js"],
 		},
 
 		target: "browserslist",

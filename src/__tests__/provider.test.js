@@ -12,7 +12,7 @@ describe("ContextDataProvider", () => {
 	sdk.getClient.mockReturnValue(client);
 
 	describe("getContextData()", () => {
-		it("should call client getContext", async (done) => {
+		it("should call client getContext", async () => {
 			const provider = new ContextDataProvider();
 
 			const data = {};
@@ -26,11 +26,10 @@ describe("ContextDataProvider", () => {
 
 			result.then((resp) => {
 				expect(resp).toBe(data);
-				done();
 			});
 		});
 
-		it("should pass through options", async (done) => {
+		it("should pass through options", async () => {
 			const provider = new ContextDataProvider();
 
 			const data = {};
@@ -46,7 +45,6 @@ describe("ContextDataProvider", () => {
 
 			result.then((resp) => {
 				expect(resp).toBe(data);
-				done();
 			});
 		});
 	});

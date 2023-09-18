@@ -15,7 +15,7 @@ describe("ContextPublisher", () => {
 	sdk.getClient.mockReturnValue(client);
 
 	describe("publish()", () => {
-		it("should call client publish", async (done) => {
+		it("should call client publish", async () => {
 			const publisher = new ContextPublisher();
 
 			const data = { ok: true };
@@ -30,11 +30,10 @@ describe("ContextPublisher", () => {
 
 			result.then((resp) => {
 				expect(resp).toBe(data);
-				done();
 			});
 		});
 
-		it("should pass through options", async (done) => {
+		it("should pass through options", async () => {
 			const publisher = new ContextPublisher();
 
 			const data = { ok: true };
@@ -51,7 +50,6 @@ describe("ContextPublisher", () => {
 
 			result.then((resp) => {
 				expect(resp).toBe(data);
-				done();
 			});
 		});
 	});

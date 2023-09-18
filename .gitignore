@@ -4,3 +4,7 @@ node_modules
 dist/
 es/
 lib/
+src/js/*
+!src/js/__tests__
+types
+js

@@ -9,7 +9,8 @@ jest.mock("../fetch");
 
 describe("Client", () => {
 	beforeEach(() => {
-		jest.useFakeTimers();
+		jest.useFakeTimers("legacy");
+		jest.spyOn(global, "setTimeout");
 	});
 
 	afterEach(() => {

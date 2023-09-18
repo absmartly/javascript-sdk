@@ -1,14 +1,21 @@
 module.exports = {
 	root: true,
-	parser: "@babel/eslint-parser",
+	parser: "@typescript-eslint/parser",
+	plugins: ["@typescript-eslint"],
 	env: {
 		browser: true,
 		node: true,
 		es6: true,
 		jest: true,
 	},
-	extends: ["eslint:recommended", "prettier"],
+	extends: [
+		"eslint:recommended",
+		"prettier",
+		"plugin:@typescript-eslint/eslint-recommended",
+		"plugin:@typescript-eslint/recommended",
+	],
 	rules: {
+		"@typescript-eslint/no-empty-function": "off",
 		"no-debugger": process.env.NODE_ENV === "production" ? "error" : "off",
 		"no-template-curly-in-string": "error",
 		"no-promise-executor-return": "error",

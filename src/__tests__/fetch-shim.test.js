@@ -31,7 +31,7 @@ describe("fetch", () => {
 			delete global.XMLHttpRequest;
 		});
 
-		it("sanity test", async (done) => {
+		it("sanity test", async () => {
 			fetch("/foo", { headers: { a: "b" } })
 				.then((response) => {
 					expect(response).toMatchObject({
@@ -56,8 +56,6 @@ describe("fetch", () => {
 					expect(xhr.open).toHaveBeenCalledWith("get", "/foo", true);
 					expect(xhr.send).toHaveBeenCalledTimes(1);
 					expect(xhr.send).toHaveBeenCalledWith(null);
-
-					done();
 				});
 
 			expect(xhr.onload).toEqual(expect.any(Function));
@@ -67,19 +65,17 @@ describe("fetch", () => {
 			xhr.onload();
 		});
 
-		it("handles empty header values", async (done) => {
+		it("handles empty header values", async () => {
 			xhr.getAllResponseHeaders = jest.fn().mockReturnValue("Server: \nX-Foo:baz");
 			fetch("/foo").then((response) => {
 				expect(response.headers.get("server")).toEqual("");
 				expect(response.headers.get("X-foo")).toEqual("baz");
-
-				done();
 			});
 
 			xhr.onload();
 		});
 
-		it("adds and removes the abort event listener", async (done) => {
+		it("adds and removes the abort event listener", async () => {
 			const controller = new AbortController();
 			jest.spyOn(controller.signal, "addEventListener");
 			jest.spyOn(controller.signal, "removeEventListener");
@@ -95,14 +91,12 @@ describe("fetch", () => {
 					expect(data).toEqual({ a: "b" });
 					expect(controller.signal.addEventListener).toHaveBeenCalledTimes(1);
 					expect(controller.signal.removeEventListener).toHaveBeenCalledTimes(1);
-
-					done();
 				});
 
 			xhr.onload();
 		});
 
-		it("adds and removes the abort event listener on abort", async (done) => {
+		it("adds and removes the abort event listener on abort", async () => {
 			const controller = new AbortController();
 
 			jest.spyOn(controller.signal, "addEventListener");
@@ -115,15 +109,13 @@ describe("fetch", () => {
 				expect(xhr.abort).toHaveBeenCalledTimes(1);
 				expect(controller.signal.addEventListener).toHaveBeenCalledTimes(1);
 				expect(controller.signal.removeEventListener).toHaveBeenCalledTimes(1);
-
-				done();
 			});
 
 			controller.abort();
 			xhr.onabort();
 		});
 
-		it("adds and removes the abort event listener on error", async (done) => {
+		it("adds and removes the abort event listener on error", async () => {
 			const controller = new AbortController();
 
 			jest.spyOn(controller.signal, "addEventListener");
@@ -135,8 +127,6 @@ describe("fetch", () => {
 				expect(xhr.abort).not.toHaveBeenCalled();
 				expect(controller.signal.addEventListener).toHaveBeenCalledTimes(1);
 				expect(controller.signal.removeEventListener).toHaveBeenCalledTimes(1);
-
-				done();
 			});
 
 			xhr.onerror();

@@ -9,7 +9,7 @@ describe("AbortSignal", () => {
 	});
 
 	describe("dispatchEvent", () => {
-		it("calls listeners", async (done) => {
+		it("calls listeners", async () => {
 			const aborter = new AbortController();
 			const signal = aborter.signal;
 			const listener1 = jest.fn();
@@ -41,38 +41,30 @@ describe("AbortSignal", () => {
 			expect(listener1).not.toHaveBeenCalled();
 			expect(listener2).not.toHaveBeenCalled();
 			expect(listener3).toHaveBeenCalledTimes(1);
-
-			done();
 		});
 	});
 
-	it("toString() returns [object AbortSignal]", async (done) => {
+	it("toString() returns [object AbortSignal]", async () => {
 		const aborter = new AbortSignal();
 
 		expect(aborter.toString()).toEqual("[object AbortSignal]");
-
-		done();
 	});
 
-	it("toStringTag is set to AbortSignal", async (done) => {
+	it("toStringTag is set to AbortSignal", async () => {
 		const aborter = new AbortSignal();
 
 		expect(aborter[Symbol.toStringTag]).toEqual("AbortSignal");
-
-		done();
 	});
 });
 
 describe("AbortController", () => {
-	it("creates abort signal", async (done) => {
+	it("creates abort signal", async () => {
 		const aborter = new AbortController();
 		expect(aborter.signal).toBeInstanceOf(AbortSignal);
 		expect(aborter.signal.aborted).toBe(false);
-
-		done();
 	});
 
-	it("abort dispatches event on signal and aborted is set", async (done) => {
+	it("abort dispatches event on signal and aborted is set", async () => {
 		const aborter = new AbortController();
 		jest.spyOn(aborter.signal, "dispatchEvent").mockImplementation(() => {});
 
@@ -83,23 +75,17 @@ describe("AbortController", () => {
 		expect(aborter.signal.dispatchEvent).toHaveBeenCalledWith(
 			expect.objectContaining({ type: expect.any(String) })
 		);
-
-		done();
 	});
 
-	it("toString() returns [object AbortController]", async (done) => {
+	it("toString() returns [object AbortController]", async () => {
 		const aborter = new AbortController();
 
 		expect(aborter.toString()).toEqual("[object AbortController]");
-
-		done();
 	});
 
-	it("toStringTag is set to AbortController", async (done) => {
+	it("toStringTag is set to AbortController", async () => {
 		const aborter = new AbortController();
 
 		expect(aborter[Symbol.toStringTag]).toEqual("AbortController");
-
-		done();
 	});
 });
