@@ -86,6 +86,7 @@
 		"package.json",
 		"dist/",
 		"es/",
-		"lib/"
+		"lib/",
+		"types/"
 	]
 }
