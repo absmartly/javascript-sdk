@@ -339,7 +339,7 @@ export default class Context {
 		return this._treatment(experimentName).variant;
 	}
 
-	track(goalName: string, properties: Record<string, unknown>) {
+	track(goalName: string, properties?: Record<string, unknown>) {
 		this._checkNotFinalized();
 
 		return this._track(goalName, properties);
@@ -632,7 +632,7 @@ export default class Context {
 		return defaultValue;
 	}
 
-	private _validateGoal(goalName: string, properties: Record<string, unknown>) {
+	private _validateGoal(goalName: string, properties?: Record<string, unknown>) {
 		if (properties !== null && properties !== undefined) {
 			if (!isObject(properties)) {
 				throw new Error(`Goal '${goalName}' properties must be of type object.`);
@@ -644,7 +644,7 @@ export default class Context {
 		return null;
 	}
 
-	private _track(goalName: string, properties: Record<string, unknown>) {
+	private _track(goalName: string, properties?: Record<string, unknown>) {
 		const props = this._validateGoal(goalName, properties);
 		const goalEvent: Goal = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
