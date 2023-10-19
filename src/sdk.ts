@@ -2,7 +2,7 @@ import Client, { ClientOptions, ClientRequestOptions } from "./client";
 import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
 import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { isBrowser } from "./utils";
+import { isLongLivedApp } from "./utils";
 
 export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
 
@@ -110,7 +110,7 @@ export default class SDK {
 	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
 		return Object.assign(
 			{
-				publishDelay: isBrowser() ? 100 : -1,
+				publishDelay: isLongLivedApp() ? 100 : -1,
 				refreshPeriod: 0,
 			},
 			options || {}

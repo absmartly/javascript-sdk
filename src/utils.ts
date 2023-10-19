@@ -6,8 +6,19 @@ export const getApplicationName = (app: string | { name: string; version: number
 export const getApplicationVersion = (app: string | { name: string; version: number }): number =>
 	typeof app !== "string" ? app.version : 0;
 
-export function isBrowser() {
+function isBrowser() {
 	return typeof window !== "undefined" && typeof window.document !== "undefined";
+}
+
+function isReactNative() {
+	return typeof navigator !== "undefined" && navigator.product === "ReactNative";
+}
+
+export function isLongLivedApp() {
+	if (typeof navigator !== "undefined") {
+		console.dir(navigator.product);
+	}
+	return isBrowser() || isReactNative();
 }
 
 export function isWorker() {

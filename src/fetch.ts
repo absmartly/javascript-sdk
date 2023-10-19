@@ -1,7 +1,7 @@
-import { isBrowser, isWorker } from "./utils";
+import { isLongLivedApp, isWorker } from "./utils";
 import fetchShim from "./fetch-shim";
 
-const exported = isBrowser()
+const exported = isLongLivedApp()
 	? window.fetch
 		? window.fetch.bind(window)
 		: fetchShim
