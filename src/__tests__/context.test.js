@@ -57,6 +57,7 @@ describe("Context", () => {
 					},
 				],
 				audience: null,
+				customFieldValues: null,
 			},
 			{
 				id: 2,
@@ -90,6 +91,48 @@ describe("Context", () => {
 					},
 				],
 				audience: "",
+				customFieldValues: [
+					{
+						name: "country",
+						value: "US,PT,ES,DE,FR",
+						type: "string",
+					},
+					{
+						name: "json_object",
+						value: '{"123":1,"456":0}',
+						type: "json",
+					},
+					{
+						name: "json_array",
+						value: '["hello", "world"]',
+						type: "json",
+					},
+					{
+						name: "json_number",
+						value: "123",
+						type: "json",
+					},
+					{
+						name: "json_string",
+						value: '"hello"',
+						type: "json",
+					},
+					{
+						name: "json_boolean",
+						value: "true",
+						type: "json",
+					},
+					{
+						name: "json_null",
+						value: "null",
+						type: "json",
+					},
+					{
+						name: "json_invalid",
+						value: "invalid",
+						type: "json",
+					},
+				],
 			},
 			{
 				id: 3,
@@ -123,6 +166,7 @@ describe("Context", () => {
 					},
 				],
 				audience: "{}",
+				customFieldValues: null,
 			},
 			{
 				id: 4,
@@ -160,6 +204,78 @@ describe("Context", () => {
 					},
 				],
 				audience: "null",
+				customFieldValues: null,
+			},
+			{
+				id: 5,
+				name: "exp_test_custom_fields",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 3603515,
+				seedLo: 233373850,
+				split: [0.5, 0.5],
+				trafficSeedHi: 449867249,
+				trafficSeedLo: 455443629,
+				trafficSplit: [0.0, 1.0],
+				fullOnVariant: 0,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"banner.border":1,"banner.size":"large"}',
+					},
+				],
+				audience: null,
+				customFieldValues: [
+					{
+						name: "country",
+						value: "US,PT,ES",
+						type: "string",
+					},
+					{
+						name: "languages",
+						value: "en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX",
+						type: "string",
+					},
+					{
+						name: "text_field",
+						value: "hello text",
+						type: "text",
+					},
+					{
+						name: "string_field",
+						value: "hello string",
+						type: "string",
+					},
+					{
+						name: "number_field",
+						value: "123",
+						type: "number",
+					},
+					{
+						name: "boolean_field",
+						value: "true",
+						type: "boolean",
+					},
+					{
+						name: "false_boolean_field",
+						value: "false",
+						type: "boolean",
+					},
+					{
+						name: "invalid_type_field",
+						value: "invalid",
+						type: "invalid",
+					},
+				],
 			},
 		],
 	};
@@ -3387,6 +3503,113 @@ describe("Context", () => {
 
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.customAssignment("exp_test_ab", 3)).toThrow(); // finalizing
+		});
+	});
+	describe("customFieldKeys()", () => {
+		it("should return custom field keys", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+			const keys = context.customFieldKeys();
+
+			expect(context.isReady()).toEqual(true);
+			expect(keys).toEqual([
+				"country",
+				"json_object",
+				"json_array",
+				"json_number",
+				"json_string",
+				"json_boolean",
+				"json_null",
+				"json_invalid",
+				"languages",
+				"text_field",
+				"string_field",
+				"number_field",
+				"boolean_field",
+				"false_boolean_field",
+				"invalid_type_field",
+			]);
+		});
+	});
+
+	describe("customFieldValue()", () => {
+		it("should return custom field value", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+			const value = context.customFieldValue("exp_test_custom_fields", "country");
+
+			expect(context.isReady()).toEqual(true);
+			expect(value).toEqual("US,PT,ES");
+		});
+
+		it("should return parsed JSON fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_abc", "json_object")).toEqual({ 123: 1, 456: 0 });
+			expect(context.customFieldValue("exp_test_abc", "json_array")).toEqual(["hello", "world"]);
+			expect(context.customFieldValue("exp_test_abc", "json_number")).toEqual(123);
+			expect(context.customFieldValue("exp_test_abc", "json_string")).toEqual("hello");
+			expect(context.customFieldValue("exp_test_abc", "json_boolean")).toEqual(true);
+			expect(context.customFieldValue("exp_test_abc", "json_null")).toEqual(null);
+		});
+
+		it("should return string and text fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "text_field")).toEqual("hello text");
+			expect(context.customFieldValue("exp_test_custom_fields", "string_field")).toEqual("hello string");
+		});
+
+		it("should return parsed number fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "number_field")).toEqual(123);
+		});
+
+		it("should return parsed boolean fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "boolean_field")).toEqual(true);
+			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
+		});
+
+		it("should console an error when JSON cannot be parsed", () => {
+			const errorSpy = jest.spyOn(console, "error");
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
+			);
+		});
+
+		it("should console an error when a field type is invalid", () => {
+			const errorSpy = jest.spyOn(console, "error");
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field'"
+			);
+		});
+	});
+
+	describe("customFieldValueType()", () => {
+		it("should return custom field value type", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+			const value = context.customFieldValueType("exp_test_custom_fields", "country");
+
+			expect(context.isReady()).toEqual(true);
+			expect(value).toEqual("string");
 		});
 	});
 });

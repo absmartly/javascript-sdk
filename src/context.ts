@@ -7,6 +7,19 @@ import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { ClientRequestOptions } from "./client";
 
+type JSONPrimitive = string | number | boolean | null;
+type JSONObject = { [key: string]: JSONValue };
+type JSONArray = JSONValue[];
+type JSONValue = JSONPrimitive | JSONObject | JSONArray;
+
+type CustomFieldValueType = "text" | "string" | "number" | "json" | "boolean";
+
+type CustomFieldValue = {
+	name: string;
+	value: string;
+	type: CustomFieldValueType;
+};
+
 export type ExperimentData = {
 	id: number;
 	name: string;
@@ -31,6 +44,7 @@ export type ExperimentData = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	customFieldValues: CustomFieldValue[] | null;
 };
 
 type Assignment = {
@@ -596,6 +610,86 @@ export default class Context {
 		this._pending++;
 
 		this._setTimeout();
+	}
+
+	private _customFieldKeys() {
+		const keys = new Set<string>();
+
+		if (!this._data.experiments) return [];
+
+		for (const experiment of this._data.experiments) {
+			if (experiment.customFieldValues != null) {
+				for (const customFieldValues of experiment.customFieldValues) {
+					keys.add(customFieldValues.name);
+				}
+			}
+		}
+
+		return Array.from(keys);
+	}
+
+	customFieldKeys() {
+		this._checkReady(true);
+
+		return this._customFieldKeys();
+	}
+
+	private _customFieldValue(experimentName: string, key: string): JSONValue {
+		const experiment = this._index[experimentName];
+
+		if (experiment != null) {
+			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			if (field != null) {
+				switch (field.type) {
+					case "text":
+					case "string":
+						return field.value;
+					case "number":
+						return Number(field.value);
+					case "json":
+						try {
+							return JSON.parse(field.value);
+						} catch (e) {
+							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
+							return null;
+						}
+					case "boolean":
+						return field.value === "true";
+					default:
+						console.error(
+							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}'`
+						);
+						return null;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	customFieldValue(experimentName: string, key: string) {
+		this._checkReady(true);
+
+		return this._customFieldValue(experimentName, key);
+	}
+
+	private _customFieldValueType(experimentName: string, key: string) {
+		const experiment = this._index[experimentName];
+
+		if (experiment != null) {
+			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			if (field != null) {
+				return field.type;
+			}
+		}
+
+		return null;
+	}
+
+	customFieldValueType(experimentName: string, key: string) {
+		this._checkReady(true);
+
+		return this._customFieldValueType(experimentName, key);
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
