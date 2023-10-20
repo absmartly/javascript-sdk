@@ -675,6 +675,25 @@ export default class Context {
 		return this._customFieldValue(experimentName, key);
 	}
 
+	private _customFieldValueType(experimentName: string, key: string) {
+		const experiment = this._index[experimentName];
+
+		if (experiment != null) {
+			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			if (field != null) {
+				return field.type;
+			}
+		}
+
+		return null;
+	}
+
+	customFieldValueType(experimentName: string, key: string) {
+		this._checkReady(true);
+
+		return this._customFieldValueType(experimentName, key);
+	}
+
 	private _variableValue(key: string, defaultValue: string): string {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;

@@ -3630,4 +3630,15 @@ describe("Context", () => {
 			);
 		});
 	});
+
+	describe("customFieldValueType()", () => {
+		it("should return custom field value type", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+			const value = context.customFieldValueType("exp_test_custom_fields", "country");
+
+			expect(context.isReady()).toEqual(true);
+			expect(value).toEqual("string");
+		});
+	});
 });
