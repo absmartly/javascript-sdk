@@ -46,7 +46,7 @@ module.exports = {
 		"no-void": "error",
 		"wrap-iife": ["error", "inside"],
 		"no-shadow": ["error", { builtinGlobals: true, hoist: "never" }],
-		"no-use-before-define": "error",
+		"no-use-before-define": "off",
 		"no-var": "error",
 		"prefer-numeric-literals": "error",
 		"prefer-const": "warn",

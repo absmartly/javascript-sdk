@@ -7,6 +7,19 @@ import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { ClientRequestOptions } from "./client";
 
+type JSONPrimitive = string | number | boolean | null;
+type JSONObject = { [key: string]: JSONValue };
+type JSONArray = JSONValue[];
+type JSONValue = JSONPrimitive | JSONObject | JSONArray;
+
+type CustomFieldValueType = "text" | "string" | "number" | "json" | "boolean";
+
+type CustomFieldValue = {
+	name: string;
+	value: string;
+	type: CustomFieldValueType;
+};
+
 export type ExperimentData = {
 	id: number;
 	name: string;
@@ -31,6 +44,7 @@ export type ExperimentData = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	customFieldValues: CustomFieldValue[] | null;
 };
 
 type Assignment = {
@@ -596,6 +610,28 @@ export default class Context {
 		this._pending++;
 
 		this._setTimeout();
+	}
+
+	private _customFieldKeys() {
+		const keys = new Set<string>();
+
+		if (!this._data.experiments) return [];
+
+		for (const experiment of this._data.experiments) {
+			if (experiment.customFieldValues != null) {
+				for (const customFieldValues of experiment.customFieldValues) {
+					keys.add(customFieldValues.name);
+				}
+			}
+		}
+
+		return Array.from(keys);
+	}
+
+	customFieldKeys() {
+		this._checkReady(true);
+
+		return this._customFieldKeys();
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
