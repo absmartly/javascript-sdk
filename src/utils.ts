@@ -15,9 +15,6 @@ function isReactNative() {
 }
 
 export function isLongLivedApp() {
-	if (typeof navigator !== "undefined") {
-		console.dir(navigator.product);
-	}
 	return isBrowser() || isReactNative();
 }
 
