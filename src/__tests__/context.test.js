@@ -57,6 +57,7 @@ describe("Context", () => {
 					},
 				],
 				audience: null,
+				customFieldValues: null,
 			},
 			{
 				id: 2,
@@ -90,6 +91,48 @@ describe("Context", () => {
 					},
 				],
 				audience: "",
+				customFieldValues: [
+					{
+						name: "country",
+						value: "US,PT,ES,DE,FR",
+						type: "string",
+					},
+					{
+						name: "json_object",
+						value: '{"123":1,"456":0}',
+						type: "json",
+					},
+					{
+						name: "json_array",
+						value: '["hello", "world"]',
+						type: "json",
+					},
+					{
+						name: "json_number",
+						value: "123",
+						type: "json",
+					},
+					{
+						name: "json_string",
+						value: '"hello"',
+						type: "json",
+					},
+					{
+						name: "json_boolean",
+						value: "true",
+						type: "json",
+					},
+					{
+						name: "json_null",
+						value: "null",
+						type: "json",
+					},
+					{
+						name: "json_invalid",
+						value: "invalid",
+						type: "json",
+					},
+				],
 			},
 			{
 				id: 3,
@@ -123,6 +166,7 @@ describe("Context", () => {
 					},
 				],
 				audience: "{}",
+				customFieldValues: null,
 			},
 			{
 				id: 4,
@@ -160,6 +204,78 @@ describe("Context", () => {
 					},
 				],
 				audience: "null",
+				customFieldValues: null,
+			},
+			{
+				id: 5,
+				name: "exp_test_custom_fields",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 9372617,
+				seedLo: 121364805,
+				split: [0.5, 0.5],
+				trafficSeedHi: 318746944,
+				trafficSeedLo: 359812364,
+				trafficSplit: [0.0, 1.0],
+				fullOnVariant: 0,
+				applications: [
+					{
+						name: "website",
+					},
+				],
+				variants: [
+					{
+						name: "A",
+						config: null,
+					},
+					{
+						name: "B",
+						config: '{"submit.size":"sm"}',
+					},
+				],
+				audience: null,
+				customFieldValues: [
+					{
+						name: "country",
+						value: "US,PT,ES",
+						type: "string",
+					},
+					{
+						name: "languages",
+						value: "en-US,en-GB,pt-PT,pt-BR,es-ES,es-MX",
+						type: "string",
+					},
+					{
+						name: "text_field",
+						value: "hello text",
+						type: "text",
+					},
+					{
+						name: "string_field",
+						value: "hello string",
+						type: "string",
+					},
+					{
+						name: "number_field",
+						value: "123",
+						type: "number",
+					},
+					{
+						name: "boolean_field",
+						value: "true",
+						type: "boolean",
+					},
+					{
+						name: "false_boolean_field",
+						value: "false",
+						type: "boolean",
+					},
+					{
+						name: "invalid_type_field",
+						value: "invalid",
+						type: "invalid",
+					},
+				],
 			},
 		],
 	};
@@ -167,7 +283,7 @@ describe("Context", () => {
 	const refreshContextResponse = Object.assign({}, getContextResponse, {
 		experiments: [
 			{
-				id: 5,
+				id: 6,
 				name: "exp_test_new",
 				iteration: 2,
 				unitType: "session_id",
@@ -237,6 +353,7 @@ describe("Context", () => {
 		exp_test_not_eligible: 0,
 		exp_test_fullon: 2,
 		exp_test_new: 1,
+		exp_test_custom_fields: 1,
 	};
 
 	const lowestIdConflictingKeyContextResponse = {
@@ -332,6 +449,7 @@ describe("Context", () => {
 		"submit.color": "blue",
 		"submit.shape": "rect",
 		"show-modal": true,
+		"submit.size": "sm",
 	};
 
 	const variableExperiments = {
@@ -341,6 +459,7 @@ describe("Context", () => {
 		"card.width": ["exp_test_not_eligible"],
 		"submit.color": ["exp_test_fullon"],
 		"submit.shape": ["exp_test_fullon"],
+		"submit.size": ["exp_test_custom_fields"],
 		"show-modal": ["exp_test_new"],
 	};
 
@@ -1270,6 +1389,19 @@ describe("Context", () => {
 								custom: false,
 								audienceMismatch: false,
 							},
+							{
+								id: 5,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_custom_fields",
+								overridden: false,
+								unit: "session_id",
+								variant: 1,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+							},
 						],
 					},
 					sdk,
@@ -1729,6 +1861,19 @@ describe("Context", () => {
 								unit: "session_id",
 								variant: 2,
 								fullOn: true,
+								custom: false,
+								audienceMismatch: false,
+							},
+							{
+								id: 5,
+								assigned: true,
+								eligible: true,
+								exposedAt: 1611141535729,
+								name: "exp_test_custom_fields",
+								overridden: false,
+								unit: "session_id",
+								variant: 1,
+								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
 							},
@@ -3387,6 +3532,32 @@ describe("Context", () => {
 
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.customAssignment("exp_test_ab", 3)).toThrow(); // finalizing
+		});
+	});
+	describe("customFieldKeys()", () => {
+		it("should return custom field keys", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+			const keys = context.customFieldKeys();
+
+			expect(context.isReady()).toEqual(true);
+			expect(keys).toEqual([
+				"country",
+				"json_object",
+				"json_array",
+				"json_number",
+				"json_string",
+				"json_boolean",
+				"json_null",
+				"json_invalid",
+				"languages",
+				"text_field",
+				"string_field",
+				"number_field",
+				"boolean_field",
+				"false_boolean_field",
+				"invalid_type_field",
+			]);
 		});
 	});
 });
