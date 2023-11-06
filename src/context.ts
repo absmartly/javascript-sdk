@@ -634,6 +634,47 @@ export default class Context {
 		return this._customFieldKeys();
 	}
 
+	private _customFieldValue(experimentName: string, key: string): JSONValue {
+		const experiment = this._index[experimentName];
+
+		if (experiment != null) {
+			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			if (field != null) {
+				switch (field.type) {
+					case "text":
+					case "string":
+						return field.value;
+					case "number":
+						return Number(field.value);
+					case "json":
+						try {
+							if (field.value === "null") return null;
+							if (field.value === "") return "";
+							return JSON.parse(field.value);
+						} catch (e) {
+							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
+							return null;
+						}
+					case "boolean":
+						return field.value === "true";
+					default:
+						console.error(
+							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+						);
+						return null;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	customFieldValue(experimentName: string, key: string) {
+		this._checkReady(true);
+
+		return this._customFieldValue(experimentName, key);
+	}
+
 	private _variableValue(key: string, defaultValue: string): string {
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;

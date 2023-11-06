@@ -3560,4 +3560,74 @@ describe("Context", () => {
 			]);
 		});
 	});
+
+	describe("customFieldValue()", () => {
+		it("should return custom field value", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+			const value = context.customFieldValue("exp_test_custom_fields", "country");
+
+			expect(context.isReady()).toEqual(true);
+			expect(value).toEqual("US,PT,ES");
+		});
+
+		it("should return parsed JSON fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_abc", "json_object")).toEqual({ 123: 1, 456: 0 });
+			expect(context.customFieldValue("exp_test_abc", "json_array")).toEqual(["hello", "world"]);
+			expect(context.customFieldValue("exp_test_abc", "json_number")).toEqual(123);
+			expect(context.customFieldValue("exp_test_abc", "json_string")).toEqual("hello");
+			expect(context.customFieldValue("exp_test_abc", "json_boolean")).toEqual(true);
+			expect(context.customFieldValue("exp_test_abc", "json_null")).toEqual(null);
+		});
+
+		it("should return string and text fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "text_field")).toEqual("hello text");
+			expect(context.customFieldValue("exp_test_custom_fields", "string_field")).toEqual("hello string");
+		});
+
+		it("should return parsed number fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "number_field")).toEqual(123);
+		});
+
+		it("should return parsed boolean fields", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "boolean_field")).toEqual(true);
+			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
+		});
+
+		it("should console an error when JSON cannot be parsed", () => {
+			const errorSpy = jest.spyOn(console, "error");
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
+			);
+		});
+
+		it("should console an error when a field type is invalid", () => {
+			const errorSpy = jest.spyOn(console, "error");
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			expect(context.pending()).toEqual(0);
+
+			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field'"
+			);
+		});
+	});
 });
