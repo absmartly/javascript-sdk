@@ -3626,7 +3626,7 @@ describe("Context", () => {
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
 			expect(errorSpy).toHaveBeenCalledTimes(1);
 			expect(errorSpy).toHaveBeenCalledWith(
-				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field'"
+				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
 			);
 		});
 	});
