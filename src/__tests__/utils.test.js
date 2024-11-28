@@ -10,9 +10,12 @@ import {
 	stringToUint8Array,
 } from "../utils";
 
+class SomeClass {}
+
 describe("isObject()", () => {
 	it("should return true with objects", (done) => {
 		expect(isObject({})).toBe(true);
+		expect(isObject(new Object())).toBe(true);
 
 		done();
 	});
@@ -25,6 +28,8 @@ describe("isObject()", () => {
 		expect(isObject(false)).toBe(false);
 		expect(isObject("str")).toBe(false);
 		expect(isObject(new Uint8Array(1))).toBe(false);
+		expect(isObject(new Map())).toBe(false);
+		expect(isObject(new SomeClass())).toBe(false);
 
 		done();
 	});
@@ -45,6 +50,8 @@ describe("isNumeric()", () => {
 		expect(isNumeric(false)).toBe(false);
 		expect(isNumeric([])).toBe(false);
 		expect(isNumeric({})).toBe(false);
+		expect(isNumeric(new Object())).toBe(false);
+		expect(isNumeric(new Map())).toBe(false);
 
 		done();
 	});

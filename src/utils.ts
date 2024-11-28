@@ -27,7 +27,12 @@ export function isNumeric(value: unknown): value is number {
 }
 
 export function isObject(value: unknown): value is Record<string, unknown> {
-	return value instanceof Object && value.constructor === Object;
+	if (!(value instanceof Object)) {
+		return false;
+	}
+
+	const proto = Object.getPrototypeOf(value);
+	return proto == null || proto === Object.prototype;
 }
 
 export function isPromise(value: unknown): value is Promise<unknown> {
