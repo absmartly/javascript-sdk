@@ -62,6 +62,7 @@ type Assignment = {
 	audienceMismatch: boolean;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
+	attrsSeq?: number;
 };
 
 export type Experiment = {
@@ -142,6 +143,7 @@ export default class Context {
 	private _indexVariables: Record<string, Experiment[]>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
+	private _attrsSeq: number;
 	private _hashes?: Record<string, string | null>;
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
@@ -164,6 +166,7 @@ export default class Context {
 		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
+		this._attrsSeq = 0;
 
 		if (params.units) {
 			this.units(params.units);
@@ -323,6 +326,7 @@ export default class Context {
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
+		this._attrsSeq++;
 	}
 
 	getAttributes() {
@@ -436,6 +440,14 @@ export default class Context {
 		}
 	}
 
+	private _getAttributesMap(): Record<string, unknown> {
+		const attrs: Record<string, unknown> = {};
+		this._attrs.forEach((attr) => {
+			attrs[attr.name] = attr.value;
+		});
+		return attrs;
+	}
+
 	private _assign(experimentName: string) {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
@@ -445,6 +457,22 @@ export default class Context {
 				experiment.fullOnVariant === assignment.fullOnVariant &&
 				arrayEqualsShallow(experiment.trafficSplit, assignment.trafficSplit)
 			);
+		};
+
+		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
+			if (experiment.audience && experiment.audience.length > 0) {
+				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
+					const result = this._audienceMatcher.evaluate(experiment.audience, this._getAttributesMap());
+					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
+
+					if (newAudienceMismatch !== assignment.audienceMismatch) {
+						return false;
+					}
+
+					assignment.attrsSeq = this._attrsSeq;
+				}
+			}
+			return true;
 		};
 
 		const hasCustom = experimentName in this._cassignments;
@@ -464,7 +492,7 @@ export default class Context {
 					return assignment;
 				}
 			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
-				if (experimentMatches(experiment.data, assignment)) {
+				if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
 					// assignment up-to-date
 					return assignment;
 				}
@@ -501,12 +529,7 @@ export default class Context {
 				const unitType = experiment.data.unitType;
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const attrs: Record<string, unknown> = {};
-					this._attrs.forEach((attr) => {
-						attrs[attr.name] = attr.value;
-					});
-
-					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+					const result = this._audienceMatcher.evaluate(experiment.data.audience, this._getAttributesMap());
 
 					if (typeof result === "boolean") {
 						assignment.audienceMismatch = !result;
@@ -564,6 +587,7 @@ export default class Context {
 				assignment.iteration = experiment.data.iteration;
 				assignment.trafficSplit = experiment.data.trafficSplit;
 				assignment.fullOnVariant = experiment.data.fullOnVariant;
+				assignment.attrsSeq = this._attrsSeq;
 			}
 		}
 
