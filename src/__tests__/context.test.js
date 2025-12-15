@@ -1309,6 +1309,60 @@ describe("Context", () => {
 
 			done();
 		});
+
+		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// First peek call without matching attribute should return control (0)
+			expect(context.peek("exp_test_ab")).toEqual(0);
+
+			// Set attribute that matches the audience filter (age >= 20)
+			context.attribute("age", 25);
+
+			// Second peek call should re-evaluate and return assigned variant (1)
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			// peek() should not queue exposures
+			expect(context.pending()).toEqual(0);
+
+			done();
+		});
+
+		it("should re-evaluate audience expression when attributes change in non-strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+
+			// First peek call without matching attribute should return assigned variant (1)
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			// Set attribute that matches the audience filter (age >= 20)
+			context.attribute("age", 25);
+
+			// Second peek call should re-evaluate and still return 1
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			// peek() should not queue exposures
+			expect(context.pending()).toEqual(0);
+
+			done();
+		});
+
+		it("should not re-evaluate audience when no new attributes set", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// Set attribute first
+			context.attribute("age", 15);
+
+			// First peek call with non-matching attribute should return control (0)
+			expect(context.peek("exp_test_ab")).toEqual(0);
+
+			// Second peek call without adding new attributes should use cached assignment
+			expect(context.peek("exp_test_ab")).toEqual(0);
+
+			// peek() should not queue exposures
+			expect(context.pending()).toEqual(0);
+
+			done();
+		});
 	});
 
 	describe("treatment()", () => {
@@ -1741,6 +1795,233 @@ describe("Context", () => {
 
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.treatment("exp_test_ab")).toThrow();
+		});
+
+		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// First treatment call without matching attribute should return control (0)
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// Set attribute that matches the audience filter (age >= 20)
+			context.attribute("age", 25);
+
+			// Second treatment call should re-evaluate and return assigned variant (1)
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			// Should queue another exposure
+			expect(context.pending()).toEqual(2);
+
+			done();
+		});
+
+		it("should re-evaluate audience expression when attributes change in non-strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceContextResponse);
+
+			// First treatment call without matching attribute should return assigned variant (1)
+			// but with audienceMismatch = true
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			// Set attribute that matches the audience filter (age >= 20)
+			context.attribute("age", 25);
+
+			// Second treatment call should re-evaluate
+			// The variant stays 1, but audienceMismatch should now be false
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			// Should queue another exposure since audience result changed
+			expect(context.pending()).toEqual(2);
+
+			done();
+		});
+
+		it("should not re-evaluate audience when no new attributes set", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// Set attribute first
+			context.attribute("age", 15);
+
+			// First treatment call with non-matching attribute should return control (0)
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// Second treatment call without adding new attributes should use cached assignment
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+
+			// Should not queue another exposure (uses cached assignment)
+			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
+		it("should not re-evaluate audience for experiments without audience filter", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			// First treatment call
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+			expect(context.pending()).toEqual(1);
+
+			// Set an attribute
+			context.attribute("age", 25);
+
+			// Second treatment call should use cached assignment since no audience filter
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+
+			// Should not queue another exposure
+			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
+		it("should re-evaluate from audience mismatch to match in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// First treatment call without attribute - audience mismatch, returns 0
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				// Verify first exposure had audienceMismatch = true
+				expect(publisher.publish).toHaveBeenCalledWith(
+					expect.objectContaining({
+						exposures: [
+							expect.objectContaining({
+								name: "exp_test_ab",
+								variant: 0,
+								audienceMismatch: true,
+								assigned: false,
+							}),
+						],
+					}),
+					sdk,
+					context,
+					undefined
+				);
+
+				// Set matching attribute
+				context.attribute("age", 30);
+
+				// Second treatment should re-evaluate and return 1
+				expect(context.treatment("exp_test_ab")).toEqual(1);
+				expect(context.pending()).toEqual(1);
+
+				context.publish().then(() => {
+					// Verify second exposure had audienceMismatch = false
+					expect(publisher.publish).toHaveBeenCalledWith(
+						expect.objectContaining({
+							exposures: [
+								expect.objectContaining({
+									name: "exp_test_ab",
+									variant: 1,
+									audienceMismatch: false,
+									assigned: true,
+								}),
+							],
+						}),
+						sdk,
+						context,
+						undefined
+					);
+
+					done();
+				});
+			});
+		});
+
+		it("should not re-evaluate when attribute set before assignment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// Set attribute before treatment call
+			context.attribute("age", 25);
+
+			// First treatment call - attribute was already set, included in assignment
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			// Second treatment call should use cached assignment
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			// Should not queue another exposure
+			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
+		it("should re-evaluate when attribute set after assignment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// First treatment call without attribute - audience mismatch, returns 0
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// Set attribute AFTER assignment was computed
+			context.attribute("age", 25);
+
+			// Second treatment call should re-evaluate because attrsSeq increased
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			// Should queue another exposure
+			expect(context.pending()).toEqual(2);
+
+			done();
+		});
+
+		it("should not invalidate cache when audience result unchanged after attribute change", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// Set attribute that doesn't match (age < 20)
+			context.attribute("age", 15);
+
+			// First treatment call - audience mismatch, returns 0
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// Set another attribute that still doesn't match (age < 20)
+			context.attribute("age", 18);
+
+			// Second treatment call - audience result unchanged (still mismatch), should use cache
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+
+			// Should NOT queue another exposure since audience result didn't change
+			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
+		it("should update attrsSeq after checking unchanged audience to avoid repeated evaluation", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+
+			// Set attribute that doesn't match (age < 20)
+			context.attribute("age", 15);
+
+			// First treatment call - audience mismatch, returns 0
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// Set another attribute that still doesn't match
+			context.attribute("age", 16);
+
+			// Second treatment - evaluates audience but result unchanged, updates attrsSeq
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// Set yet another attribute that still doesn't match
+			context.attribute("age", 17);
+
+			// Third treatment - evaluates audience but result unchanged, updates attrsSeq
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			// No new attributes set
+			// Fourth treatment - should use cache without re-evaluating
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context.pending()).toEqual(1);
+
+			done();
 		});
 	});
 
