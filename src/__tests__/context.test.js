@@ -3274,6 +3274,38 @@ describe("Context", () => {
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.publish()).toThrow();
 		});
+
+		it("should pass useBeacon option to publisher", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish({ useBeacon: true }).then(() => {
+				expect(publisher.publish).toHaveBeenCalledTimes(1);
+				const callArgs = publisher.publish.mock.calls[0];
+				expect(callArgs[3]).toEqual({ useBeacon: true });
+				done();
+			});
+		});
+
+		it("should work with useBeacon option and other request options", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish({ useBeacon: true, timeout: 5000 }).then(() => {
+				expect(publisher.publish).toHaveBeenCalledTimes(1);
+				const callArgs = publisher.publish.mock.calls[0];
+				expect(callArgs[3]).toEqual({ useBeacon: true, timeout: 5000 });
+				done();
+			});
+		});
 	});
 
 	describe("finalize()", () => {

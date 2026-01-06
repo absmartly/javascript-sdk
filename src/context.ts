@@ -3,7 +3,7 @@ import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
 import SDK, { EventLogger, EventName } from "./sdk";
-import { ContextPublisher, PublishParams } from "./publisher";
+import { ContextPublisher, PublishParams, PublishOptions } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { ClientRequestOptions } from "./client";
 
@@ -248,7 +248,7 @@ export default class Context {
 		return this._dataProvider;
 	}
 
-	publish(requestOptions?: ClientRequestOptions) {
+	publish(requestOptions?: PublishOptions) {
 		this._checkReady(true);
 
 		return new Promise<void>((resolve, reject) => {
@@ -785,7 +785,7 @@ export default class Context {
 		}
 	}
 
-	private _flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
+	private _flush(callback?: (error?: Error) => void, requestOptions?: PublishOptions) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;

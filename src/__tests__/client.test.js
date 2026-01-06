@@ -976,4 +976,170 @@ describe("Client", () => {
 				done();
 			});
 	});
+
+	describe("publishBeacon", () => {
+		it("returns false when navigator is undefined", () => {
+			const client = new Client(clientOptions);
+			const originalNavigator = global.navigator;
+			delete global.navigator;
+
+			const result = client.publishBeacon({
+				units,
+				hashed: true,
+				publishedAt,
+			});
+
+			expect(result).toBe(false);
+			global.navigator = originalNavigator;
+		});
+
+		it("returns false when sendBeacon is not a function", () => {
+			const client = new Client(clientOptions);
+			const originalNavigator = global.navigator;
+			global.navigator = {};
+
+			const result = client.publishBeacon({
+				units,
+				hashed: true,
+				publishedAt,
+			});
+
+			expect(result).toBe(false);
+			global.navigator = originalNavigator;
+		});
+
+		it("sends beacon with auth in body", async () => {
+			const client = new Client(clientOptions);
+			const sendBeaconMock = jest.fn().mockReturnValue(true);
+			const originalNavigator = global.navigator;
+			global.navigator = {
+				sendBeacon: sendBeaconMock,
+			};
+
+			const result = client.publishBeacon({
+				units,
+				hashed: true,
+				publishedAt,
+			});
+
+			expect(result).toBe(true);
+			expect(sendBeaconMock).toHaveBeenCalledTimes(1);
+			expect(sendBeaconMock).toHaveBeenCalledWith(
+				`${endpoint}/context`,
+				expect.any(Blob)
+			);
+
+			const callArgs = sendBeaconMock.mock.calls[0];
+			const blob = callArgs[1];
+			expect(blob.type).toBe("application/json");
+
+			const text = await blob.text();
+			const payload = JSON.parse(text);
+			expect(payload).toEqual({
+				units,
+				hashed: true,
+				publishedAt,
+				apiKey,
+				agent,
+				environment,
+				application: "test_app",
+				applicationVersion: 1000000,
+			});
+
+			global.navigator = originalNavigator;
+		});
+
+		it("includes goals, exposures, and attributes when provided", async () => {
+			const client = new Client(clientOptions);
+			const sendBeaconMock = jest.fn().mockReturnValue(true);
+			const originalNavigator = global.navigator;
+			global.navigator = {
+				sendBeacon: sendBeaconMock,
+			};
+
+			const result = client.publishBeacon({
+				units,
+				hashed: true,
+				publishedAt,
+				goals,
+				exposures,
+				attributes,
+			});
+
+			expect(result).toBe(true);
+			expect(sendBeaconMock).toHaveBeenCalledTimes(1);
+
+			const callArgs = sendBeaconMock.mock.calls[0];
+			const blob = callArgs[1];
+
+			const text = await blob.text();
+			const payload = JSON.parse(text);
+			expect(payload).toEqual({
+				units,
+				hashed: true,
+				publishedAt,
+				apiKey,
+				agent,
+				environment,
+				application: "test_app",
+				applicationVersion: 1000000,
+				goals,
+				exposures,
+				attributes,
+			});
+
+			global.navigator = originalNavigator;
+		});
+
+		it("excludes empty arrays for goals, exposures, and attributes", async () => {
+			const client = new Client(clientOptions);
+			const sendBeaconMock = jest.fn().mockReturnValue(true);
+			const originalNavigator = global.navigator;
+			global.navigator = {
+				sendBeacon: sendBeaconMock,
+			};
+
+			const result = client.publishBeacon({
+				units,
+				hashed: true,
+				publishedAt,
+				goals: [],
+				exposures: [],
+				attributes: [],
+			});
+
+			expect(result).toBe(true);
+
+			const callArgs = sendBeaconMock.mock.calls[0];
+			const blob = callArgs[1];
+
+			const text = await blob.text();
+			const payload = JSON.parse(text);
+			expect(payload.goals).toBeUndefined();
+			expect(payload.exposures).toBeUndefined();
+			expect(payload.attributes).toBeUndefined();
+
+			global.navigator = originalNavigator;
+		});
+
+		it("returns false when sendBeacon returns false", () => {
+			const client = new Client(clientOptions);
+			const sendBeaconMock = jest.fn().mockReturnValue(false);
+			const originalNavigator = global.navigator;
+			global.navigator = {
+				sendBeacon: sendBeaconMock,
+			};
+
+			const result = client.publishBeacon({
+				units,
+				hashed: true,
+				publishedAt,
+			});
+
+			expect(result).toBe(false);
+			expect(sendBeaconMock).toHaveBeenCalledTimes(1);
+
+			global.navigator = originalNavigator;
+		});
+	});
 });
