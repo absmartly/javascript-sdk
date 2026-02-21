@@ -5,9 +5,9 @@ import { AbortController } from "./abort";
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
 import { getApplicationName, getApplicationVersion } from "./utils";
-import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
-import { ContextOptions, ContextParams } from "./context";
-import { PublishParams } from "./publisher";
+import { type AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
+import { type ContextOptions, type ContextParams } from "./context";
+import { type PublishParams } from "./publisher";
 
 export type FetchResponse = {
 	status: number;
@@ -26,6 +26,10 @@ export type ClientRequestOptions = {
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
 };
+
+const DEFAULT_RETRIES = 5;
+const DEFAULT_TIMEOUT_MS = 3000;
+const RETRY_DELAY_MS = 50;
 
 export type ClientOptions = {
 	agent?: "javascript-client";
@@ -50,8 +54,8 @@ export default class Client {
 				application: undefined,
 				endpoint: undefined,
 				environment: undefined,
-				retries: 5,
-				timeout: 3000,
+				retries: DEFAULT_RETRIES,
+				timeout: DEFAULT_TIMEOUT_MS,
 				keepalive: true,
 			},
 			opts
@@ -80,7 +84,7 @@ export default class Client {
 			};
 		}
 
-		this._delay = 50;
+		this._delay = RETRY_DELAY_MS;
 	}
 
 	getContext(options?: Partial<ClientRequestOptions>) {
@@ -135,12 +139,13 @@ export default class Client {
 	request(options: ClientRequestOptions) {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
-			const keys = Object.keys(options.query);
-			if (keys.length > 0) {
-				const encoded = keys
-					.map((k) => (options.query ? `${k}=${encodeURIComponent(options.query[k])}` : null))
-					.join("&");
-				url = `${url}?${encoded}`;
+			const params = new URLSearchParams();
+			for (const [key, value] of Object.entries(options.query)) {
+				params.append(key, String(value));
+			}
+			const queryString = params.toString();
+			if (queryString) {
+				url = `${url}?${queryString}`;
 			}
 		}
 
@@ -260,7 +265,7 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? 5, this._opts.timeout ?? 3000)
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, this._opts.timeout ?? DEFAULT_TIMEOUT_MS)
 			.then((value: string) => {
 				finalCleanUp();
 				return value;
@@ -284,6 +289,14 @@ export default class Client {
 			...options,
 			auth: true,
 			method: "PUT",
+		});
+	}
+
+	get(options: ClientRequestOptions) {
+		return this.request({
+			...options,
+			auth: true,
+			method: "GET",
 		});
 	}
 

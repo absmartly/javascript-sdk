@@ -1065,6 +1065,154 @@ describe("Context", () => {
 			});
 		});
 
+		it("should clear assignment cache for started experiment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_new")).toEqual(0);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_new")).toEqual(expectedVariants["exp_test_new"]);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache for stopped experiment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithStoppedExperiment = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.filter((x) => x.name !== "exp_test_abc"),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithStoppedExperiment));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when experiment ID changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithChangedId = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							id: 11,
+							trafficSeedHi: 54870830,
+							trafficSeedLo: 398724581,
+							seedHi: 77498863,
+							seedLo: 34737352,
+						};
+					}
+					return x;
+				}),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithChangedId));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_abc")).toEqual(2);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when full-on changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithFullOn = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							fullOnVariant: 1,
+						};
+					}
+					return x;
+				}),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithFullOn));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when traffic split changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_not_eligible")).toEqual(expectedVariants["exp_test_not_eligible"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithTrafficSplit = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_not_eligible") {
+						return {
+							...x,
+							trafficSplit: [0.0, 1.0],
+						};
+					}
+					return x;
+				}),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithTrafficSplit));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_not_eligible")).toEqual(2);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
 		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
@@ -3618,6 +3766,84 @@ describe("Context", () => {
 					done();
 				});
 			});
+		});
+
+		it("should clear assignment cache when override changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.override("exp_test_ab", 2);
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			context.override("exp_test_ab", 2);
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			context.override("exp_test_ab", 3);
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(2);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						exposures: [
+							{
+								id: 1,
+								name: "exp_test_ab",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 2,
+								assigned: false,
+								eligible: true,
+								overridden: true,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+							},
+							{
+								id: 1,
+								name: "exp_test_ab",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 3,
+								assigned: false,
+								eligible: true,
+								overridden: true,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when overriding computed assignment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+			expect(context.pending()).toEqual(1);
+
+			context.override("exp_test_ab", 9);
+			expect(context.treatment("exp_test_ab")).toEqual(9);
+
+			expect(context.pending()).toEqual(2);
+
+			done();
 		});
 	});
 

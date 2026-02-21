@@ -58,7 +58,7 @@ export class AbortController {
 		let evt: Event | { type: string; bubbles: boolean; cancelable: boolean };
 		try {
 			evt = new Event("abort");
-		} catch (e) {
+		} catch (error) {
 			evt = {
 				type: "abort",
 				bubbles: false,

@@ -1,6 +1,6 @@
-import Client, { ClientOptions, ClientRequestOptions } from "./client";
-import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
-import { ContextPublisher, PublishParams } from "./publisher";
+import Client, { type ClientOptions, type ClientRequestOptions } from "./client";
+import Context, { type ContextData, type ContextOptions, type ContextParams, type Exposure, type Goal } from "./context";
+import { ContextPublisher, type PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isLongLivedApp } from "./utils";
 
@@ -29,20 +29,7 @@ export default class SDK {
 	private readonly _client: Client;
 
 	constructor(options: ClientOptions & SDKOptions) {
-		const clientOptions = Object.assign(
-			{
-				agent: "absmartly-javascript-sdk",
-			},
-			...Object.entries(options || {})
-				.filter(
-					(x) =>
-						["application", "agent", "apiKey", "endpoint", "keepalive", "environment", "retries", "timeout"].indexOf(
-							x[0]
-						) !== -1
-				)
-				.map((x) => ({ [x[0]]: x[1] }))
-		);
-
+		const clientOptions = SDK._extractClientOptions(options);
 		options = Object.assign({}, options);
 
 		this._client = options.client || new Client(clientOptions);
@@ -51,10 +38,39 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
+	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
+		const clientOptionKeys = ["application", "agent", "apiKey", "endpoint", "keepalive", "environment", "retries", "timeout"];
+		const extracted: Record<string, unknown> = {
+			agent: "absmartly-javascript-sdk",
+		};
+
+		for (const [key, value] of Object.entries(options || {})) {
+			if (clientOptionKeys.indexOf(key) !== -1) {
+				extracted[key] = value;
+			}
+		}
+
+		return extracted as ClientOptions;
+	}
+
+	/**
+	 * Retrieves context data from the ABSmartly platform.
+	 * @param requestOptions - Optional request configuration
+	 * @returns Promise resolving to context data
+	 */
 	getContextData(requestOptions: ClientRequestOptions) {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
+	/**
+	 * Creates a new experiment context with the specified units.
+	 * The context will asynchronously fetch experiment data from the ABSmartly platform.
+	 * @param params - Context parameters including unit identifiers (e.g., { units: { user_id: "123" } })
+	 * @param options - Optional context configuration (publishDelay, refreshPeriod, etc.)
+	 * @param requestOptions - Optional request configuration
+	 * @returns A new Context instance
+	 * @throws Error if unit parameters are invalid
+	 */
 	createContext(
 		params: ContextParams,
 		options?: Partial<ContextOptions>,
@@ -95,6 +111,15 @@ export default class SDK {
 		return this._client;
 	}
 
+	/**
+	 * Creates a new experiment context with pre-fetched context data.
+	 * Use this method when you want to manage context data fetching yourself.
+	 * @param params - Context parameters including unit identifiers
+	 * @param data - Pre-fetched context data or a promise resolving to context data
+	 * @param options - Optional context configuration
+	 * @returns A new Context instance
+	 * @throws Error if unit parameters are invalid
+	 */
 	createContextWith(
 		params: ContextParams,
 		data: ContextData | Promise<ContextData>,
@@ -108,29 +133,33 @@ export default class SDK {
 	}
 
 	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
+		const DEFAULT_PUBLISH_DELAY_MS = 100;
+		const NO_PUBLISH_DELAY = -1;
+		const NO_REFRESH = 0;
+
 		return Object.assign(
 			{
-				publishDelay: isLongLivedApp() ? 100 : -1,
-				refreshPeriod: 0,
+				publishDelay: isLongLivedApp() ? DEFAULT_PUBLISH_DELAY_MS : NO_PUBLISH_DELAY,
+				refreshPeriod: NO_REFRESH,
 			},
 			options || {}
 		);
 	}
 
 	private static _validateParams(params: ContextParams) {
-		Object.entries(params.units).forEach((entry) => {
-			const type = typeof entry[1];
+		for (const [unitType, uid] of Object.entries(params.units)) {
+			const type = typeof uid;
 			if (type !== "string" && type !== "number") {
 				throw new Error(
-					`Unit '${entry[0]}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
+					`Unit '${unitType}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
 				);
 			}
 
-			if (typeof entry[1] === "string") {
-				if (entry[1].length === 0) {
-					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`);
+			if (typeof uid === "string") {
+				if (uid.length === 0) {
+					throw new Error(`Unit '${unitType}' UID length must be >= 1`);
 				}
 			}
-		});
+		}
 	}
 }

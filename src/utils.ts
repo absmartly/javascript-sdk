@@ -149,24 +149,7 @@ export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
 }
 
 export function stringToUint8Array(value: string) {
-	const n = value.length;
-	const array = new Array(value.length);
-
-	let k = 0;
-	for (let i = 0; i < n; ++i) {
-		const c = value.charCodeAt(i);
-		if (c < 0x80) {
-			array[k++] = c;
-		} else if (c < 0x800) {
-			array[k++] = (c >> 6) | 192;
-			array[k++] = (c & 63) | 128;
-		} else {
-			array[k++] = (c >> 12) | 224;
-			array[k++] = ((c >> 6) & 63) | 128;
-			array[k++] = (c & 63) | 128;
-		}
-	}
-	return Uint8Array.from(array);
+	return new TextEncoder().encode(value);
 }
 
 const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

@@ -10,8 +10,8 @@ export class AudienceMatcher {
 					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
 				}
 			}
-		} catch (e) {
-			console.error(e);
+		} catch (error) {
+			console.error("Failed to parse audience string:", error);
 		}
 
 		return null;
