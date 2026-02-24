@@ -1,31 +1,13 @@
 # ABsmartly JavaScript SDK [![npm version](https://badge.fury.io/js/%40absmartly%2Fjavascript-sdk.svg)](https://badge.fury.io/js/%40absmartly%2Fjavascript-sdk)
 
-The official JavaScript SDK for [ABsmartly](https://www.absmartly.com/) A/B testing platform. This SDK is isomorphic and works seamlessly in both Node.js and browser environments.
-
-## ⚠️ Security Warning: Client-Side Usage
-
-**IMPORTANT:** This SDK exposes your API key when used directly in browser environments. API keys should never be embedded in client-side code as they can be extracted from browser bundles or network requests.
-
-**Recommended Architecture:**
-- **DO NOT** use this SDK directly in the browser with your API key
-- **DO** use this SDK in Node.js server-side applications
-- **DO** create a server-side proxy endpoint that fetches context data on behalf of your frontend
-- **DO** use short-lived, per-session tokens instead of API keys for client-side requests
-
-**Example Secure Architecture:**
-```
-Browser → Your Server (with API key) → ABsmartly API
-         ↑ session token only
-```
-
-For production browser applications, contact ABsmartly support for client-side SDK recommendations.
+A/B Smartly - JavaScript SDK. This is the official isomorphic JavaScript SDK for the [A/B Smartly](https://www.absmartly.com/) A/B testing platform, compatible with both Node.js and browser environments.
 
 ## Compatibility
 
-The ABsmartly JavaScript SDK is an isomorphic library for Node.js (CommonJS and ES6) and browsers (UMD).
+The A/B Smartly JavaScript SDK is an isomorphic library for Node.js (CommonJS and ES6) and browsers (UMD).
 
 - **Node.js**: Version 6.x and npm 3.x or later
-- **Browsers**: IE 10+ and all modern browsers
+- **Browsers**: IE 10+ and all modern browsers (Chrome, Firefox, Safari, Edge)
 
 **Note**: IE 10 does not natively support Promises. If you target IE 10, you must include a polyfill like [es6-promise](https://www.npmjs.com/package/es6-promise) or [rsvp](https://www.npmjs.com/package/rsvp).
 
@@ -38,119 +20,157 @@ npm install @absmartly/javascript-sdk --save
 ```
 
 ### Import in your JavaScript application
+
 ```javascript
-const absmartly = require('@absmartly/javascript-sdk');
+const absmartly = require("@absmartly/javascript-sdk");
+
 // OR with ES6 modules:
-import absmartly from '@absmartly/javascript-sdk';
+import absmartly from "@absmartly/javascript-sdk";
 ```
 
 ### Directly in the browser
+
 You can include an optimized and pre-built package directly in your HTML code through [unpkg.com](https://www.unpkg.com).
 
 Simply add the following code to your `head` section to include the latest published version.
+
 ```html
 <script src="https://unpkg.com/@absmartly/javascript-sdk/dist/absmartly.min.js"></script>
 ```
+
+### Security Warning: Client-Side Usage
+
+**IMPORTANT:** This SDK exposes your API key when used directly in browser environments. API keys should never be embedded in client-side code as they can be extracted from browser bundles or network requests.
+
+**Recommended Architecture:**
+- **DO NOT** use this SDK directly in the browser with your API key
+- **DO** use this SDK in Node.js server-side applications
+- **DO** create a server-side proxy endpoint that fetches context data on behalf of your frontend
+- **DO** use short-lived, per-session tokens instead of API keys for client-side requests
+
+```
+Browser --> Your Server (with API key) --> ABsmartly API
+            session token only
+```
+
+For production browser applications, contact A/B Smartly support for client-side SDK recommendations.
 
 ## Getting Started
 
 Please follow the [installation](#installation) instructions before trying the following code.
 
 ### Initialization
-This example assumes an API Key, an Application, and an Environment have been created in the ABsmartly web console.
+
+This example assumes an API Key, an Application, and an Environment have been created in the A/B Smartly web console.
+
 ```javascript
 const sdk = new absmartly.SDK({
-    endpoint: 'https://your-company.absmartly.io/v1',
-    apiKey: process.env.ABSMARTLY_API_KEY,
-    environment: process.env.NODE_ENV,
-    application: process.env.APPLICATION_NAME,
-});
-
-// or using the Absmartly alias (preferred for consistency)
-const sdk = new absmartly.Absmartly({
-    endpoint: 'https://your-company.absmartly.io/v1',
+    endpoint: "https://your-company.absmartly.io/v1",
     apiKey: process.env.ABSMARTLY_API_KEY,
     environment: process.env.NODE_ENV,
     application: process.env.APPLICATION_NAME,
 });
 ```
 
-> **Note:** Both `SDK` and `Absmartly` refer to the same class. The `Absmartly` name is preferred for consistency across all ABsmartly SDKs, while `SDK` is maintained for backwards compatibility.
-
 **SDK Options**
 
-| Option | Type | Required? | Default | Description |
-| :--- | :--- | :---: | :---: | :--- |
-| endpoint | `string` | &#9989; | `null` | The URL to your API endpoint. Most commonly `"your-company.absmartly.io"` |
-| apiKey | `string` | &#9989; | `null` | Your API key which can be found on the Web Console. |
-| environment | `string` | &#9989; | `null` | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure. |
-| application | `string` | &#9989; | `null` | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running. |
-| eventLogger | `function` | &#10060; | `null` | Callback to handle SDK events (ready, exposure, goal, etc.) |
+| Option       | Type       | Required? | Default | Description                                                                                                                                                                 |
+| :----------- | :--------- | :-------: | :-----: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| endpoint     | `string`   |  &#9989;  | `null`  | The URL to your API endpoint. Most commonly `"your-company.absmartly.io"`                                                                                                   |
+| apiKey       | `string`   |  &#9989;  | `null`  | Your API key which can be found on the Web Console.                                                                                                                         |
+| environment  | `string`   |  &#9989;  | `null`  | The environment of the platform where the SDK is installed. Environments are created on the Web Console and should match the available environments in your infrastructure. |
+| application  | `string`   |  &#9989;  | `null`  | The name of the application where the SDK is installed. Applications are created on the Web Console and should match the applications where your experiments will be running.|
+| retries      | `number`   | &#10060;  | `5`     | Number of retry attempts for failed HTTP requests.                                                                                                                          |
+| timeout      | `number`   | &#10060;  | `3000`  | HTTP request timeout in milliseconds.                                                                                                                                       |
+| eventLogger  | `function` | &#10060;  | `null`  | Callback to handle SDK events (ready, exposure, goal, etc.)                                                                                                                 |
 
-## Basic Usage
+## Creating a New Context
 
-### Creating a New Context Request
+### With Promises
 
-#### With raw promises
 ```javascript
-// define a new context request
 const request = {
     units: {
-        session_id: '5ebf06d8cb5d8137290c4abb64155584fbdb64d8',
+        session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8",
     },
 };
 
-// create context with raw promises
 const context = sdk.createContext(request);
 
 context.ready().then((response) => {
-    console.log("ABSmartly Context ready!")
+    console.log("ABSmartly Context ready!");
 }).catch((error) => {
     console.log(error);
 });
 ```
 
-#### With async/await
+### With async/await
+
 ```javascript
-// define a new context request
 const request = {
     units: {
-        session_id: '5ebf06d8cb5d8137290c4abb64155584fbdb64d8',
+        session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8",
     },
 };
 
-// create context with raw promises
 const context = sdk.createContext(request);
 
 try {
     await context.ready();
-    console.log("ABSmartly Context ready!")
+    console.log("ABSmartly Context ready!");
 } catch (error) {
     console.log(error);
 }
 ```
 
-#### With pre-fetched data
-When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side.
-Creating a context involves a round-trip to the A/B Smartly event collector.
-We can avoid repeating the round-trip on the client-side by sending the server-side data embedded in the first document, for example, by rendering it on the template.
-Then we can initialize the A/B Smartly context on the client-side directly with it.
+### With Pre-fetched Data
+
+When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side. Creating a context involves a round-trip to the A/B Smartly event collector. We can avoid repeating the round-trip on the client-side by sending the server-side data embedded in the first document, for example, by rendering it on the template. Then we can initialize the A/B Smartly context on the client-side directly with it.
 
 ```html
-    <head>
-        <script type="javascript">
-            const request = {
-                units: {
-                    session_id: '5ebf06d8cb5d8137290c4abb64155584fbdb64d8',
-                },
-            };
+<head>
+    <script type="javascript">
+        const request = {
+            units: {
+                session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8",
+            },
+        };
 
-            const context = sdk.createContextWith(request, {{ serverSideContext.data() }});
-        </script>
-    </head>
+        const context = sdk.createContextWith(request, {{ serverSideContext.data() }});
+    </script>
+</head>
+```
+
+### Refreshing the Context with Fresh Experiment Data
+
+For long-running single-page-applications (SPA), the context is usually created once when the application is first reached. However, any experiments being tracked in your production code, but started after the context was created, will not be triggered. To mitigate this, we can use the `refreshInterval` option when creating the context.
+
+```javascript
+const request = {
+    units: {
+        session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8",
+    },
+};
+
+const context = sdk.createContext(request, {
+    refreshInterval: 5 * 60 * 1000, // 5 minutes
+});
+```
+
+Alternatively, the `refresh()` method can be called manually. The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `treatment()` is called again.
+
+```javascript
+setTimeout(async () => {
+    try {
+        await context.refresh();
+    } catch (error) {
+        console.error(error);
+    }
+}, 5 * 60 * 1000);
 ```
 
 ### Setting Extra Units
+
 You can add additional units to a context by calling the `unit()` or the `units()` method. This is useful when a user logs in to your application and you want to add the new unit type to the context.
 
 > **Note:** You cannot override an already set unit type as that would be a change of identity. In this case, you must create a new context instead.
@@ -158,27 +178,19 @@ You can add additional units to a context by calling the `unit()` or the `units(
 The `unit()` and `units()` methods can be called before the context is ready.
 
 ```javascript
-context.unit('db_user_id', 1000013);
+context.unit("db_user_id", 1000013);
 
-// or
 context.units({
     db_user_id: 1000013,
 });
 ```
 
-### Context Attributes
-The `attribute()` and `attributes()` methods can be called before the context is ready.
-```javascript
-context.attribute('user_agent', navigator.userAgent);
-
-context.attributes({
-    customer_age: 'new_customer',
-});
-```
+## Basic Usage
 
 ### Selecting a Treatment
+
 ```javascript
-if (context.treatment("exp_test_experiment") == 0) {
+if (context.treatment("exp_test_experiment") === 0) {
     // user is in control group (variant 0)
 } else {
     // user is in treatment group
@@ -194,73 +206,101 @@ const defaultButtonColor = "red";
 const buttonColor = context.variableValue("button.color", defaultButtonColor);
 ```
 
-### Tracking Goals
-Goals are created in the A/B Smartly web console.
+### Peek at Treatment Variants
+
+Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure. The A/B Smartly SDK provides a `peek()` method for that.
+
 ```javascript
-context.track("payment", { item_count: 1, total_amount: 1999.99 });
+if (context.peek("exp_test_experiment") === 0) {
+    // user is in control group (variant 0)
+} else {
+    // user is in treatment group
+}
+```
+
+#### Peeking at Variable Values
+
+```javascript
+const buttonColor = context.peekVariableValue("button.color", "red");
+```
+
+### Overriding Treatment Variants
+
+During development, it is useful to force a treatment for an experiment. This can be achieved with the `override()` and/or `overrides()` methods. The `override()` and `overrides()` methods can be called before the context is ready.
+
+```javascript
+context.override("exp_test_experiment", 1); // force variant 1
+
+context.overrides({
+    exp_test_experiment: 1,
+    exp_another_experiment: 0,
+});
 ```
 
 ## Advanced
 
-### Publishing Pending Data
-Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector, before proceeding.
-One such case is when the user is about to navigate away right before being exposed to a treatment.
-You can explicitly call the `publish()` method, which returns a promise, before navigating away.
-```javascript
-await context.publish().then(() => {
-    window.location = "https://www.absmartly.com"
-})
-```
+### Context Attributes
 
-### Finalizing
-The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
-```javascript
-await context.finalize().then(() => {
-    window.location = "https://www.absmartly.com"
-})
-```
-
-### Refreshing the Context with Fresh Experiment Data
-For long-running single-page-applications (SPA), the context is usually created once when the application is first reached.
-However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can use the `refreshInterval` option when creating the context.
+Attributes are used to pass meta-data about the user and/or the request. They can be used later in the Web Console to create segments or audiences. They can be set using the `attribute()` or `attributes()` methods, before or after the context is ready.
 
 ```javascript
-const request = {
-    units: {
-        session_id: '5ebf06d8cb5d8137290c4abb64155584fbdb64d8',
-    },
-};
+context.attribute("user_agent", navigator.userAgent);
 
-const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000
+context.attributes({
+    customer_age: "new_customer",
 });
 ```
 
-Alternatively, the `refresh()` method can be called manually.
-The `refresh()` method pulls updated experiment data from the A/B Smartly collector and will trigger recently started experiments when `treatment()` is called again.
+### Custom Assignments
+
+Sometimes it may be necessary to override the automatic selection of a variant. For example, if you wish to have your variant chosen based on data from an API call. This can be accomplished using the `customAssignment()` method.
+
 ```javascript
-setTimeout(async () => {
-    try {
-        context.refresh();
-    } catch(error) {
-        console.error(error);
-    }
-}, 5 * 60 * 1000);
+context.customAssignment("exp_test_experiment", 1);
+
+context.customAssignments({
+    exp_test_experiment: 1,
+});
+```
+
+### Tracking Goals
+
+Goals are created in the A/B Smartly web console.
+
+```javascript
+context.track("payment", { item_count: 1, total_amount: 1999.99 });
+```
+
+### Publishing Pending Data
+
+Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector, before proceeding. One such case is when the user is about to navigate away right before being exposed to a treatment. You can explicitly call the `publish()` method, which returns a promise, before navigating away.
+
+```javascript
+await context.publish();
+window.location = "https://www.absmartly.com";
+```
+
+### Finalizing
+
+The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
+
+```javascript
+await context.finalize();
+window.location = "https://www.absmartly.com";
 ```
 
 ### Using a Custom Event Logger
-The A/B Smartly SDK can be instantiated with an event logger used for all contexts.
-In addition, an event logger can be specified when creating a particular context, in the `createContext` call options.
-The example below illustrates this with the implementation of the default event logger, used if none is specified.
+
+The A/B Smartly SDK can be instantiated with an event logger used for all contexts. In addition, an event logger can be specified when creating a particular context, in the `createContext` call options. The example below illustrates this with the implementation of the default event logger, used if none is specified.
+
 ```javascript
 const sdk = new absmartly.SDK({
-    endpoint: 'https://sandbox-api.absmartly.com/v1',
+    endpoint: "https://your-company.absmartly.io/v1",
     apiKey: process.env.ABSMARTLY_API_KEY,
     environment: process.env.NODE_ENV,
     application: process.env.APPLICATION_NAME,
     eventLogger: (context, eventName, data) => {
-        if (eventName == "error") {
+        if (eventName === "error") {
             console.error(data);
         }
     },
@@ -271,63 +311,42 @@ const sdk = new absmartly.SDK({
 
 The data parameter depends on the type of event. Currently, the SDK logs the following events:
 
-| Event | When | Data |
-| :--- | :--- | :--- |
-| `"error"` | Context receives an error | Error object thrown |
-| `"ready"` | Context turns ready | Data used to initialize the context |
-| `"refresh"` | `refresh()` method succeeds | Data used to refresh the context |
-| `"publish"` | `publish()` method succeeds | Data sent to the ABsmartly event collector |
-| `"exposure"` | `treatment()` method succeeds on first exposure | Exposure data enqueued for publishing |
-| `"goal"` | `track()` method succeeds | Goal data enqueued for publishing |
-| `"finalize"` | `finalize()` method succeeds the first time | undefined |
-
-
-### Peek at Treatment Variants
-Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure. The ABsmartly SDK provides a `peek()` method for that.
-
-```javascript
-if (context.peek("exp_test_experiment") == 0) {
-    // user is in control group (variant 0)
-} else {
-    // user is in treatment group
-}
-```
-
-### Overriding Treatment Variants
-During development, it is useful to force a treatment for an experiment. This can be achieved with the `override()` and/or `overrides()` methods. The `override()` and `overrides()` methods can be called before the context is ready.
-
-```javascript
-context.override("exp_test_experiment", 1); // force variant 1 of treatment
-context.overrides({
-    exp_test_experiment: 1,
-    exp_another_experiment: 0,
-});
-```
+| Event        | When                                              | Data                                          |
+| :----------- | :------------------------------------------------ | :-------------------------------------------- |
+| `"error"`    | Context receives an error                         | Error object thrown                           |
+| `"ready"`    | Context turns ready                               | Data used to initialize the context           |
+| `"refresh"`  | `refresh()` method succeeds                       | Data used to refresh the context              |
+| `"publish"`  | `publish()` method succeeds                       | Data sent to the A/B Smartly event collector  |
+| `"exposure"` | `treatment()` method succeeds on first exposure   | Exposure data enqueued for publishing         |
+| `"goal"`     | `track()` method succeeds                         | Goal data enqueued for publishing             |
+| `"finalize"` | `finalize()` method succeeds the first time       | undefined                                     |
 
 ### HTTP Request Timeout
-It is possible to set a timeout per individual HTTP request, overriding the global timeout set for all request when instantiating the SDK object.
 
-Here is an example of setting a timeout only for the createContext request.
+It is possible to set a timeout per individual HTTP request, overriding the global timeout set for all requests when instantiating the SDK object.
+
+Here is an example of setting a timeout only for the `createContext` request.
 
 ```javascript
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000
+    refreshInterval: 5 * 60 * 1000,
 }, {
-    timeout: 1500
+    timeout: 1500,
 });
 ```
 
 ### HTTP Request Cancellation
-Sometimes it is useful to cancel an inflight HTTP request, for example, when the user is navigating away. The ABsmartly SDK supports cancellation via an `AbortSignal`. An implementation of AbortController is provided for older platforms, but will use the native implementation where available.
+
+Sometimes it is useful to cancel an inflight HTTP request, for example, when the user is navigating away. The A/B Smartly SDK supports cancellation via an `AbortSignal`. An implementation of AbortController is provided for older platforms, but will use the native implementation where available.
 
 Here is an example of a cancellation scenario.
 
 ```javascript
 const controller = new absmartly.AbortController();
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000
+    refreshInterval: 5 * 60 * 1000,
 }, {
-    signal: controller.signal
+    signal: controller.signal,
 });
 
 // abort request if not ready after 1500ms
@@ -338,11 +357,127 @@ await context.ready();
 clearTimeout(timeoutId);
 ```
 
+## Node.js Usage
+
+### Express.js Middleware Example
+
+```javascript
+const absmartly = require("@absmartly/javascript-sdk");
+
+const sdk = new absmartly.SDK({
+    endpoint: "https://your-company.absmartly.io/v1",
+    apiKey: process.env.ABSMARTLY_API_KEY,
+    environment: "production",
+    application: "website",
+});
+
+app.use(async (req, res, next) => {
+    const context = sdk.createContext({
+        units: {
+            session_id: req.cookies.session_id,
+        },
+    });
+
+    try {
+        await context.ready();
+        req.absmartly = context;
+        next();
+    } catch (error) {
+        console.error("ABSmartly context failed:", error);
+        next();
+    }
+});
+
+app.get("/landing", (req, res) => {
+    const context = req.absmartly;
+    const treatment = context.treatment("exp_landing_page");
+
+    if (treatment === 0) {
+        res.render("landing-control");
+    } else {
+        res.render("landing-treatment");
+    }
+});
+```
+
+### Server-Side Rendering (SSR) with Data Forwarding
+
+Create the context on the server and pass the data to the client to avoid a second round-trip.
+
+```javascript
+app.get("/", async (req, res) => {
+    const context = sdk.createContext({
+        units: { session_id: req.cookies.session_id },
+    });
+
+    await context.ready();
+
+    const contextData = context.data();
+    const treatment = context.treatment("exp_homepage");
+
+    res.render("index", {
+        treatment,
+        absmartlyData: JSON.stringify(contextData),
+    });
+});
+```
+
+On the client side, initialize the context with the pre-fetched data:
+
+```javascript
+const context = sdk.createContextWith(
+    { units: { session_id: sessionId } },
+    JSON.parse(window.__ABSMARTLY_DATA__)
+);
+// context is immediately ready, no round-trip needed
+```
+
+## Browser Usage
+
+### Single-Page Application (SPA) Example
+
+```javascript
+import absmartly from "@absmartly/javascript-sdk";
+
+const sdk = new absmartly.SDK({
+    endpoint: "https://your-company.absmartly.io/v1",
+    apiKey: "YOUR_API_KEY",
+    environment: "production",
+    application: "website",
+    eventLogger: (context, eventName, data) => {
+        if (eventName === "exposure") {
+            analytics.track("Experiment Viewed", {
+                experiment: data.name,
+                variant: data.variant,
+            });
+        }
+    },
+});
+
+const context = sdk.createContext({
+    units: {
+        session_id: getUserSessionId(),
+    },
+});
+
+await context.ready();
+
+const showNewFeature = context.treatment("exp_new_feature") !== 0;
+
+if (showNewFeature) {
+    renderNewFeature();
+} else {
+    renderOldFeature();
+}
+
+document.getElementById("checkout-btn").addEventListener("click", () => {
+    context.track("checkout", { total: getCartTotal() });
+});
+```
 
 ## About A/B Smartly
 
-**A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
-A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
+**A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them. A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
 
 ### Have a look at our growing list of clients and SDKs:
 - [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk) (this package)
@@ -360,12 +495,3 @@ A/B Smartly's real-time analytics helps engineering and product teams ensure tha
 - [Ruby SDK](https://www.github.com/absmartly/ruby-sdk)
 - [.NET SDK](https://www.github.com/absmartly/dotnet-sdk)
 - [Rust SDK](https://www.github.com/absmartly/rust-sdk)
-
-## Documentation
-
-- [Full Documentation](https://docs.absmartly.com/)
-- [JavaScript SDK Documentation](https://docs.absmartly.com/docs/SDK-Documentation/getting-started)
-
-## License
-
-MIT License
