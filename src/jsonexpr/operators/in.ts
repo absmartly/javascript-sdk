@@ -3,7 +3,7 @@ import { isObject } from "../../utils";
 import { Evaluator } from "../evaluator";
 
 export class InOperator extends BinaryOperator {
-	binary(evaluator: Evaluator, haystack: unknown, needle: string | number | boolean | null) {
+	binary(evaluator: Evaluator, needle: unknown, haystack: unknown) {
 		if (Array.isArray(haystack)) {
 			for (const item of haystack) {
 				if (evaluator.compare(item, needle) === 0) {

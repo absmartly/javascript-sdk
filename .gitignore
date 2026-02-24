@@ -8,3 +8,9 @@ src/js/*
 !src/js/__tests__
 types
 js
+
+.claude/
+.DS_Store
+AUDIT_REPORT.md
+FIXES_SUMMARY.md
+FIXES_SUMMARY_COMPLETE.md

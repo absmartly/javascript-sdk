@@ -1,5 +1,11 @@
 import Client, { type ClientOptions, type ClientRequestOptions } from "./client";
-import Context, { type ContextData, type ContextOptions, type ContextParams, type Exposure, type Goal } from "./context";
+import Context, {
+	type ContextData,
+	type ContextOptions,
+	type ContextParams,
+	type Exposure,
+	type Goal,
+} from "./context";
 import { ContextPublisher, type PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isLongLivedApp } from "./utils";
@@ -39,7 +45,16 @@ export default class SDK {
 	}
 
 	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
-		const clientOptionKeys = ["application", "agent", "apiKey", "endpoint", "keepalive", "environment", "retries", "timeout"];
+		const clientOptionKeys = [
+			"application",
+			"agent",
+			"apiKey",
+			"endpoint",
+			"keepalive",
+			"environment",
+			"retries",
+			"timeout",
+		];
 		const extracted: Record<string, unknown> = {
 			agent: "absmartly-javascript-sdk",
 		};
