@@ -475,6 +475,14 @@ export default class Context {
 		}
 	}
 
+	getSDK(): SDK {
+		return this._sdk;
+	}
+
+	getOptions(): ContextOptions {
+		return this._opts;
+	}
+
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
 			throw new Error("ABSmartly Context is finalized.");
