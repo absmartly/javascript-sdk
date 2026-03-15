@@ -136,14 +136,17 @@ export default class Context {
 	private _data: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
+	private _failedError: Error | null;
 	private _finalized: boolean;
-	private _finalizing: boolean | Promise<void> | null;
+	private _finalizing: Promise<void> | null;
 	private _goals: Goal[];
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
+	private _attrsMapCache: Record<string, unknown> | null;
+	private _attrsMapCacheSeq: number;
 	private _hashes?: Record<string, string | null>;
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
@@ -157,6 +160,7 @@ export default class Context {
 		this._opts = options;
 		this._pending = 0;
 		this._failed = false;
+		this._failedError = null;
 		this._finalized = false;
 		this._attrs = [];
 		this._goals = [];
@@ -167,6 +171,8 @@ export default class Context {
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
 		this._attrsSeq = 0;
+		this._attrsMapCache = null;
+		this._attrsMapCacheSeq = -1;
 
 		if (params.units) {
 			this.units(params.units);
@@ -188,6 +194,7 @@ export default class Context {
 					this._init({});
 
 					this._failed = true;
+					this._failedError = error;
 					delete this._promise;
 
 					this._logError(error);
@@ -214,6 +221,10 @@ export default class Context {
 
 	isFailed() {
 		return this._failed;
+	}
+
+	readyError(): Error | null {
+		return this._failedError;
 	}
 
 	ready() {
@@ -346,32 +357,24 @@ export default class Context {
 		if (!experimentName || typeof experimentName !== "string") {
 			throw new Error("Experiment name must be a non-empty string");
 		}
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return 0;
+		}
 
 		return this._peek(experimentName).variant;
 	}
 
-	/**
-	 * Gets the treatment variant for an experiment and queues an exposure event.
-	 * @param experimentName - Name of the experiment
-	 * @returns The variant number (0 for control, 1+ for treatments)
-	 * @throws Error if context is not ready or experiment name is invalid
-	 */
 	treatment(experimentName: string) {
 		if (!experimentName || typeof experimentName !== "string") {
 			throw new Error("Experiment name must be a non-empty string");
 		}
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return 0;
+		}
 
 		return this._treatment(experimentName).variant;
 	}
 
-	/**
-	 * Tracks a goal achievement for conversion tracking.
-	 * @param goalName - Name of the goal
-	 * @param properties - Optional additional properties to track with the goal
-	 * @throws Error if context is finalized or goal name is invalid
-	 */
 	track(goalName: string, properties?: Record<string, unknown> | null) {
 		if (!goalName || typeof goalName !== "string") {
 			throw new Error("Goal name must be a non-empty string");
@@ -386,48 +389,39 @@ export default class Context {
 	}
 
 	experiments() {
-		this._checkReady();
+		if (!this.isReady()) {
+			return [];
+		}
 
-		return this._data.experiments?.map((x) => x.name);
+		return this._data.experiments?.map((x) => x.name) ?? [];
 	}
 
-	/**
-	 * Gets the value of a variable and queues an exposure event.
-	 * This causes the user to be exposed to the experiment variant containing this variable.
-	 * @param key - Variable name
-	 * @param defaultValue - Default value if variable is not defined
-	 * @returns The variable value from the assigned variant, or defaultValue
-	 * @throws Error if context is not ready or key is invalid
-	 */
 	variableValue(key: string, defaultValue: string): string {
 		if (!key || typeof key !== "string") {
 			throw new Error("Variable key must be a non-empty string");
 		}
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return defaultValue;
+		}
 
 		return this._variableValue(key, defaultValue);
 	}
 
-	/**
-	 * Gets the value of a variable without queuing an exposure event.
-	 * Use this for internal logging or non-user-facing decisions.
-	 * Unlike variableValue(), this does NOT expose the user to the experiment.
-	 * @param key - Variable name
-	 * @param defaultValue - Default value if variable is not defined
-	 * @returns The variable value from the assigned variant, or defaultValue
-	 * @throws Error if context is not ready or key is invalid
-	 */
 	peekVariableValue(key: string, defaultValue: string): string {
 		if (!key || typeof key !== "string") {
 			throw new Error("Variable key must be a non-empty string");
 		}
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return defaultValue;
+		}
 
 		return this._peekVariable(key, defaultValue);
 	}
 
 	variableKeys() {
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return {};
+		}
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
@@ -480,7 +474,7 @@ export default class Context {
 	}
 
 	getOptions(): ContextOptions {
-		return this._opts;
+		return { ...this._opts };
 	}
 
 	private _checkNotFinalized() {
@@ -502,10 +496,15 @@ export default class Context {
 	}
 
 	private _getAttributesMap(): Record<string, unknown> {
+		if (this._attrsMapCache !== null && this._attrsMapCacheSeq === this._attrsSeq) {
+			return this._attrsMapCache;
+		}
 		const attrs: Record<string, unknown> = {};
 		for (const attr of this._attrs) {
 			attrs[attr.name] = attr.value;
 		}
+		this._attrsMapCache = attrs;
+		this._attrsMapCacheSeq = this._attrsSeq;
 		return attrs;
 	}
 
@@ -714,7 +713,9 @@ export default class Context {
 	}
 
 	customFieldKeys() {
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return [];
+		}
 
 		return this._customFieldKeys();
 	}
@@ -737,14 +738,16 @@ export default class Context {
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
 						} catch (e) {
-							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
+							this._logError(e as Error);
 							return null;
 						}
 					case "boolean":
 						return field.value === "true";
 					default:
-						console.error(
-							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+						this._logError(
+							new Error(
+								`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+							)
 						);
 						return null;
 				}
@@ -755,7 +758,9 @@ export default class Context {
 	}
 
 	customFieldValue(experimentName: string, key: string) {
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return null;
+		}
 
 		return this._customFieldValue(experimentName, key);
 	}
@@ -774,14 +779,16 @@ export default class Context {
 	}
 
 	customFieldValueType(experimentName: string, key: string) {
-		this._checkReady(true);
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			return null;
+		}
 
 		return this._customFieldValueType(experimentName, key);
 	}
 
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
+		for (const experiment of this._indexVariables[key] ?? []) {
+			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
 				if (shouldQueueExposure && !assignment.exposed) {
@@ -1010,7 +1017,7 @@ export default class Context {
 					try {
 						parsed = JSON.parse(config);
 					} catch (error) {
-						console.error(`Failed to parse variant config for experiment "${experiment.name}":`, error);
+						this._logError(error as Error);
 						parsed = {};
 					}
 				}

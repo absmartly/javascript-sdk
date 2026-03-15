@@ -607,12 +607,12 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 
 			expect(() => context.data()).toThrow();
-			expect(() => context.treatment("test")).toThrow();
-			expect(() => context.peek("test")).toThrow();
-			expect(() => context.experiments()).toThrow();
-			expect(() => context.variableKeys()).toThrow();
-			expect(() => context.variableValue("a", 17)).toThrow();
-			expect(() => context.peekVariableValue("a", 17)).toThrow();
+			expect(context.treatment("test")).toEqual(0);
+			expect(context.peek("test")).toEqual(0);
+			expect(context.experiments()).toEqual([]);
+			expect(context.variableKeys()).toEqual({});
+			expect(context.variableValue("a", 17)).toEqual(17);
+			expect(context.peekVariableValue("a", 17)).toEqual(17);
 
 			done();
 		});
@@ -1511,6 +1511,30 @@ describe("Context", () => {
 
 			done();
 		});
+
+		it("should return 0 when not ready", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
+			expect(context.isReady()).toEqual(false);
+
+			expect(context.peek("exp_test_ab")).toEqual(0);
+
+			done();
+		});
+
+		it("should return 0 after finalize", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.finalize().then(() => {
+				expect(context.peek("exp_test_ab")).toEqual(0);
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(context.peek("exp_test_ab")).toEqual(0);
+		});
 	});
 
 	describe("treatment()", () => {
@@ -1927,7 +1951,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should throw after finalized() call", (done) => {
+		it("should return 0 after finalized() call", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
@@ -1936,13 +1960,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.treatment("exp_test_ab")).toThrow();
+				expect(context.treatment("exp_test_ab")).toEqual(0);
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.treatment("exp_test_ab")).toThrow();
+			expect(context.treatment("exp_test_ab")).toEqual(0);
 		});
 
 		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
@@ -2136,6 +2160,15 @@ describe("Context", () => {
 
 			// Should NOT queue another exposure since audience result didn't change
 			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
+		it("should return 0 when not ready", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
+			expect(context.isReady()).toEqual(false);
+
+			expect(context.treatment("exp_test_ab")).toEqual(0);
 
 			done();
 		});
@@ -2575,7 +2608,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should throw after finalized() call", (done) => {
+		it("should return defaultValue after finalized() call", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
@@ -2584,13 +2617,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.variableValue("button.color", 17)).toThrow();
+				expect(context.variableValue("button.color", 17)).toEqual(17);
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.variableValue("button.color", 17)).toThrow();
+			expect(context.variableValue("button.color", 17)).toEqual(17);
 		});
 	});
 
@@ -4113,27 +4146,28 @@ describe("Context", () => {
 			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
 		});
 
-		it("should console an error when JSON cannot be parsed", () => {
-			const errorSpy = jest.spyOn(console, "error");
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+		it("should log an error through eventLogger when JSON cannot be parsed", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
-			);
+			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
 		});
 
-		it("should console an error when a field type is invalid", () => {
-			const errorSpy = jest.spyOn(console, "error");
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+		it("should log an error through eventLogger when a field type is invalid", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
+			expect(eventLogger).toHaveBeenCalledWith(
+				context,
+				"error",
+				expect.objectContaining({
+					message:
+						"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
+				})
 			);
 		});
 	});
