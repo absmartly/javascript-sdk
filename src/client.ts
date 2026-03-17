@@ -47,19 +47,13 @@ export default class Client {
 	private readonly _delay: number;
 
 	constructor(opts: ClientOptions) {
-		this._opts = Object.assign(
-			{
-				agent: "javascript-client",
-				apiKey: undefined,
-				application: undefined,
-				endpoint: undefined,
-				environment: undefined,
-				retries: DEFAULT_RETRIES,
-				timeout: DEFAULT_TIMEOUT_MS,
-				keepalive: true,
-			},
-			opts
-		);
+		this._opts = {
+			agent: "javascript-client",
+			retries: DEFAULT_RETRIES,
+			timeout: DEFAULT_TIMEOUT_MS,
+			keepalive: true,
+			...opts,
+		};
 
 		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"] as const) {
 			if (key in this._opts && this._opts[key] !== undefined) {
@@ -249,7 +243,7 @@ export default class Client {
 			options.signal.addEventListener("abort", abort);
 		}
 
-		const timeout = options.timeout || this._opts.timeout || 0;
+		const timeout = options.timeout ?? this._opts.timeout ?? 0;
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
@@ -265,7 +259,7 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, this._opts.timeout ?? DEFAULT_TIMEOUT_MS)
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout || DEFAULT_TIMEOUT_MS)
 			.then((value: string) => {
 				finalCleanUp();
 				return value;

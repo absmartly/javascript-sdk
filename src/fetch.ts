@@ -16,9 +16,9 @@ function getFetchImplementation() {
 		return fetchShim;
 	}
 
-	if (global) {
-		if (global.fetch) {
-			return global.fetch.bind(global);
+	if (typeof globalThis !== "undefined") {
+		if (globalThis.fetch) {
+			return globalThis.fetch.bind(globalThis);
 		}
 		return function (url: string, opts: Record<string, unknown>) {
 			return new Promise((resolve, reject) => {
@@ -34,6 +34,12 @@ function getFetchImplementation() {
 	return undefined;
 }
 
-const exported = getFetchImplementation();
+const impl = getFetchImplementation();
+
+const exported =
+	impl ??
+	function () {
+		throw new Error("No fetch implementation found. Please provide a fetch polyfill for your environment.");
+	};
 
 export default exported;

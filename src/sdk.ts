@@ -26,7 +26,7 @@ export type SDKOptions = {
 export default class SDK {
 	static defaultEventLogger: EventLogger = (_, eventName, data) => {
 		if (eventName === "error") {
-			console.error(data);
+			console.error(data instanceof Error ? data.message : data);
 		}
 	};
 	private _eventLogger: EventLogger;
@@ -60,7 +60,7 @@ export default class SDK {
 		};
 
 		for (const [key, value] of Object.entries(options || {})) {
-			if (clientOptionKeys.indexOf(key) !== -1) {
+			if (clientOptionKeys.includes(key)) {
 				extracted[key] = value;
 			}
 		}
@@ -68,24 +68,10 @@ export default class SDK {
 		return extracted as ClientOptions;
 	}
 
-	/**
-	 * Retrieves context data from the ABSmartly platform.
-	 * @param requestOptions - Optional request configuration
-	 * @returns Promise resolving to context data
-	 */
 	getContextData(requestOptions: ClientRequestOptions) {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
-	/**
-	 * Creates a new experiment context with the specified units.
-	 * The context will asynchronously fetch experiment data from the ABSmartly platform.
-	 * @param params - Context parameters including unit identifiers (e.g., { units: { user_id: "123" } })
-	 * @param options - Optional context configuration (publishDelay, refreshPeriod, etc.)
-	 * @param requestOptions - Optional request configuration
-	 * @returns A new Context instance
-	 * @throws Error if unit parameters are invalid
-	 */
 	createContext(
 		params: ContextParams,
 		options?: Partial<ContextOptions>,
@@ -126,15 +112,6 @@ export default class SDK {
 		return this._client;
 	}
 
-	/**
-	 * Creates a new experiment context with pre-fetched context data.
-	 * Use this method when you want to manage context data fetching yourself.
-	 * @param params - Context parameters including unit identifiers
-	 * @param data - Pre-fetched context data or a promise resolving to context data
-	 * @param options - Optional context configuration
-	 * @returns A new Context instance
-	 * @throws Error if unit parameters are invalid
-	 */
 	createContextWith(
 		params: ContextParams,
 		data: ContextData | Promise<ContextData>,
@@ -152,13 +129,11 @@ export default class SDK {
 		const NO_PUBLISH_DELAY = -1;
 		const NO_REFRESH = 0;
 
-		return Object.assign(
-			{
-				publishDelay: isLongLivedApp() ? DEFAULT_PUBLISH_DELAY_MS : NO_PUBLISH_DELAY,
-				refreshPeriod: NO_REFRESH,
-			},
-			options || {}
-		);
+		return {
+			publishDelay: isLongLivedApp() ? DEFAULT_PUBLISH_DELAY_MS : NO_PUBLISH_DELAY,
+			refreshPeriod: NO_REFRESH,
+			...options,
+		};
 	}
 
 	private static _validateParams(params: ContextParams) {
