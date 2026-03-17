@@ -939,6 +939,39 @@ describe("Client", () => {
 			});
 	});
 
+	it("constructor() should accept custom agent string", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const customAgent = "custom-agent";
+		const client = new Client({ ...clientOptions, agent: customAgent });
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+			})
+			.then(() => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": customAgent,
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: undefined,
+					keepalive: true,
+					signal: expect.any(Object),
+				});
+
+				done();
+			});
+	});
+
 	it("publish() should not have the keepalive flag if specified", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
