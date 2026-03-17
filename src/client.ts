@@ -28,7 +28,7 @@ export type ClientRequestOptions = {
 };
 
 export type ClientOptions = {
-	agent?: "javascript-client";
+	agent?: string;
 	apiKey: string;
 	application: string | { name: string; version: number };
 	endpoint: string;
