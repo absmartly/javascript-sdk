@@ -80,6 +80,26 @@ describe("SDK", () => {
 			done();
 		});
 
+		it("should pass custom agent to client", (done) => {
+			const customAgent = "my-custom-agent";
+			const options = {
+				...sdkOptions,
+				agent: customAgent,
+			};
+
+			const sdk = new SDK(options);
+
+			expect(sdk).toBeInstanceOf(SDK);
+			expect(Client).toHaveBeenCalledTimes(1);
+			expect(Client).toHaveBeenCalledWith(
+				expect.objectContaining({
+					agent: customAgent,
+				})
+			);
+
+			done();
+		});
+
 		it("should set default values for unspecified client options", (done) => {
 			const options = {
 				application: "application",
