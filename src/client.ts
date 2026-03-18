@@ -32,7 +32,7 @@ const DEFAULT_TIMEOUT_MS = 3000;
 const RETRY_DELAY_MS = 50;
 
 export type ClientOptions = {
-	agent?: "javascript-client";
+	agent?: "javascript-client" | "absmartly-javascript-sdk";
 	apiKey: string;
 	application: string | { name: string; version: number };
 	endpoint: string;

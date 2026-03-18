@@ -229,10 +229,10 @@ export default class Context {
 
 	ready() {
 		if (this.isReady()) {
-			return Promise.resolve(true);
+			return Promise.resolve(!this._failed);
 		}
 
-		return this._promise?.then(() => true).catch(() => false) ?? Promise.resolve(true);
+		return this._promise?.then(() => true).catch(() => false) ?? Promise.resolve(!this._failed);
 	}
 
 	pending() {
@@ -847,8 +847,8 @@ export default class Context {
 								else resolve();
 							});
 						});
-					} catch (error) {
-						this._logError(error as Error);
+					} catch {
+						// _flush already logs publish errors.
 					}
 				}, this._opts.publishDelay);
 			}
@@ -1050,8 +1050,8 @@ export default class Context {
 							else resolve();
 						});
 					});
-				} catch (error) {
-					this._logError(error as Error);
+				} catch {
+					// _refresh already logs refresh errors.
 				}
 			}, this._opts.refreshPeriod);
 		}

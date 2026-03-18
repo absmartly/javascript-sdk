@@ -55,13 +55,13 @@ export default class SDK {
 			"retries",
 			"timeout",
 		];
-		const extracted: Record<string, unknown> = {
+		const extracted: Partial<ClientOptions> = {
 			agent: "absmartly-javascript-sdk",
 		};
 
 		for (const [key, value] of Object.entries(options || {})) {
 			if (clientOptionKeys.includes(key)) {
-				extracted[key] = value;
+				(extracted as Record<string, unknown>)[key] = value;
 			}
 		}
 
