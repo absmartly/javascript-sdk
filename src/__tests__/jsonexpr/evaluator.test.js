@@ -424,5 +424,28 @@ describe("Evaluator", () => {
 			expect(evaluator.versionCompare("1.0.0+build1", "1.0.0+build2")).toBe(0);
 			expect(evaluator.versionCompare("1.0.0+build1", "1.0.0")).toBe(0);
 		});
+
+		it("should handle pre-release combined with build metadata", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.0-alpha+build1", "1.0.0-alpha+build2")).toBe(0);
+			expect(evaluator.versionCompare("1.0.0-alpha+build1", "1.0.0-beta")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-alpha+build1", "1.0.0")).toBe(-1);
+		});
+
+		it("should return null for empty string inputs", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("", "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("1.0.0", "")).toBe(null);
+			expect(evaluator.versionCompare("", "")).toBe(null);
+		});
+
+		it("should return null for undefined inputs", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare(undefined, "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("1.0.0", undefined)).toBe(null);
+		});
 	});
 });

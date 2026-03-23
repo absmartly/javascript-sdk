@@ -18,14 +18,14 @@ export function mockEvaluator() {
 			return expr;
 		}),
 
-		versionCompare: jest.fn((lhs, rhs) => {
-		const lhsStr = typeof lhs === "string" ? lhs : null;
-		const rhsStr = typeof rhs === "string" ? rhs : null;
-		if (lhsStr === null || rhsStr === null) return null;
-		return lhsStr === rhsStr ? 0 : lhsStr > rhsStr ? 1 : -1;
-	}),
+			versionCompare: jest.fn((lhs, rhs) => {
+			const lhsStr = typeof lhs === "string" ? lhs : null;
+			const rhsStr = typeof rhs === "string" ? rhs : null;
+			if (lhsStr === null || rhsStr === null) return null;
+			return lhsStr === rhsStr ? 0 : lhsStr > rhsStr ? 1 : -1;
+		}),
 
-	compare: jest.fn((lhs, rhs) => {
+		compare: jest.fn((lhs, rhs) => {
 			switch (typeof lhs) {
 				case "boolean":
 				case "number":

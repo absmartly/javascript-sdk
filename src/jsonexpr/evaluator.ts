@@ -1,6 +1,38 @@
 /* eslint-disable */
 import { isEqualsDeep, isObject } from "../utils";
 
+function parseSemver(version: string) {
+	let v = version;
+	if (v.startsWith("v") || v.startsWith("V")) {
+		v = v.substring(1);
+	}
+
+	const plusIndex = v.indexOf("+");
+	if (plusIndex >= 0) {
+		v = v.substring(0, plusIndex);
+	}
+
+	const [core, ...preReleaseParts] = v.split("-");
+	const preRelease = preReleaseParts.join("-");
+	const parts = core.split(".");
+
+	return { parts, preRelease };
+}
+
+function compareIdentifiers(a: string, b: string) {
+	const aNum = parseInt(a, 10);
+	const bNum = parseInt(b, 10);
+	const aIsNum = !isNaN(aNum) && String(aNum) === a;
+	const bIsNum = !isNaN(bNum) && String(bNum) === b;
+
+	if (aIsNum && bIsNum) {
+		return aNum === bNum ? 0 : aNum > bNum ? 1 : -1;
+	}
+	if (aIsNum) return -1;
+	if (bIsNum) return 1;
+	return a === b ? 0 : a > b ? 1 : -1;
+}
+
 export class Evaluator {
 	private readonly operators: any;
 	private readonly vars: any;
@@ -87,44 +119,12 @@ export class Evaluator {
 		return target;
 	}
 
-	versionCompare<TData>(lhs: TData, rhs: TData) {
+	versionCompare<TData>(lhs: TData, rhs: TData): number | null {
 		const lhsStr = this.stringConvert(lhs);
 		const rhsStr = this.stringConvert(rhs);
-		if (lhsStr === null || rhsStr === null) {
+		if (lhsStr === null || rhsStr === null || lhsStr === "" || rhsStr === "") {
 			return null;
 		}
-
-		const parseSemver = (version: string) => {
-			let v = version;
-			if (v.startsWith("v") || v.startsWith("V")) {
-				v = v.substring(1);
-			}
-
-			const plusIndex = v.indexOf("+");
-			if (plusIndex >= 0) {
-				v = v.substring(0, plusIndex);
-			}
-
-			const [core, ...preReleaseParts] = v.split("-");
-			const preRelease = preReleaseParts.join("-");
-			const parts = core.split(".");
-
-			return { parts, preRelease };
-		};
-
-		const compareIdentifiers = (a: string, b: string) => {
-			const aNum = parseInt(a, 10);
-			const bNum = parseInt(b, 10);
-			const aIsNum = !isNaN(aNum) && String(aNum) === a;
-			const bIsNum = !isNaN(bNum) && String(bNum) === b;
-
-			if (aIsNum && bIsNum) {
-				return aNum === bNum ? 0 : aNum > bNum ? 1 : -1;
-			}
-			if (aIsNum) return -1;
-			if (bIsNum) return 1;
-			return a === b ? 0 : a > b ? 1 : -1;
-		};
 
 		const l = parseSemver(lhsStr);
 		const r = parseSemver(rhsStr);
