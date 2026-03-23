@@ -170,7 +170,7 @@ export default class Context {
 		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
-		this._environmentName = sdk.getClient()?.getEnvironment() ?? null;
+		this._environmentName = sdk.getClient().getEnvironment();
 		this._attrsSeq = 0;
 
 		if (params.units) {
@@ -563,6 +563,9 @@ export default class Context {
 				assignment.ruleVariant = ruleVariant;
 
 				if (ruleVariant !== null) {
+					// Rule-matched: assigned=true + overridden=true
+					// SDK overrides: assigned=false + overridden=true
+					// This distinction lets analytics differentiate the two cases
 					assignment.assigned = true;
 					assignment.eligible = true;
 					assignment.variant = ruleVariant;
