@@ -2165,7 +2165,7 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(0);
 		});
 
-		it("should set overridden=true in exposure when rule matches", (done) => {
+		it("should set correct flags in exposure when rule matches", (done) => {
 			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
@@ -2176,9 +2176,91 @@ describe("Context", () => {
 			context.publish().then(() => {
 				const publishCall = publisher.publish.mock.calls[0][0];
 				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
-				expect(exposure.overridden).toBe(true);
-				expect(exposure.assigned).toBe(true);
-				expect(exposure.variant).toBe(1);
+				expect(exposure).toMatchObject({
+					id: 2,
+					name: "exp_test_abc",
+					unit: "session_id",
+					variant: 1,
+					assigned: true,
+					eligible: true,
+					overridden: true,
+					fullOn: false,
+					custom: false,
+				});
+				done();
+			});
+		});
+
+		it("should set correct flags in exposure when no rule matches (normal assignment)", (done) => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					id: 2,
+					name: "exp_test_abc",
+					unit: "session_id",
+					variant: 2,
+					assigned: true,
+					eligible: true,
+					overridden: false,
+					fullOn: false,
+					custom: false,
+				});
+				done();
+			});
+		});
+
+		it("should set correct flags when rule matches with audienceMismatch", (done) => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "US");
+			// audienceStrict on, no age set so audience filter mismatches, but rule matches
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 1,
+					assigned: true,
+					eligible: true,
+					overridden: true,
+					fullOn: false,
+					custom: false,
+					audienceMismatch: true,
+				});
+				done();
+			});
+		});
+
+		it("should set correct flags when override takes priority over rule", (done) => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			context.override("exp_test_abc", 0);
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 0,
+					assigned: false,
+					overridden: true,
+					fullOn: false,
+					custom: false,
+				});
 				done();
 			});
 		});
