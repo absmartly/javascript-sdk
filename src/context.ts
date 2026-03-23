@@ -543,22 +543,22 @@ export default class Context {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
 
+				let ruleVariant: number | null = null;
+
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.data.audience, this._getAttributesMap());
+					const attrs = this._getAttributesMap();
+					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
 					if (typeof result === "boolean") {
 						assignment.audienceMismatch = !result;
 					}
-				}
 
-				const ruleVariant =
-					experiment.data.audience && experiment.data.audience.length > 0
-						? this._audienceMatcher.evaluateRules(
-								experiment.data.audience,
-								this._environmentName,
-								this._getAttributesMap()
-						  )
-						: null;
+					ruleVariant = this._audienceMatcher.evaluateRules(
+						experiment.data.audience,
+						this._environmentName,
+						attrs
+					);
+				}
 
 				assignment.ruleVariant = ruleVariant;
 

@@ -2339,6 +2339,61 @@ describe("Context", () => {
 			// No rule matches, audienceStrict on, audience filter mismatch — variant 0
 			expect(context.treatment("exp_test_abc")).toEqual(0);
 		});
+
+		it("should return correct variableValue when rule forces a different variant", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			// Rule forces variant 1 (B) which has config {"button.color":"blue"}
+			// Normal assignment would be variant 2 (C) with {"button.color":"red"}
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.variableValue("button.color", "default")).toEqual("blue");
+		});
+
+		it("should invalidate cache when rule switches to a different matching variant", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const twoRulesContextResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+								rules: [
+									{
+										or: [
+											{
+												name: "US Users",
+												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+												environments: [],
+												variant: 1,
+											},
+											{
+												name: "GB Users",
+												and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+												environments: [],
+												variant: 2,
+											},
+										],
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, twoRulesContextResponse);
+
+			// First: US → rule variant 1
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			// Switch to GB → rule variant 2
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+		});
 	});
 
 	describe("variableValue()", () => {

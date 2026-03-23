@@ -276,6 +276,34 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
 		});
 
+		it("should evaluate second rule group when first has no match", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+								environments: [],
+								variant: 1,
+							},
+						],
+					},
+					{
+						or: [
+							{
+								name: "rule2",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: [],
+								variant: 2,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
+		});
+
 		it("should support variant 0", () => {
 			const audience = JSON.stringify({
 				rules: [

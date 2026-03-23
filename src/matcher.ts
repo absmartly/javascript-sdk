@@ -47,7 +47,7 @@ export class AudienceMatcher {
 				}
 			}
 		} catch (error) {
-			// parse error or evaluation error - fall through to normal assignment
+			console.error(error);
 		}
 		return null;
 	}
