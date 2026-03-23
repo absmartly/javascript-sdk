@@ -310,4 +310,119 @@ describe("Evaluator", () => {
 			expect(evaluator.compare("100", "9")).toBe(-1);
 		});
 	});
+
+	describe("versionCompare()", () => {
+		it("should return 0 for equal versions", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.0", "1.0.0")).toBe(0);
+			expect(evaluator.versionCompare("0.0.0", "0.0.0")).toBe(0);
+			expect(evaluator.versionCompare("999.999.999", "999.999.999")).toBe(0);
+		});
+
+		it("should compare major versions", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("2.0.0", "1.0.0")).toBe(1);
+			expect(evaluator.versionCompare("1.0.0", "2.0.0")).toBe(-1);
+		});
+
+		it("should compare minor versions", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.2.0", "1.1.0")).toBe(1);
+			expect(evaluator.versionCompare("1.1.0", "1.2.0")).toBe(-1);
+		});
+
+		it("should compare patch versions", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.2", "1.0.1")).toBe(1);
+			expect(evaluator.versionCompare("1.0.1", "1.0.2")).toBe(-1);
+		});
+
+		it("should compare numerically not lexicographically", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.10.0", "1.9.0")).toBe(1);
+			expect(evaluator.versionCompare("1.9.0", "1.10.0")).toBe(-1);
+			expect(evaluator.versionCompare("10.0.0", "9.0.0")).toBe(1);
+		});
+
+		it("should treat missing parts as 0", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.2", "1.2.0")).toBe(0);
+			expect(evaluator.versionCompare("1", "1.0.0")).toBe(0);
+			expect(evaluator.versionCompare("1.2.0", "1.2")).toBe(0);
+			expect(evaluator.versionCompare("1.0.0", "1")).toBe(0);
+		});
+
+		it("should handle pre-release versions", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.0", "1.0.0-alpha")).toBe(1);
+			expect(evaluator.versionCompare("1.0.0-alpha", "1.0.0")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-alpha", "1.0.0-alpha")).toBe(0);
+			expect(evaluator.versionCompare("1.0.0-alpha", "1.0.0-beta")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-beta", "1.0.0-alpha")).toBe(1);
+			expect(evaluator.versionCompare("1.0.0-alpha.1", "1.0.0-alpha.2")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-alpha.2", "1.0.0-alpha.1")).toBe(1);
+			expect(evaluator.versionCompare("1.0.0-1", "1.0.0-2")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-2", "1.0.0-1")).toBe(1);
+		});
+
+		it("should compare numeric pre-release identifiers as less than string identifiers", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.0-1", "1.0.0-alpha")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-alpha", "1.0.0-1")).toBe(1);
+		});
+
+		it("should compare pre-release with fewer identifiers as less", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.0-alpha", "1.0.0-alpha.1")).toBe(-1);
+			expect(evaluator.versionCompare("1.0.0-alpha.1", "1.0.0-alpha")).toBe(1);
+		});
+
+		it("should strip v prefix", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("v1.0.0", "1.0.0")).toBe(0);
+			expect(evaluator.versionCompare("V1.0.0", "1.0.0")).toBe(0);
+			expect(evaluator.versionCompare("v1.0.0", "V1.0.0")).toBe(0);
+		});
+
+		it("should return null for null inputs", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare(null, "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("1.0.0", null)).toBe(null);
+			expect(evaluator.versionCompare(null, null)).toBe(null);
+		});
+
+		it("should coerce non-string inputs via stringConvert", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare(1, "1.0.0")).toBe(0);
+			expect(evaluator.versionCompare("1.0.0", 1)).toBe(0);
+			expect(evaluator.versionCompare(true, "true")).toBe(0);
+		});
+
+		it("should return null for unconvertible inputs", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare({}, "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("1.0.0", {})).toBe(null);
+			expect(evaluator.versionCompare([], "1.0.0")).toBe(null);
+		});
+
+		it("should ignore build metadata", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.0.0+build1", "1.0.0+build2")).toBe(0);
+			expect(evaluator.versionCompare("1.0.0+build1", "1.0.0")).toBe(0);
+		});
+	});
 });
