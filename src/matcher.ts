@@ -35,12 +35,12 @@ export class AudienceMatcher {
 						}
 						const conditions = rule.and;
 						if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
-							return rule.variant;
+							return typeof rule.variant === "number" ? rule.variant : null;
 						}
 						if (Array.isArray(conditions)) {
 							const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
 							if (result === true) {
-								return rule.variant;
+								return typeof rule.variant === "number" ? rule.variant : null;
 							}
 						}
 					}

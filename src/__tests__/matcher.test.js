@@ -211,6 +211,41 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules("", "production", {})).toBe(null);
 		});
 
+		it("should return null when rule has no variant property", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [],
+								environments: [],
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
+		});
+
+		it("should return null when variant is not a number", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [],
+								environments: [],
+								variant: "bad",
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
+		});
+
 		it("should handle malformed rules gracefully", () => {
 			expect(matcher.evaluateRules('{"rules":"not an array"}', "production", {})).toBe(null);
 			expect(matcher.evaluateRules('{"rules":[{"or":"not an array"}]}', "production", {})).toBe(null);
