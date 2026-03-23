@@ -246,6 +246,53 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
 		});
 
+		it("should skip rule with invalid variant and continue to next valid rule", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "bad rule",
+								and: [],
+								environments: [],
+								variant: "not a number",
+							},
+							{
+								name: "good rule",
+								and: [],
+								environments: [],
+								variant: 2,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+		});
+
+		it("should skip rule with missing variant and continue to next valid rule", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "no variant",
+								and: [],
+								environments: [],
+							},
+							{
+								name: "good rule",
+								and: [],
+								environments: [],
+								variant: 1,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(1);
+		});
+
 		it("should handle malformed rules gracefully", () => {
 			expect(matcher.evaluateRules('{"rules":"not an array"}', "production", {})).toBe(null);
 			expect(matcher.evaluateRules('{"rules":[{"or":"not an array"}]}', "production", {})).toBe(null);

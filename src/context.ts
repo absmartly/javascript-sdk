@@ -475,15 +475,12 @@ export default class Context {
 						return false;
 					}
 
-					const ruleVariant = this._audienceMatcher.evaluateRules(
-						experiment.audience,
-						this._environmentName,
-						attrs
-					);
+					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.audience, this._environmentName, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
 
+					assignment.ruleVariant = ruleVariant;
 					assignment.attrsSeq = this._attrsSeq;
 				}
 			}
@@ -553,11 +550,7 @@ export default class Context {
 						assignment.audienceMismatch = !result;
 					}
 
-					ruleVariant = this._audienceMatcher.evaluateRules(
-						experiment.data.audience,
-						this._environmentName,
-						attrs
-					);
+					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.audience, this._environmentName, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;

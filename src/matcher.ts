@@ -17,11 +17,7 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	evaluateRules(
-		audienceString: string,
-		environmentName: string | null,
-		vars: Record<string, unknown>
-	): number | null {
+	evaluateRules(audienceString: string, environmentName: string | null, vars: Record<string, unknown>): number | null {
 		try {
 			const audience = JSON.parse(audienceString);
 			if (audience && Array.isArray(audience.rules)) {
@@ -33,14 +29,15 @@ export class AudienceMatcher {
 								continue;
 							}
 						}
+						if (typeof rule.variant !== "number") continue;
 						const conditions = rule.and;
 						if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
-							return typeof rule.variant === "number" ? rule.variant : null;
+							return rule.variant;
 						}
 						if (Array.isArray(conditions)) {
 							const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
 							if (result === true) {
-								return typeof rule.variant === "number" ? rule.variant : null;
+								return rule.variant;
 							}
 						}
 					}
