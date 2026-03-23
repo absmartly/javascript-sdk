@@ -1,0 +1,180 @@
+{
+  "semver_operators": [
+    {
+      "name": "semver_gte match - app version >= required version",
+      "expression": {
+        "semver_gte": [
+          { "var": "app_version" },
+          { "value": "2.0.0" }
+        ]
+      },
+      "vars": { "app_version": "2.1.0" },
+      "expected": true
+    },
+    {
+      "name": "semver_gte no match - app version below required",
+      "expression": {
+        "semver_gte": [
+          { "var": "app_version" },
+          { "value": "2.0.0" }
+        ]
+      },
+      "vars": { "app_version": "1.9.0" },
+      "expected": false
+    },
+    {
+      "name": "semver_gte match - exact version",
+      "expression": {
+        "semver_gte": [
+          { "var": "app_version" },
+          { "value": "2.0.0" }
+        ]
+      },
+      "vars": { "app_version": "2.0.0" },
+      "expected": true
+    },
+    {
+      "name": "semver_lt match - version below threshold",
+      "expression": {
+        "semver_lt": [
+          { "var": "app_version" },
+          { "value": "3.0.0" }
+        ]
+      },
+      "vars": { "app_version": "2.5.0" },
+      "expected": true
+    },
+    {
+      "name": "semver_lt no match - version at threshold",
+      "expression": {
+        "semver_lt": [
+          { "var": "app_version" },
+          { "value": "3.0.0" }
+        ]
+      },
+      "vars": { "app_version": "3.0.0" },
+      "expected": false
+    },
+    {
+      "name": "semver_eq match - equal versions",
+      "expression": {
+        "semver_eq": [
+          { "var": "app_version" },
+          { "value": "1.2.3" }
+        ]
+      },
+      "vars": { "app_version": "1.2.3" },
+      "expected": true
+    },
+    {
+      "name": "semver_eq no match - different versions",
+      "expression": {
+        "semver_eq": [
+          { "var": "app_version" },
+          { "value": "1.2.3" }
+        ]
+      },
+      "vars": { "app_version": "1.2.4" },
+      "expected": false
+    },
+    {
+      "name": "semver_gt with pre-release - release > pre-release",
+      "expression": {
+        "semver_gt": [
+          { "var": "app_version" },
+          { "value": "1.0.0-alpha" }
+        ]
+      },
+      "vars": { "app_version": "1.0.0" },
+      "expected": true
+    },
+    {
+      "name": "semver_gt with pre-release - pre-release not > release",
+      "expression": {
+        "semver_gt": [
+          { "var": "app_version" },
+          { "value": "1.0.0" }
+        ]
+      },
+      "vars": { "app_version": "1.0.0-alpha" },
+      "expected": false
+    },
+    {
+      "name": "semver_lte match - version equal",
+      "expression": {
+        "semver_lte": [
+          { "var": "app_version" },
+          { "value": "5.0.0" }
+        ]
+      },
+      "vars": { "app_version": "5.0.0" },
+      "expected": true
+    },
+    {
+      "name": "semver_lte match - version below",
+      "expression": {
+        "semver_lte": [
+          { "var": "app_version" },
+          { "value": "5.0.0" }
+        ]
+      },
+      "vars": { "app_version": "4.9.9" },
+      "expected": true
+    },
+    {
+      "name": "semver_lte no match - version above",
+      "expression": {
+        "semver_lte": [
+          { "var": "app_version" },
+          { "value": "5.0.0" }
+        ]
+      },
+      "vars": { "app_version": "5.0.1" },
+      "expected": false
+    },
+    {
+      "name": "semver_gte with missing parts - 1.2 treated as 1.2.0",
+      "expression": {
+        "semver_gte": [
+          { "var": "app_version" },
+          { "value": "1.2.0" }
+        ]
+      },
+      "vars": { "app_version": "1.2" },
+      "expected": true
+    },
+    {
+      "name": "semver_eq with v prefix stripped",
+      "expression": {
+        "semver_eq": [
+          { "var": "app_version" },
+          { "value": "1.0.0" }
+        ]
+      },
+      "vars": { "app_version": "v1.0.0" },
+      "expected": true
+    },
+    {
+      "name": "semver_eq ignores build metadata",
+      "expression": {
+        "semver_eq": [
+          { "var": "app_version" },
+          { "value": "1.0.0+build1" }
+        ]
+      },
+      "vars": { "app_version": "1.0.0+build2" },
+      "expected": true
+    },
+    {
+      "name": "semver_gte with missing attribute - returns null (falsy)",
+      "expression": {
+        "semver_gte": [
+          { "var": "app_version" },
+          { "value": "2.0.0" }
+        ]
+      },
+      "vars": {},
+      "expected": false
+    }
+  ]
+}
