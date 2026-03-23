@@ -764,6 +764,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 							],
 						},
@@ -878,6 +879,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 							],
 							attributes: [
@@ -1411,6 +1413,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 2,
@@ -1424,6 +1427,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 3,
@@ -1437,6 +1441,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 4,
@@ -1450,6 +1455,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 5,
@@ -1463,6 +1469,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -1531,6 +1538,7 @@ describe("Context", () => {
 					fullOn: experiment.name === "exp_test_fullon",
 					custom: false,
 					audienceMismatch: false,
+					targetingRule: false,
 				});
 			}
 
@@ -1574,6 +1582,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -1623,6 +1632,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -1664,6 +1674,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								targetingRule: false,
 							},
 						],
 					},
@@ -1705,6 +1716,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								targetingRule: false,
 							},
 						],
 					},
@@ -1767,6 +1779,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 0,
@@ -1780,6 +1793,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -1906,6 +1920,7 @@ describe("Context", () => {
 								name: "exp_test_ab",
 								variant: 0,
 								audienceMismatch: true,
+								targetingRule: false,
 								assigned: false,
 							}),
 						],
@@ -1931,6 +1946,7 @@ describe("Context", () => {
 									name: "exp_test_ab",
 									variant: 1,
 									audienceMismatch: false,
+									targetingRule: false,
 									assigned: true,
 								}),
 							],
@@ -2054,9 +2070,7 @@ describe("Context", () => {
 									or: [
 										{
 											name: "US Internal Users",
-											and: [
-												{ eq: [{ var: "country" }, { value: "US" }] },
-											],
+											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
 											environments: [],
 											variant: 1,
 										},
@@ -2186,6 +2200,7 @@ describe("Context", () => {
 					overridden: true,
 					fullOn: false,
 					custom: false,
+					targetingRule: true,
 				});
 				done();
 			});
@@ -2212,6 +2227,7 @@ describe("Context", () => {
 					overridden: false,
 					fullOn: false,
 					custom: false,
+					targetingRule: false,
 				});
 				done();
 			});
@@ -2221,7 +2237,6 @@ describe("Context", () => {
 			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "US");
-			// audienceStrict on, no age set so audience filter mismatches, but rule matches
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 
 			publisher.publish.mockReturnValue(Promise.resolve());
@@ -2237,6 +2252,7 @@ describe("Context", () => {
 					fullOn: false,
 					custom: false,
 					audienceMismatch: true,
+					targetingRule: true,
 				});
 				done();
 			});
@@ -2260,6 +2276,7 @@ describe("Context", () => {
 					overridden: true,
 					fullOn: false,
 					custom: false,
+					targetingRule: false,
 				});
 				done();
 			});
@@ -2270,13 +2287,10 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 
-			// First call: rule matches → variant 1 with assigned=true, overridden=true
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 
-			// Now override with the same variant the rule assigned
 			context.override("exp_test_abc", 1);
 
-			// Second call: override should take over with assigned=false
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 
 			publisher.publish.mockReturnValue(Promise.resolve());
@@ -2289,6 +2303,7 @@ describe("Context", () => {
 					variant: 1,
 					assigned: false,
 					overridden: true,
+					targetingRule: false,
 				});
 				done();
 			});
@@ -2477,6 +2492,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 2,
@@ -2490,6 +2506,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 3,
@@ -2503,6 +2520,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 4,
@@ -2516,6 +2534,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 5,
@@ -2529,6 +2548,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -2642,6 +2662,7 @@ describe("Context", () => {
 							fullOn: experiment.name === "exp_test_fullon",
 							custom: false,
 							audienceMismatch: false,
+							targetingRule: false,
 						});
 					} else {
 						expect(SDK.defaultEventLogger).not.toHaveBeenCalled();
@@ -2708,6 +2729,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -2749,6 +2771,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								targetingRule: false,
 							},
 						],
 					},
@@ -2790,6 +2813,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								targetingRule: false,
 							},
 						],
 					},
@@ -3230,6 +3254,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 3,
@@ -3243,6 +3268,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 						goals: [
@@ -3467,6 +3493,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 								{
 									id: 0,
@@ -3480,6 +3507,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 								{
 									id: 2,
@@ -3493,6 +3521,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 							],
 							goals: [
@@ -3728,6 +3757,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -3779,6 +3809,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -3979,6 +4010,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 								{
 									id: 2,
@@ -3992,6 +4024,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 							],
 						},
@@ -4041,6 +4074,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: true,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -4089,6 +4123,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 							{
 								id: 4,
@@ -4102,6 +4137,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
+								targetingRule: false,
 							},
 						],
 					},
@@ -4159,6 +4195,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 								{
 									id: 2,
@@ -4172,6 +4209,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
+									targetingRule: false,
 								},
 							],
 						},
