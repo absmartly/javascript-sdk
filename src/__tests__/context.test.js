@@ -2038,6 +2038,160 @@ describe("Context", () => {
 		});
 	});
 
+	describe("rules evaluation", () => {
+		const rulesContextResponse = {
+			...getContextResponse,
+			experiments: getContextResponse.experiments.map((x) => {
+				if (x.name === "exp_test_ab") {
+					return {
+						...x,
+						audience: JSON.stringify({
+							filter: [{ value: true }],
+							rules: [
+								{
+									or: [
+										{
+											name: "US Internal Users",
+											and: [
+												{ eq: [{ var: "country" }, { value: "US" }] },
+											],
+											environments: [],
+											variant: 1,
+										},
+									],
+								},
+							],
+						}),
+					};
+				}
+				return x;
+			}),
+		};
+
+		const envScopedRulesContextResponse = {
+			...getContextResponse,
+			experiments: getContextResponse.experiments.map((x) => {
+				if (x.name === "exp_test_ab") {
+					return {
+						...x,
+						audience: JSON.stringify({
+							filter: [{ value: true }],
+							rules: [
+								{
+									or: [
+										{
+											name: "Production Only",
+											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+											environments: ["production"],
+											variant: 1,
+										},
+									],
+								},
+							],
+						}),
+					};
+				}
+				return x;
+			}),
+		};
+
+		const rulesStrictContextResponse = {
+			...rulesContextResponse,
+			experiments: rulesContextResponse.experiments.map((x) => {
+				if (x.name === "exp_test_ab") {
+					return {
+						...x,
+						audienceStrict: true,
+						audience: JSON.stringify({
+							filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
+							rules: [
+								{
+									or: [
+										{
+											name: "US Users",
+											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+											environments: [],
+											variant: 1,
+										},
+									],
+								},
+							],
+						}),
+					};
+				}
+				return x;
+			}),
+		};
+
+		it("should return rule variant when rule matches", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+
+		it("should return normal assignment when no rules match", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+		});
+
+		it("should skip rule when environment does not match", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("staging");
+			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+		});
+
+		it("should match rule when environment matches", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+
+		it("should override takes priority over rules", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			context.override("exp_test_ab", 0);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+		});
+
+		it("should set custom=true in exposure when rule matches", (done) => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_ab");
+				expect(exposure.custom).toBe(true);
+				expect(exposure.assigned).toBe(true);
+				expect(exposure.variant).toBe(1);
+				done();
+			});
+		});
+
+		it("rule should take priority over audienceStrict when rule matches", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+
+		it("should fall back to audienceStrict behavior when no rule matches", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+		});
+	});
+
 	describe("variableValue()", () => {
 		it("should not return variable values when unassigned", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);

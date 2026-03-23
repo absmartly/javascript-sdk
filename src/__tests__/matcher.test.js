@@ -26,6 +26,239 @@ describe("AudienceMatcher", () => {
 		expect(matcher.evaluate('{"filter":[{"not":{"var":"returning"}}]}', { returning: true })).toBe(false);
 		expect(matcher.evaluate('{"filter":[{"not":{"var":"returning"}}]}', { returning: false })).toBe(true);
 	});
+	describe("evaluateRules", () => {
+		it("should return null when no rules in audience", () => {
+			expect(matcher.evaluateRules("{}", "production", {})).toBe(null);
+			expect(matcher.evaluateRules('{"filter":[]}', "production", {})).toBe(null);
+		});
+
+		it("should return null when rules is empty array", () => {
+			expect(matcher.evaluateRules('{"rules":[]}', "production", {})).toBe(null);
+		});
+
+		it("should return variant when conditions match", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: [],
+								variant: 1,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(1);
+		});
+
+		it("should return null when conditions do not match", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: [],
+								variant: 1,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "GB" })).toBe(null);
+		});
+
+		it("should skip rules with non-matching environments", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: ["staging"],
+								variant: 1,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(null);
+		});
+
+		it("should match when environment is in the environments list", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: ["production", "staging"],
+								variant: 2,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, "staging", { country: "US" })).toBe(2);
+		});
+
+		it("should match all environments when environments is empty", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ value: true }],
+								environments: [],
+								variant: 1,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(1);
+			expect(matcher.evaluateRules(audience, "staging", {})).toBe(1);
+			expect(matcher.evaluateRules(audience, null, {})).toBe(1);
+		});
+
+		it("should skip rules when environments is non-empty and environmentName is null", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ value: true }],
+								environments: ["production"],
+								variant: 1,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, null, {})).toBe(null);
+		});
+
+		it("should return first matching rule (first match wins)", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: [],
+								variant: 1,
+							},
+							{
+								name: "rule2",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: [],
+								variant: 2,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(1);
+		});
+
+		it("should return variant when conditions are empty (matches all)", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [],
+								environments: [],
+								variant: 3,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(3);
+		});
+
+		it("should return variant when and field is absent (matches all)", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								environments: [],
+								variant: 3,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(3);
+		});
+
+		it("should handle malformed audience JSON gracefully", () => {
+			expect(matcher.evaluateRules("not json", "production", {})).toBe(null);
+			expect(matcher.evaluateRules("", "production", {})).toBe(null);
+		});
+
+		it("should handle malformed rules gracefully", () => {
+			expect(matcher.evaluateRules('{"rules":"not an array"}', "production", {})).toBe(null);
+			expect(matcher.evaluateRules('{"rules":[{"or":"not an array"}]}', "production", {})).toBe(null);
+			expect(matcher.evaluateRules('{"rules":[null]}', "production", {})).toBe(null);
+		});
+
+		it("should skip to second rule when first does not match", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+								environments: [],
+								variant: 1,
+							},
+							{
+								name: "rule2",
+								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+								environments: [],
+								variant: 2,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
+		});
+
+		it("should support variant 0", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						or: [
+							{
+								name: "rule1",
+								and: [{ value: true }],
+								environments: [],
+								variant: 0,
+							},
+						],
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(0);
+		});
+	});
 });
 
 /*

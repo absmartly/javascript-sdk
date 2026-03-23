@@ -129,6 +129,7 @@ export default class Context {
 	private readonly _audienceMatcher: AudienceMatcher;
 	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
+	private readonly _environmentName: string | null;
 	private readonly _eventLogger: EventLogger;
 	private readonly _opts: ContextOptions;
 	private readonly _publisher: ContextPublisher;
@@ -168,6 +169,7 @@ export default class Context {
 		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
+		this._environmentName = sdk.getClient()?.getEnvironment() ?? null;
 		this._attrsSeq = 0;
 
 		if (params.units) {
@@ -538,7 +540,20 @@ export default class Context {
 					}
 				}
 
-				if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+				const ruleVariant =
+					experiment.data.audience && experiment.data.audience.length > 0
+						? this._audienceMatcher.evaluateRules(
+								experiment.data.audience,
+								this._environmentName,
+								this._getAttributesMap()
+						  )
+						: null;
+
+				if (ruleVariant !== null) {
+					assignment.assigned = true;
+					assignment.variant = ruleVariant;
+					assignment.custom = true;
+				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
 					if (unitType !== null) {
