@@ -552,7 +552,7 @@ export default class Context {
 				if (ruleVariant !== null) {
 					assignment.assigned = true;
 					assignment.variant = ruleVariant;
-					assignment.custom = true;
+					assignment.overridden = true;
 				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {

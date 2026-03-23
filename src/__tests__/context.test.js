@@ -2165,7 +2165,7 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(0);
 		});
 
-		it("should set custom=true in exposure when rule matches", (done) => {
+		it("should set overridden=true in exposure when rule matches", (done) => {
 			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
@@ -2176,7 +2176,7 @@ describe("Context", () => {
 			context.publish().then(() => {
 				const publishCall = publisher.publish.mock.calls[0][0];
 				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
-				expect(exposure.custom).toBe(true);
+				expect(exposure.overridden).toBe(true);
 				expect(exposure.assigned).toBe(true);
 				expect(exposure.variant).toBe(1);
 				done();
