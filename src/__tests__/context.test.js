@@ -2265,6 +2265,35 @@ describe("Context", () => {
 			});
 		});
 
+		it("should set correct override flags even when override variant matches rule variant", (done) => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+
+			// First call: rule matches → variant 1 with assigned=true, overridden=true
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			// Now override with the same variant the rule assigned
+			context.override("exp_test_abc", 1);
+
+			// Second call: override should take over with assigned=false
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposures = publishCall.exposures.filter((e) => e.name === "exp_test_abc");
+				const lastExposure = exposures[exposures.length - 1];
+				expect(lastExposure).toMatchObject({
+					variant: 1,
+					assigned: false,
+					overridden: true,
+				});
+				done();
+			});
+		});
+
 		it("should invalidate cached assignment when rule result changes due to attribute change", () => {
 			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);

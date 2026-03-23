@@ -497,7 +497,7 @@ export default class Context {
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
 			if (hasOverride) {
-				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
+				if (assignment.overridden && !assignment.assigned && assignment.variant === this._overrides[experimentName]) {
 					// override up-to-date
 					return assignment;
 				}
