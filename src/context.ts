@@ -61,6 +61,7 @@ type Assignment = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	ruleVariant?: number | null;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
@@ -466,10 +467,20 @@ export default class Context {
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			if (experiment.audience && experiment.audience.length > 0) {
 				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, this._getAttributesMap());
+					const attrs = this._getAttributesMap();
+					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
 					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
+						return false;
+					}
+
+					const ruleVariant = this._audienceMatcher.evaluateRules(
+						experiment.audience,
+						this._environmentName,
+						attrs
+					);
+					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
 
@@ -548,6 +559,8 @@ export default class Context {
 								this._getAttributesMap()
 						  )
 						: null;
+
+				assignment.ruleVariant = ruleVariant;
 
 				if (ruleVariant !== null) {
 					assignment.assigned = true;

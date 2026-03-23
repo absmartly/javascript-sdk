@@ -2265,6 +2265,35 @@ describe("Context", () => {
 			});
 		});
 
+		it("should invalidate cached assignment when rule result changes due to attribute change", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+
+			// First call: no country set, rule doesn't match → normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+
+			// Change attribute so rule now matches
+			context.attribute("country", "US");
+
+			// Second call: rule matches → should return rule variant (1), not cached (2)
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should invalidate cached assignment when rule stops matching due to attribute change", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+
+			// First call: country=US, rule matches → variant 1
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			// Change attribute so rule no longer matches
+			context.attribute("country", "GB");
+
+			// Second call: rule no longer matches → should return normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
 		it("rule should take priority over audienceStrict when rule matches", () => {
 			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
