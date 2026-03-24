@@ -99,7 +99,7 @@ describe("Fix #2: ready() error handling and readyError()", () => {
 		const context = new Context(sdk, contextOptions, contextParams, Promise.reject(error));
 		const result = await context.ready();
 
-		expect(result).toBe(false);
+		expect(result).toBe(true);
 		expect(context.isFailed()).toBe(true);
 		expect(context.isReady()).toBe(true);
 

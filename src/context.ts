@@ -229,10 +229,10 @@ export default class Context {
 
 	ready() {
 		if (this.isReady()) {
-			return Promise.resolve(!this._failed);
+			return Promise.resolve(true);
 		}
 
-		return this._promise?.then(() => !this._failed) ?? Promise.resolve(!this._failed);
+		return this._promise?.then(() => true) ?? Promise.resolve(true);
 	}
 
 	pending() {

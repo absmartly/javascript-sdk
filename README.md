@@ -480,16 +480,13 @@ document.getElementById("checkout-btn").addEventListener("click", () => {
 
 This version includes minor breaking changes made for cross-SDK consistency and correctness. These align the JavaScript SDK with the Python, Swift, Java, and other A/B Smartly SDKs.
 
-### `ready()` return value changed
+### `ready()` no longer resolves with the Error object on failure
 
-**Before:** `ready()` always resolved (never rejected). On failure, it resolved with the Error object itself.
+**Before:** `ready()` resolved with the Error object on failure (e.g., `const result = await context.ready()` would give you the Error).
 
-**After:** `ready()` resolves with `true` on success and `false` on failure. It still never rejects. Use `isFailed()` and `readyError()` to check for errors.
-
-**Important:** `ready()` is a "wait for initialization" signal, not a gate. You should always proceed with your experiment code after `ready()` settles, even on failure — the SDK returns control variants (`0`) and default values gracefully when the API is down. Do not use the return value to gate experiment calls, as that would break your site when the API is unavailable.
+**After:** `ready()` always resolves with `true`. It is a "wait for initialization" signal — you should always proceed with experiment code after it settles, even on failure. The SDK returns control variants (`0`) and default values gracefully when the API is down. Use `isFailed()` and `readyError()` to check for errors if needed.
 
 ```javascript
-// Recommended pattern
 await context.ready();
 if (context.isFailed()) {
     console.error("Context failed:", context.readyError());
@@ -497,7 +494,7 @@ if (context.isFailed()) {
 const variant = context.treatment("exp_test"); // returns 0 (control) on failure
 ```
 
-**When this might be a problem:** If your code stored the return value and used it as the Error object (e.g., `const err = await context.ready(); logError(err)`), it will now receive `false` instead of the Error. Use `context.readyError()` to access the error instead.
+**When this might be a problem:** If your code used the return value as the Error object (e.g., `const err = await context.ready(); logError(err)`), it will now receive `true` instead. Use `context.readyError()` to access the error instead.
 
 ### `override()` now throws after finalization
 
