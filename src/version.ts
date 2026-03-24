@@ -1,1 +1,3 @@
-export const SDK_VERSION = "1.13.4";
+import pkg from "../package.json";
+
+export const SDK_VERSION: string = pkg.version;

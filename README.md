@@ -148,7 +148,7 @@ context.attributes({
 ```
 
 #### Including system attributes
-You can opt-in to automatically include system attributes (SDK name, SDK version, application, environment, and application version) in every publish payload. These are sent as context attributes and can be useful for debugging and filtering in the Web Console.
+You can opt in to automatically include system attributes (SDK name, SDK version, application, environment, and application version) in every publish payload. These are sent as context attributes and can be useful for debugging and filtering in the Web Console.
 
 To enable this, set the `includeSystemAttributes` option to `true` when creating the context:
 ```javascript
@@ -157,7 +157,7 @@ const context = sdk.createContext(request, {
 });
 ```
 
-When enabled, the following attributes are automatically prepended to the publish payload:
+When enabled, the following attributes are automatically prepended to the publish request payload:
 
 | Attribute | Description |
 |:--- |---|

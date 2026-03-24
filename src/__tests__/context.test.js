@@ -478,12 +478,6 @@ describe("Context", () => {
 	client.getApplication.mockReturnValue({ name: "website", version: 0 });
 	client.getEnvironment.mockReturnValue("production");
 
-	const systemAttributes = [
-		{ name: "sdk_version", value: expect.any(String), setAt: expect.any(Number) },
-		{ name: "application", value: "website", setAt: expect.any(Number) },
-		{ name: "environment", value: "production", setAt: expect.any(Number) },
-	];
-
 	const contextOptions = {
 		publishDelay: -1,
 		refreshPeriod: 0,
@@ -4054,7 +4048,7 @@ describe("Context", () => {
 		});
 
 		it("should include app_version when application version is set", (done) => {
-			client.getApplication.mockReturnValue({ name: "website", version: 3 });
+			client.getApplication.mockReturnValueOnce({ name: "website", version: 3 });
 
 			const optionsWithSystemAttrs = {
 				publishDelay: -1,
@@ -4075,7 +4069,6 @@ describe("Context", () => {
 				expect(appVersionAttr).toBeDefined();
 				expect(appVersionAttr.value).toEqual(3);
 
-				client.getApplication.mockReturnValue({ name: "website", version: 0 });
 				done();
 			});
 		});
