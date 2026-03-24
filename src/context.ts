@@ -312,7 +312,7 @@ export default class Context {
 	}
 
 	getUnits() {
-		return this._units;
+		return { ...this._units };
 	}
 
 	units(units: Record<string, number | string>) {
@@ -358,6 +358,9 @@ export default class Context {
 			throw new Error("Experiment name must be a non-empty string");
 		}
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`peek() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning control variant (0).`
+			));
 			return 0;
 		}
 
@@ -369,6 +372,9 @@ export default class Context {
 			throw new Error("Experiment name must be a non-empty string");
 		}
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`treatment() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning control variant (0).`
+			));
 			return 0;
 		}
 
@@ -389,7 +395,10 @@ export default class Context {
 	}
 
 	experiments() {
-		if (!this.isReady()) {
+		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`experiments() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning empty array.`
+			));
 			return [];
 		}
 
@@ -401,6 +410,9 @@ export default class Context {
 			throw new Error("Variable key must be a non-empty string");
 		}
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`variableValue() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning default value.`
+			));
 			return defaultValue;
 		}
 
@@ -412,6 +424,9 @@ export default class Context {
 			throw new Error("Variable key must be a non-empty string");
 		}
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`peekVariableValue() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning default value.`
+			));
 			return defaultValue;
 		}
 
@@ -420,6 +435,9 @@ export default class Context {
 
 	variableKeys() {
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`variableKeys() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning empty object.`
+			));
 			return {};
 		}
 
@@ -442,6 +460,7 @@ export default class Context {
 		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
 			throw new Error("Variant must be a non-negative integer");
 		}
+		this._checkNotFinalized();
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
@@ -508,6 +527,15 @@ export default class Context {
 		return attrs;
 	}
 
+	private _evaluateAudience(audience: string): boolean | null {
+		try {
+			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
+		} catch (error) {
+			this._logError(error as Error);
+			return null;
+		}
+	}
+
 	private _assign(experimentName: string) {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
@@ -522,7 +550,7 @@ export default class Context {
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			if (experiment.audience && experiment.audience.length > 0) {
 				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, this._getAttributesMap());
+					const result = this._evaluateAudience(experiment.audience);
 					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
@@ -589,7 +617,7 @@ export default class Context {
 				const unitType = experiment.data.unitType;
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.data.audience, this._getAttributesMap());
+					const result = this._evaluateAudience(experiment.data.audience);
 
 					if (typeof result === "boolean") {
 						assignment.audienceMismatch = !result;
@@ -714,6 +742,9 @@ export default class Context {
 
 	customFieldKeys() {
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`customFieldKeys() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning empty array.`
+			));
 			return [];
 		}
 
@@ -738,7 +769,9 @@ export default class Context {
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
 						} catch (e) {
-							this._logError(e as Error);
+							this._logError(new Error(
+								`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${(e as Error).message}`
+							));
 							return null;
 						}
 					case "boolean":
@@ -758,7 +791,16 @@ export default class Context {
 	}
 
 	customFieldValue(experimentName: string, key: string) {
+		if (!experimentName || typeof experimentName !== "string") {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (!key || typeof key !== "string") {
+			throw new Error("Field key must be a non-empty string");
+		}
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`customFieldValue() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning null.`
+			));
 			return null;
 		}
 
@@ -779,7 +821,16 @@ export default class Context {
 	}
 
 	customFieldValueType(experimentName: string, key: string) {
+		if (!experimentName || typeof experimentName !== "string") {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (!key || typeof key !== "string") {
+			throw new Error("Field key must be a non-empty string");
+		}
 		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
+			this._logError(new Error(
+				`customFieldValueType() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning null.`
+			));
 			return null;
 		}
 
@@ -847,9 +898,7 @@ export default class Context {
 								else resolve();
 							});
 						});
-					} catch {
-						// _flush already logs publish errors.
-					}
+					} catch {}
 				}, this._opts.publishDelay);
 			}
 		}
@@ -929,6 +978,10 @@ export default class Context {
 						}
 					});
 			} else {
+				this._logError(new Error(
+					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+				));
+
 				this._pending = 0;
 				this._exposures = [];
 				this._goals = [];
@@ -1017,7 +1070,9 @@ export default class Context {
 					try {
 						parsed = JSON.parse(config);
 					} catch (error) {
-						this._logError(error as Error);
+						this._logError(new Error(
+							`Failed to parse config for experiment '${experiment.name}' variant ${i}: ${(error as Error).message}`
+						));
 						parsed = {};
 					}
 				}
@@ -1050,9 +1105,7 @@ export default class Context {
 							else resolve();
 						});
 					});
-				} catch {
-					// _refresh already logs refresh errors.
-				}
+				} catch {}
 			}, this._opts.refreshPeriod);
 		}
 	}

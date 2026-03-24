@@ -149,7 +149,31 @@ export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
 }
 
 export function stringToUint8Array(value: string) {
-	return new TextEncoder().encode(value);
+	if (typeof TextEncoder !== "undefined") {
+		return new TextEncoder().encode(value);
+	}
+
+	const utf8: number[] = [];
+	for (let i = 0; i < value.length; i++) {
+		let c = value.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff && i + 1 < value.length) {
+			const next = value.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
+				i++;
+			}
+		}
+		if (c < 0x80) {
+			utf8.push(c);
+		} else if (c < 0x800) {
+			utf8.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+		} else if (c < 0x10000) {
+			utf8.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+		} else {
+			utf8.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+		}
+	}
+	return new Uint8Array(utf8);
 }
 
 const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

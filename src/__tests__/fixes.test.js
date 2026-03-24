@@ -279,11 +279,11 @@ describe("Fix #12: SDK.defaultEventLogger logs error message", () => {
 		ActualSDK = jest.requireActual("../sdk").default;
 	});
 
-	it("should log error.message for Error instances", () => {
+	it("should log full Error object to preserve stack traces", () => {
 		const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 		const error = new Error("something failed");
 		ActualSDK.defaultEventLogger(null, "error", error);
-		expect(errorSpy).toHaveBeenCalledWith("something failed");
+		expect(errorSpy).toHaveBeenCalledWith(error);
 		errorSpy.mockRestore();
 	});
 

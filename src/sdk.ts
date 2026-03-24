@@ -26,7 +26,7 @@ export type SDKOptions = {
 export default class SDK {
 	static defaultEventLogger: EventLogger = (_, eventName, data) => {
 		if (eventName === "error") {
-			console.error(data instanceof Error ? data.message : data);
+			console.error(data);
 		}
 	};
 	private _eventLogger: EventLogger;
