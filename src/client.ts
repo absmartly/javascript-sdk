@@ -111,6 +111,7 @@ export default class Client {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
+			sdkVersion: params.sdkVersion,
 		};
 
 		if (Array.isArray(params.goals) && params.goals.length > 0) {

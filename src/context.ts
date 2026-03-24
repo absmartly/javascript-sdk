@@ -806,6 +806,7 @@ export default class Context {
 						uid: this._unitHash(entry[0]),
 					})),
 					hashed: true,
+					sdkVersion: SDK_VERSION,
 				};
 
 				if (this._goals.length > 0) {

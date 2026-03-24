@@ -5,6 +5,7 @@ import { hashUnit } from "../utils";
 import clone from "rfdc/default";
 import { ContextPublisher } from "../publisher";
 import { ContextDataProvider } from "../provider";
+import { SDK_VERSION } from "../version";
 
 jest.mock("../client");
 jest.mock("../sdk");
@@ -755,6 +756,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
+							sdkVersion: SDK_VERSION,
 							exposures: [
 								{
 									id: 1,
@@ -868,6 +870,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
+							sdkVersion: SDK_VERSION,
 							exposures: [
 								{
 									id: 1,
@@ -1400,6 +1403,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -1562,6 +1566,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 0,
@@ -1603,6 +1608,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						attributes: [
 							{
 								name: "age",
@@ -1650,6 +1656,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -1690,6 +1697,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -1751,6 +1759,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2102,6 +2111,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2325,6 +2335,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						attributes: [
 							{
 								name: "age",
@@ -2372,6 +2383,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2412,6 +2424,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2606,6 +2619,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						goals: [
 							{
 								achievedAt: 1611141535729,
@@ -2764,6 +2778,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						goals: [
 							{
 								name: "goal1",
@@ -2849,6 +2864,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2970,6 +2986,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						goals: [
 							{
 								name: "goal1",
@@ -3023,6 +3040,7 @@ describe("Context", () => {
 					publishedAt: 1611141535829,
 					units: publishUnits,
 					hashed: true,
+							sdkVersion: SDK_VERSION,
 					goals: [
 						{
 							achievedAt: 1611141535729,
@@ -3083,6 +3101,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
+							sdkVersion: SDK_VERSION,
 							exposures: [
 								{
 									id: 1,
@@ -3160,6 +3179,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
+							sdkVersion: SDK_VERSION,
 							goals: [
 								{
 									name: "goal2",
@@ -3342,6 +3362,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -3392,6 +3413,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -3591,6 +3613,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
+							sdkVersion: SDK_VERSION,
 							exposures: [
 								{
 									id: 1,
@@ -3652,6 +3675,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 2,
@@ -3699,6 +3723,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+							sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 3,
@@ -3768,6 +3793,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
+							sdkVersion: SDK_VERSION,
 							exposures: [
 								{
 									id: 1,
