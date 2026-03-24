@@ -330,7 +330,7 @@ export default class Context {
 	}
 
 	attribute(attrName: string, value: unknown) {
-		if (!attrName || typeof attrName !== "string") {
+		if (typeof attrName !== "string" || attrName.trim().length === 0) {
 			throw new Error("Attribute name must be a non-empty string");
 		}
 		this._checkNotFinalized();
@@ -354,7 +354,7 @@ export default class Context {
 	}
 
 	peek(experimentName: string) {
-		if (!experimentName || typeof experimentName !== "string") {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
 			throw new Error("Experiment name must be a non-empty string");
 		}
 		this._checkReady(true);
@@ -363,7 +363,7 @@ export default class Context {
 	}
 
 	treatment(experimentName: string) {
-		if (!experimentName || typeof experimentName !== "string") {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
 			throw new Error("Experiment name must be a non-empty string");
 		}
 		this._checkReady(true);
@@ -372,7 +372,7 @@ export default class Context {
 	}
 
 	track(goalName: string, properties?: Record<string, unknown> | null) {
-		if (!goalName || typeof goalName !== "string") {
+		if (typeof goalName !== "string" || goalName.trim().length === 0) {
 			throw new Error("Goal name must be a non-empty string");
 		}
 		this._checkNotFinalized();
@@ -391,7 +391,7 @@ export default class Context {
 	}
 
 	variableValue(key: string, defaultValue: string): string {
-		if (!key || typeof key !== "string") {
+		if (typeof key !== "string" || key.trim().length === 0) {
 			throw new Error("Variable key must be a non-empty string");
 		}
 		this._checkReady(true);
@@ -400,7 +400,7 @@ export default class Context {
 	}
 
 	peekVariableValue(key: string, defaultValue: string): string {
-		if (!key || typeof key !== "string") {
+		if (typeof key !== "string" || key.trim().length === 0) {
 			throw new Error("Variable key must be a non-empty string");
 		}
 		this._checkReady(true);
@@ -424,7 +424,7 @@ export default class Context {
 	}
 
 	override(experimentName: string, variant: number) {
-		if (!experimentName || typeof experimentName !== "string") {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
 			throw new Error("Experiment name must be a non-empty string");
 		}
 		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
@@ -441,7 +441,7 @@ export default class Context {
 	}
 
 	customAssignment(experimentName: string, variant: number) {
-		if (!experimentName || typeof experimentName !== "string") {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
 			throw new Error("Experiment name must be a non-empty string");
 		}
 		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
@@ -521,7 +521,7 @@ export default class Context {
 			if (experiment.audience && experiment.audience.length > 0) {
 				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
 					const result = this._evaluateAudience(experiment.audience);
-					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
+					const newAudienceMismatch = typeof result === "boolean" ? !result : true;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
@@ -588,10 +588,7 @@ export default class Context {
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
 					const result = this._evaluateAudience(experiment.data.audience);
-
-					if (typeof result === "boolean") {
-						assignment.audienceMismatch = !result;
-					}
+					assignment.audienceMismatch = typeof result === "boolean" ? !result : true;
 				}
 
 				if (experiment.data.audienceStrict && assignment.audienceMismatch) {
@@ -756,10 +753,10 @@ export default class Context {
 	}
 
 	customFieldValue(experimentName: string, key: string) {
-		if (!experimentName || typeof experimentName !== "string") {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
 			throw new Error("Experiment name must be a non-empty string");
 		}
-		if (!key || typeof key !== "string") {
+		if (typeof key !== "string" || key.trim().length === 0) {
 			throw new Error("Field key must be a non-empty string");
 		}
 		this._checkReady(true);
@@ -781,10 +778,10 @@ export default class Context {
 	}
 
 	customFieldValueType(experimentName: string, key: string) {
-		if (!experimentName || typeof experimentName !== "string") {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
 			throw new Error("Experiment name must be a non-empty string");
 		}
-		if (!key || typeof key !== "string") {
+		if (typeof key !== "string" || key.trim().length === 0) {
 			throw new Error("Field key must be a non-empty string");
 		}
 		this._checkReady(true);
@@ -1023,12 +1020,14 @@ export default class Context {
 
 				if (config != null && config.length > 0) {
 					try {
-						parsed = JSON.parse(config);
+						const value = JSON.parse(config);
+						if (isObject(value)) {
+							parsed = value;
+						}
 					} catch (error) {
 						this._logError(new Error(
 							`Failed to parse config for experiment '${experiment.name}' variant ${i}: ${(error as Error).message}`
 						));
-						parsed = {};
 					}
 				}
 

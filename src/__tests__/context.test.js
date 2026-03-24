@@ -165,7 +165,7 @@ describe("Context", () => {
 						config: '{"card.width":"75%"}',
 					},
 				],
-				audience: "{}",
+				audience: "",
 				customFieldValues: null,
 			},
 			{
@@ -203,7 +203,7 @@ describe("Context", () => {
 						config: '{"submit.color":"green","submit.shape":"square"}',
 					},
 				],
-				audience: "null",
+				audience: "",
 				customFieldValues: null,
 			},
 			{
