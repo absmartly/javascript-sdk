@@ -18,34 +18,42 @@ export class AudienceMatcher {
 	}
 
 	evaluateRules(audienceString: string, environmentName: string | null, vars: Record<string, unknown>): number | null {
+		let audience;
 		try {
-			const audience = JSON.parse(audienceString);
-			if (audience && Array.isArray(audience.rules)) {
-				for (const ruleGroup of audience.rules) {
-					if (!ruleGroup || !Array.isArray(ruleGroup.or)) continue;
-					for (const rule of ruleGroup.or) {
-						if (Array.isArray(rule.environments) && rule.environments.length > 0) {
-							if (environmentName == null || !rule.environments.includes(environmentName)) {
-								continue;
-							}
-						}
-						if (typeof rule.variant !== "number") continue;
-						const conditions = rule.and;
-						if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
-							return rule.variant;
-						}
-						if (Array.isArray(conditions)) {
-							const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
-							if (result === true) {
-								return rule.variant;
-							}
-						}
-					}
-				}
-			}
+			audience = JSON.parse(audienceString);
 		} catch (error) {
 			console.error(error);
+			return null;
 		}
+
+		if (!audience || !Array.isArray(audience.rules)) return null;
+
+		for (const ruleGroup of audience.rules) {
+			if (!ruleGroup || !Array.isArray(ruleGroup.or)) continue;
+			for (const rule of ruleGroup.or) {
+				if (Array.isArray(rule.environments) && rule.environments.length > 0) {
+					if (environmentName == null || !rule.environments.includes(environmentName)) {
+						continue;
+					}
+				}
+
+				if (typeof rule.variant !== "number") continue;
+
+				const conditions = rule.and;
+
+				if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
+					return rule.variant;
+				}
+
+				if (!Array.isArray(conditions)) continue;
+
+				const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
+				if (result === true) {
+					return rule.variant;
+				}
+			}
+		}
+
 		return null;
 	}
 

@@ -764,7 +764,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 							],
 						},
@@ -879,7 +879,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 							],
 							attributes: [
@@ -1413,7 +1413,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 2,
@@ -1427,7 +1427,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 3,
@@ -1441,7 +1441,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 4,
@@ -1455,7 +1455,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 5,
@@ -1469,7 +1469,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1538,7 +1538,7 @@ describe("Context", () => {
 					fullOn: experiment.name === "exp_test_fullon",
 					custom: false,
 					audienceMismatch: false,
-					targetingRule: false,
+					ruleOverride: false,
 				});
 			}
 
@@ -1582,7 +1582,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1632,7 +1632,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1674,7 +1674,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1716,7 +1716,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1779,7 +1779,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 0,
@@ -1793,7 +1793,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1920,7 +1920,7 @@ describe("Context", () => {
 								name: "exp_test_ab",
 								variant: 0,
 								audienceMismatch: true,
-								targetingRule: false,
+								ruleOverride: false,
 								assigned: false,
 							}),
 						],
@@ -1946,7 +1946,7 @@ describe("Context", () => {
 									name: "exp_test_ab",
 									variant: 1,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 									assigned: true,
 								}),
 							],
@@ -2055,8 +2055,6 @@ describe("Context", () => {
 	});
 
 	describe("rules evaluation", () => {
-		// Uses exp_test_abc (3 variants, normal assignment = 2) with rules forcing variant 1
-		// This ensures tests are meaningful: rule variant (1) differs from normal assignment (2)
 		const rulesContextResponse = {
 			...getContextResponse,
 			experiments: getContextResponse.experiments.map((x) => {
@@ -2200,7 +2198,7 @@ describe("Context", () => {
 					overridden: true,
 					fullOn: false,
 					custom: false,
-					targetingRule: true,
+					ruleOverride: true,
 				});
 				done();
 			});
@@ -2227,7 +2225,7 @@ describe("Context", () => {
 					overridden: false,
 					fullOn: false,
 					custom: false,
-					targetingRule: false,
+					ruleOverride: false,
 				});
 				done();
 			});
@@ -2252,7 +2250,7 @@ describe("Context", () => {
 					fullOn: false,
 					custom: false,
 					audienceMismatch: true,
-					targetingRule: true,
+					ruleOverride: true,
 				});
 				done();
 			});
@@ -2276,7 +2274,7 @@ describe("Context", () => {
 					overridden: true,
 					fullOn: false,
 					custom: false,
-					targetingRule: false,
+					ruleOverride: false,
 				});
 				done();
 			});
@@ -2303,7 +2301,7 @@ describe("Context", () => {
 					variant: 1,
 					assigned: false,
 					overridden: true,
-					targetingRule: false,
+					ruleOverride: false,
 				});
 				done();
 			});
@@ -2409,6 +2407,135 @@ describe("Context", () => {
 			context.attribute("country", "GB");
 			expect(context.treatment("exp_test_abc")).toEqual(2);
 		});
+
+		it("should match rule with multiple and conditions", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const multiAndResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+								rules: [
+									{
+										or: [
+											{
+												name: "US Internal",
+												and: [
+													{ eq: [{ var: "country" }, { value: "US" }] },
+													{ eq: [{ var: "user_type" }, { value: "internal" }] },
+												],
+												environments: [],
+												variant: 1,
+											},
+										],
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, multiAndResponse);
+
+			context.attribute("country", "US");
+			context.attribute("user_type", "internal");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			context.attribute("user_type", "external");
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule scoped to multiple environments", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("staging");
+			const multiEnvResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+								rules: [
+									{
+										or: [
+											{
+												name: "Prod and Staging",
+												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+												environments: ["production", "staging"],
+												variant: 1,
+											},
+										],
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, multiEnvResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should evaluate multiple or rules and match the first", () => {
+			client.getEnvironment = jest.fn().mockReturnValue("production");
+			const multiOrResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+								rules: [
+									{
+										or: [
+											{
+												name: "US Users",
+												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+												environments: [],
+												variant: 1,
+											},
+											{
+												name: "GB Users",
+												and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+												environments: [],
+												variant: 2,
+											},
+											{
+												name: "FR Users",
+												and: [{ eq: [{ var: "country" }, { value: "FR" }] }],
+												environments: [],
+												variant: 0,
+											},
+										],
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, multiOrResponse);
+
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+
+			context.attribute("country", "FR");
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			context.attribute("country", "DE");
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
 	});
 
 	describe("variableValue()", () => {
@@ -2492,7 +2619,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 2,
@@ -2506,7 +2633,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 3,
@@ -2520,7 +2647,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 4,
@@ -2534,7 +2661,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 5,
@@ -2548,7 +2675,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2662,7 +2789,7 @@ describe("Context", () => {
 							fullOn: experiment.name === "exp_test_fullon",
 							custom: false,
 							audienceMismatch: false,
-							targetingRule: false,
+							ruleOverride: false,
 						});
 					} else {
 						expect(SDK.defaultEventLogger).not.toHaveBeenCalled();
@@ -2729,7 +2856,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2771,7 +2898,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2813,7 +2940,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -3254,7 +3381,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 3,
@@ -3268,7 +3395,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 						goals: [
@@ -3493,7 +3620,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 								{
 									id: 0,
@@ -3507,7 +3634,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 								{
 									id: 2,
@@ -3521,7 +3648,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 							],
 							goals: [
@@ -3757,7 +3884,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -3809,7 +3936,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -4010,7 +4137,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 								{
 									id: 2,
@@ -4024,7 +4151,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 							],
 						},
@@ -4074,7 +4201,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: true,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -4123,7 +4250,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 							{
 								id: 4,
@@ -4137,7 +4264,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
-								targetingRule: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -4195,7 +4322,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 								{
 									id: 2,
@@ -4209,7 +4336,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
-									targetingRule: false,
+									ruleOverride: false,
 								},
 							],
 						},

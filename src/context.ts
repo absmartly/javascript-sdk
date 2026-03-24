@@ -61,7 +61,7 @@ type Assignment = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
-	targetingRule: boolean;
+	ruleOverride: boolean;
 	ruleVariant?: number | null;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
@@ -90,7 +90,7 @@ export type Exposure = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
-	targetingRule: boolean;
+	ruleOverride: boolean;
 };
 
 export type Attribute = {
@@ -526,7 +526,7 @@ export default class Context {
 			fullOn: false,
 			custom: false,
 			audienceMismatch: false,
-			targetingRule: false,
+			ruleOverride: false,
 		};
 
 		this._assignments[experimentName] = assignment;
@@ -563,7 +563,7 @@ export default class Context {
 					assignment.eligible = true;
 					assignment.variant = ruleVariant;
 					assignment.overridden = true;
-					assignment.targetingRule = true;
+					assignment.ruleOverride = true;
 				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
@@ -655,7 +655,7 @@ export default class Context {
 			fullOn: assignment.fullOn,
 			custom: assignment.custom,
 			audienceMismatch: assignment.audienceMismatch,
-			targetingRule: assignment.targetingRule,
+			ruleOverride: assignment.ruleOverride,
 		};
 		this._logEvent("exposure", exposureEvent);
 
@@ -883,7 +883,7 @@ export default class Context {
 							fullOn: x.fullOn,
 							custom: x.custom,
 							audienceMismatch: x.audienceMismatch,
-							targetingRule: x.targetingRule,
+							ruleOverride: x.ruleOverride,
 						}));
 					}
 
