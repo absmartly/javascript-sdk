@@ -18,11 +18,19 @@ export function mockEvaluator() {
 			return expr;
 		}),
 
-			versionCompare: jest.fn((lhs, rhs) => {
+		versionCompare: jest.fn((lhs, rhs) => {
 			const lhsStr = typeof lhs === "string" ? lhs : null;
 			const rhsStr = typeof rhs === "string" ? rhs : null;
 			if (lhsStr === null || rhsStr === null) return null;
-			return lhsStr === rhsStr ? 0 : lhsStr > rhsStr ? 1 : -1;
+			const lParts = lhsStr.split(".").map(Number);
+			const rParts = rhsStr.split(".").map(Number);
+			const len = Math.max(lParts.length, rParts.length);
+			for (let i = 0; i < len; i++) {
+				const l = lParts[i] || 0;
+				const r = rParts[i] || 0;
+				if (l !== r) return l > r ? 1 : -1;
+			}
+			return 0;
 		}),
 
 		compare: jest.fn((lhs, rhs) => {

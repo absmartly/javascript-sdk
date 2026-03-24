@@ -12,21 +12,33 @@ function parseSemver(version: string) {
 		v = v.substring(0, plusIndex);
 	}
 
+	if (v === "") {
+		return null;
+	}
+
 	const [core, ...preReleaseParts] = v.split("-");
 	const preRelease = preReleaseParts.join("-");
+
+	if (core === "") {
+		return null;
+	}
+
 	const parts = core.split(".");
 
 	return { parts, preRelease };
 }
 
+const NUMERIC_IDENTIFIER = /^(0|[1-9]\d*)$/;
+
 function compareIdentifiers(a: string, b: string) {
-	const aNum = parseInt(a, 10);
-	const bNum = parseInt(b, 10);
-	const aIsNum = !isNaN(aNum) && String(aNum) === a;
-	const bIsNum = !isNaN(bNum) && String(bNum) === b;
+	const aIsNum = NUMERIC_IDENTIFIER.test(a);
+	const bIsNum = NUMERIC_IDENTIFIER.test(b);
 
 	if (aIsNum && bIsNum) {
-		return aNum === bNum ? 0 : aNum > bNum ? 1 : -1;
+		if (a.length !== b.length) {
+			return a.length > b.length ? 1 : -1;
+		}
+		return a === b ? 0 : a > b ? 1 : -1;
 	}
 	if (aIsNum) return -1;
 	if (bIsNum) return 1;
@@ -128,11 +140,14 @@ export class Evaluator {
 
 		const l = parseSemver(lhsStr);
 		const r = parseSemver(rhsStr);
+		if (l === null || r === null) {
+			return null;
+		}
 
 		const maxLen = Math.max(l.parts.length, r.parts.length);
 		for (let i = 0; i < maxLen; i++) {
-			const lPart = l.parts[i] || "0";
-			const rPart = r.parts[i] || "0";
+			const lPart = l.parts[i] ?? "0";
+			const rPart = r.parts[i] ?? "0";
 			const result = compareIdentifiers(lPart, rPart);
 			if (result !== 0) return result;
 		}

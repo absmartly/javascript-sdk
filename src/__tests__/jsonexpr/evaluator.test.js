@@ -447,5 +447,15 @@ describe("Evaluator", () => {
 			expect(evaluator.versionCompare(undefined, "1.0.0")).toBe(null);
 			expect(evaluator.versionCompare("1.0.0", undefined)).toBe(null);
 		});
+
+		it("should return null for inputs that normalize to empty core", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("v", "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("V", "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("+build", "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("v+build", "1.0.0")).toBe(null);
+			expect(evaluator.versionCompare("1.0.0", "v")).toBe(null);
+		});
 	});
 });
