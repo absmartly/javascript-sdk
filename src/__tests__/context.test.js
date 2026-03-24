@@ -607,12 +607,12 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 
 			expect(() => context.data()).toThrow();
-			expect(context.treatment("test")).toEqual(0);
-			expect(context.peek("test")).toEqual(0);
-			expect(context.experiments()).toEqual([]);
-			expect(context.variableKeys()).toEqual({});
-			expect(context.variableValue("a", 17)).toEqual(17);
-			expect(context.peekVariableValue("a", 17)).toEqual(17);
+			expect(() => context.treatment("test")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.peek("test")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.experiments()).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.variableKeys()).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.variableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.peekVariableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1512,28 +1512,28 @@ describe("Context", () => {
 			done();
 		});
 
-		it("should return 0 when not ready", (done) => {
+		it("should throw when not ready", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(context.peek("exp_test_ab")).toEqual(0);
+			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
 
 			done();
 		});
 
-		it("should return 0 after finalize", (done) => {
+		it("should throw after finalize", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
 			context.treatment("exp_test_ab");
 
 			context.finalize().then(() => {
-				expect(context.peek("exp_test_ab")).toEqual(0);
+				expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(context.peek("exp_test_ab")).toEqual(0);
+			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
 		});
 	});
 
@@ -1951,7 +1951,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should return 0 after finalized() call", (done) => {
+		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
@@ -1960,13 +1960,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(context.treatment("exp_test_ab")).toEqual(0);
+				expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
 		});
 
 		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
@@ -2164,11 +2164,11 @@ describe("Context", () => {
 			done();
 		});
 
-		it("should return 0 when not ready", (done) => {
+		it("should throw when not ready", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
 
 			done();
 		});
@@ -2608,7 +2608,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should return defaultValue after finalized() call", (done) => {
+		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
@@ -2617,13 +2617,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(context.variableValue("button.color", 17)).toEqual(17);
+				expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(context.variableValue("button.color", 17)).toEqual(17);
+			expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalizing.");
 		});
 	});
 

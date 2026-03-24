@@ -357,12 +357,7 @@ export default class Context {
 		if (!experimentName || typeof experimentName !== "string") {
 			throw new Error("Experiment name must be a non-empty string");
 		}
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`peek() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning control variant (0).`
-			));
-			return 0;
-		}
+		this._checkReady(true);
 
 		return this._peek(experimentName).variant;
 	}
@@ -371,12 +366,7 @@ export default class Context {
 		if (!experimentName || typeof experimentName !== "string") {
 			throw new Error("Experiment name must be a non-empty string");
 		}
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`treatment() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning control variant (0).`
-			));
-			return 0;
-		}
+		this._checkReady(true);
 
 		return this._treatment(experimentName).variant;
 	}
@@ -395,12 +385,7 @@ export default class Context {
 	}
 
 	experiments() {
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`experiments() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning empty array.`
-			));
-			return [];
-		}
+		this._checkReady();
 
 		return this._data.experiments?.map((x) => x.name) ?? [];
 	}
@@ -409,12 +394,7 @@ export default class Context {
 		if (!key || typeof key !== "string") {
 			throw new Error("Variable key must be a non-empty string");
 		}
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`variableValue() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning default value.`
-			));
-			return defaultValue;
-		}
+		this._checkReady(true);
 
 		return this._variableValue(key, defaultValue);
 	}
@@ -423,23 +403,13 @@ export default class Context {
 		if (!key || typeof key !== "string") {
 			throw new Error("Variable key must be a non-empty string");
 		}
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`peekVariableValue() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning default value.`
-			));
-			return defaultValue;
-		}
+		this._checkReady(true);
 
 		return this._peekVariable(key, defaultValue);
 	}
 
 	variableKeys() {
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`variableKeys() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning empty object.`
-			));
-			return {};
-		}
+		this._checkReady(true);
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
@@ -741,12 +711,7 @@ export default class Context {
 	}
 
 	customFieldKeys() {
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`customFieldKeys() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning empty array.`
-			));
-			return [];
-		}
+		this._checkReady(true);
 
 		return this._customFieldKeys();
 	}
@@ -797,12 +762,7 @@ export default class Context {
 		if (!key || typeof key !== "string") {
 			throw new Error("Field key must be a non-empty string");
 		}
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`customFieldValue() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning null.`
-			));
-			return null;
-		}
+		this._checkReady(true);
 
 		return this._customFieldValue(experimentName, key);
 	}
@@ -827,12 +787,7 @@ export default class Context {
 		if (!key || typeof key !== "string") {
 			throw new Error("Field key must be a non-empty string");
 		}
-		if (!this.isReady() || this.isFinalized() || this.isFinalizing()) {
-			this._logError(new Error(
-				`customFieldValueType() called on context that is ${!this.isReady() ? "not ready" : this.isFinalized() ? "finalized" : "finalizing"}. Returning null.`
-			));
-			return null;
-		}
+		this._checkReady(true);
 
 		return this._customFieldValueType(experimentName, key);
 	}

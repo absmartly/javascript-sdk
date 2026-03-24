@@ -282,7 +282,7 @@ window.location = "https://www.absmartly.com";
 
 ### Finalizing
 
-The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
+The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method is called after finalization.
 
 ```javascript
 await context.finalize();
@@ -378,14 +378,12 @@ app.use(async (req, res, next) => {
         },
     });
 
-    try {
-        await context.ready();
-        req.absmartly = context;
-        next();
-    } catch (error) {
-        console.error("ABSmartly context failed:", error);
-        next();
+    const ready = await context.ready();
+    if (!ready) {
+        console.error("ABSmartly context failed:", context.readyError());
     }
+    req.absmartly = context;
+    next();
 });
 
 app.get("/landing", (req, res) => {
@@ -474,6 +472,34 @@ document.getElementById("checkout-btn").addEventListener("click", () => {
     context.track("checkout", { total: getCartTotal() });
 });
 ```
+
+## Migration Guide
+
+This version includes minor breaking changes made for cross-SDK consistency and correctness. These align the JavaScript SDK with the Python, Swift, Java, and other A/B Smartly SDKs.
+
+### `ready()` now returns a boolean
+
+**Before:** `ready()` always resolved (never rejected). On failure, it resolved with the Error object itself — which is truthy, so `if (await context.ready())` incorrectly passed even when initialization failed.
+
+**After:** `ready()` resolves with `true` on success and `false` on failure. Use `readyError()` to get the error details. This fixes a real bug where error detection via the return value was impossible.
+
+```javascript
+// Before (broken — error is truthy, so this always entered the if-block)
+const result = await context.ready();
+if (result instanceof Error) { /* handle error */ }
+
+// After
+const success = await context.ready();
+if (!success) {
+    console.error(context.readyError());
+}
+```
+
+**When this might be a problem:** If your code used `await context.ready()` without checking the return value at all and relied on it always resolving (even on failure), the behavior is the same — it still never rejects. However, if you stored the return value and used it as the Error object (e.g., `const err = await context.ready(); logError(err)`), it will now receive `false` instead of the Error. Use `context.readyError()` to access the error in this case.
+
+### `override()` now throws after finalization
+
+`override()` now calls `_checkNotFinalized()`, consistent with `customAssignment()`, `track()`, and `attribute()`. Previously, overrides could be set on a finalized context silently with no effect.
 
 ## About A/B Smartly
 
