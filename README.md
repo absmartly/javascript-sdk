@@ -97,10 +97,12 @@ const request = {
 
 const context = sdk.createContext(request);
 
-context.ready().then((response) => {
-    console.log("ABSmartly Context ready!");
-}).catch((error) => {
-    console.log(error);
+context.ready().then((success) => {
+    if (success) {
+        console.log("ABsmartly Context ready!");
+    } else {
+        console.error("ABsmartly Context failed:", context.readyError());
+    }
 });
 ```
 
