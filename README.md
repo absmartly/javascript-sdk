@@ -53,6 +53,16 @@ const sdk = new absmartly.SDK({
 });
 ```
 
+The `application` option can also be an object with `name` and `version` to track which version of your application is generating events:
+```javascript
+const sdk = new absmartly.SDK({
+    endpoint: 'https://sandbox.absmartly.io/v1',
+    apiKey: process.env.ABSMARTLY_API_KEY,
+    environment: process.env.NODE_ENV,
+    application: { name: 'website', version: 3 },
+});
+```
+
 #### Creating a new Context with raw promises
 ```javascript
 // define a new context request
