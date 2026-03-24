@@ -232,7 +232,7 @@ export default class Context {
 			return Promise.resolve(!this._failed);
 		}
 
-		return this._promise?.then(() => true).catch(() => false) ?? Promise.resolve(!this._failed);
+		return this._promise?.then(() => !this._failed) ?? Promise.resolve(!this._failed);
 	}
 
 	pending() {

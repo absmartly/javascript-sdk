@@ -93,6 +93,26 @@ describe("Fix #2: ready() error handling and readyError()", () => {
 		const context = new Context(sdk, contextOptions, contextParams, { experiments: [] });
 		expect(context.readyError()).toBe(null);
 	});
+
+	it("should allow treatment/peek/track calls after failed init without throwing", async () => {
+		const error = new Error("fetch failed");
+		const context = new Context(sdk, contextOptions, contextParams, Promise.reject(error));
+		const result = await context.ready();
+
+		expect(result).toBe(false);
+		expect(context.isFailed()).toBe(true);
+		expect(context.isReady()).toBe(true);
+
+		expect(context.treatment("any_experiment")).toBe(0);
+		expect(context.peek("any_experiment")).toBe(0);
+		expect(context.variableValue("any_key", "fallback")).toBe("fallback");
+		expect(context.peekVariableValue("any_key", "fallback")).toBe("fallback");
+		expect(context.experiments()).toEqual([]);
+		expect(context.variableKeys()).toEqual({});
+
+		expect(() => context.track("goal_name")).not.toThrow();
+		expect(() => context.attribute("attr", "value")).not.toThrow();
+	});
 });
 
 describe("Fix #3: for...of on array in _resolveVariableValue", () => {
