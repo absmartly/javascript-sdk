@@ -468,15 +468,15 @@ export default class Context {
 
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
-			throw new Error("ABSmartly Context is finalized.");
+			throw new Error("ABsmartly Context is finalized.");
 		} else if (this.isFinalizing()) {
-			throw new Error("ABSmartly Context is finalizing.");
+			throw new Error("ABsmartly Context is finalizing.");
 		}
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
-			throw new Error("ABSmartly Context is not yet ready.");
+			throw new Error("ABsmartly Context is not yet ready.");
 		}
 
 		if (expectNotFinalized) {

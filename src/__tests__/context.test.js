@@ -607,12 +607,12 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 
 			expect(() => context.data()).toThrow();
-			expect(() => context.treatment("test")).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.peek("test")).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.experiments()).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.variableKeys()).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.variableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.peekVariableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.treatment("test")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peek("test")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.experiments()).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.variableKeys()).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.variableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peekVariableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1516,7 +1516,7 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1528,12 +1528,12 @@ describe("Context", () => {
 			context.treatment("exp_test_ab");
 
 			context.finalize().then(() => {
-				expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
+				expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
+			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
 		});
 	});
 
@@ -1960,13 +1960,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
+				expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
 		});
 
 		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
@@ -2168,7 +2168,7 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -2617,13 +2617,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalized.");
+				expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalizing.");
+			expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalizing.");
 		});
 	});
 
