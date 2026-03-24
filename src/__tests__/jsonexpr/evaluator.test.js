@@ -358,6 +358,15 @@ describe("Evaluator", () => {
 			expect(evaluator.versionCompare("1.0.0", "1")).toBe(0);
 		});
 
+		it("should handle leading zeros in version parts", () => {
+			const evaluator = new Evaluator({}, {});
+
+			expect(evaluator.versionCompare("1.02.0", "1.2.0")).toBe(0);
+			expect(evaluator.versionCompare("1.002.030", "1.2.30")).toBe(0);
+			expect(evaluator.versionCompare("01.0.0", "1.0.0")).toBe(0);
+			expect(evaluator.versionCompare("1.02.0", "1.3.0")).toBe(-1);
+		});
+
 		it("should handle pre-release versions", () => {
 			const evaluator = new Evaluator({}, {});
 

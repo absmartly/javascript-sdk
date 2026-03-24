@@ -28,17 +28,24 @@ function parseSemver(version: string) {
 	return { parts, preRelease };
 }
 
-const NUMERIC_IDENTIFIER = /^(0|[1-9]\d*)$/;
+const NUMERIC_IDENTIFIER = /^\d+$/;
+
+function stripLeadingZeros(s: string) {
+	const stripped = s.replace(/^0+/, "");
+	return stripped === "" ? "0" : stripped;
+}
 
 function compareIdentifiers(a: string, b: string) {
 	const aIsNum = NUMERIC_IDENTIFIER.test(a);
 	const bIsNum = NUMERIC_IDENTIFIER.test(b);
 
 	if (aIsNum && bIsNum) {
-		if (a.length !== b.length) {
-			return a.length > b.length ? 1 : -1;
+		const aNorm = stripLeadingZeros(a);
+		const bNorm = stripLeadingZeros(b);
+		if (aNorm.length !== bNorm.length) {
+			return aNorm.length > bNorm.length ? 1 : -1;
 		}
-		return a === b ? 0 : a > b ? 1 : -1;
+		return aNorm === bNorm ? 0 : aNorm > bNorm ? 1 : -1;
 	}
 	if (aIsNum) return -1;
 	if (bIsNum) return 1;
