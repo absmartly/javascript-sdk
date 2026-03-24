@@ -909,13 +909,22 @@ export default class Context {
 					}));
 				}
 
+				// Snapshot and reset synchronously before the async publish.
+				// The data is already copied into `request` via .map(), so clearing
+				// immediately is safe and allows new events to accumulate during the
+				// in-flight publish. On failure, we restore the snapshot so the events
+				// are retried on the next flush cycle.
+				const pendingCount = this._pending;
+				const pendingExposures = this._exposures;
+				const pendingGoals = this._goals;
+
+				this._pending = 0;
+				this._exposures = [];
+				this._goals = [];
+
 				this._publisher
 					.publish(request, this._sdk, this, requestOptions)
 					.then(() => {
-						this._pending = 0;
-						this._exposures = [];
-						this._goals = [];
-
 						this._logEvent("publish", request);
 
 						if (typeof callback === "function") {
@@ -923,6 +932,10 @@ export default class Context {
 						}
 					})
 					.catch((e: Error) => {
+						this._pending += pendingCount;
+						this._exposures.push(...pendingExposures);
+						this._goals.push(...pendingGoals);
+
 						this._logError(e);
 
 						if (typeof callback === "function") {
