@@ -259,7 +259,7 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout || DEFAULT_TIMEOUT_MS)
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout)
 			.then((value: string) => {
 				finalCleanUp();
 				return value;

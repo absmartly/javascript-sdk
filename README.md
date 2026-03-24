@@ -48,7 +48,7 @@ Simply add the following code to your `head` section to include the latest publi
 - **DO** create a server-side proxy endpoint that fetches context data on behalf of your frontend
 - **DO** use short-lived, per-session tokens instead of API keys for client-side requests
 
-```
+```text
 Browser --> Your Server (with API key) --> ABsmartly API
             session token only
 ```
@@ -129,7 +129,7 @@ When doing full-stack experimentation with A/B Smartly, we recommend creating a 
 
 ```html
 <head>
-    <script type="javascript">
+    <script>
         const request = {
             units: {
                 session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8",
