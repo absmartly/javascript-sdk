@@ -32,7 +32,7 @@ module.exports = function (api) {
 			regenerator: false,
 			useESModules: false, // don't output es-modules by default
 			corejs: false,
-			helpers: false,
+			helpers: true,
 		},
 	];
 

@@ -1,6 +1,57 @@
 /* eslint-disable */
 import { isEqualsDeep, isObject } from "../utils";
 
+function parseSemver(version: string) {
+	let v = version;
+	if (v.startsWith("v") || v.startsWith("V")) {
+		v = v.substring(1);
+	}
+
+	const plusIndex = v.indexOf("+");
+	if (plusIndex >= 0) {
+		v = v.substring(0, plusIndex);
+	}
+
+	if (v === "") {
+		return null;
+	}
+
+	const [core, ...preReleaseParts] = v.split("-");
+	const preRelease = preReleaseParts.join("-");
+
+	if (core === "") {
+		return null;
+	}
+
+	const parts = core.split(".");
+
+	return { parts, preRelease };
+}
+
+const NUMERIC_IDENTIFIER = /^\d+$/;
+
+function stripLeadingZeros(s: string) {
+	const stripped = s.replace(/^0+/, "");
+	return stripped === "" ? "0" : stripped;
+}
+
+function compareIdentifiers(a: string, b: string) {
+	const aIsNum = NUMERIC_IDENTIFIER.test(a);
+	const bIsNum = NUMERIC_IDENTIFIER.test(b);
+
+	if (aIsNum && bIsNum) {
+		const aNorm = stripLeadingZeros(a);
+		const bNorm = stripLeadingZeros(b);
+		if (aNorm.length !== bNorm.length) {
+			return aNorm.length > bNorm.length ? 1 : -1;
+		}
+		return aNorm === bNorm ? 0 : aNorm > bNorm ? 1 : -1;
+	}
+	if (aIsNum) return -1;
+	if (bIsNum) return 1;
+	return a === b ? 0 : a > b ? 1 : -1;
+}
+
 export class Evaluator {
 	private readonly operators: any;
 	private readonly vars: any;
@@ -85,6 +136,44 @@ export class Evaluator {
 		}
 
 		return target;
+	}
+
+	versionCompare<TData>(lhs: TData, rhs: TData): number | null {
+		const lhsStr = this.stringConvert(lhs);
+		const rhsStr = this.stringConvert(rhs);
+		if (lhsStr === null || rhsStr === null || lhsStr === "" || rhsStr === "") {
+			return null;
+		}
+
+		const l = parseSemver(lhsStr);
+		const r = parseSemver(rhsStr);
+		if (l === null || r === null) {
+			return null;
+		}
+
+		const maxLen = Math.max(l.parts.length, r.parts.length);
+		for (let i = 0; i < maxLen; i++) {
+			const lPart = l.parts[i] ?? "0";
+			const rPart = r.parts[i] ?? "0";
+			const result = compareIdentifiers(lPart, rPart);
+			if (result !== 0) return result;
+		}
+
+		if (!l.preRelease && !r.preRelease) return 0;
+		if (!l.preRelease) return 1;
+		if (!r.preRelease) return -1;
+
+		const lPreParts = l.preRelease.split(".");
+		const rPreParts = r.preRelease.split(".");
+		const preLen = Math.max(lPreParts.length, rPreParts.length);
+		for (let i = 0; i < preLen; i++) {
+			if (i >= lPreParts.length) return -1;
+			if (i >= rPreParts.length) return 1;
+			const result = compareIdentifiers(lPreParts[i], rPreParts[i]);
+			if (result !== 0) return result;
+		}
+
+		return 0;
 	}
 
 	compare<TData>(lhs: TData, rhs: TData) {
