@@ -6,7 +6,7 @@ export type PublishParams = {
 	units: Unit[];
 	publishedAt: number;
 	hashed: boolean;
-	sdkVersion?: string;
+	sdkVersion: string;
 	attributes?: Attribute[];
 	goals?: Goal[];
 	exposures?: Exposure[];

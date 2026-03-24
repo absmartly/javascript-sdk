@@ -1397,7 +1397,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -1560,7 +1560,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 0,
@@ -1602,7 +1602,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						attributes: [
 							{
 								name: "age",
@@ -1650,7 +1650,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -1691,7 +1691,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -1753,7 +1753,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2105,7 +2105,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2329,7 +2329,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						attributes: [
 							{
 								name: "age",
@@ -2377,7 +2377,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2418,7 +2418,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2613,7 +2613,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						goals: [
 							{
 								achievedAt: 1611141535729,
@@ -2772,7 +2772,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						goals: [
 							{
 								name: "goal1",
@@ -2858,7 +2858,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -2980,7 +2980,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						goals: [
 							{
 								name: "goal1",
@@ -3034,7 +3034,7 @@ describe("Context", () => {
 					publishedAt: 1611141535829,
 					units: publishUnits,
 					hashed: true,
-							sdkVersion: SDK_VERSION,
+					sdkVersion: SDK_VERSION,
 					goals: [
 						{
 							achievedAt: 1611141535729,
@@ -3356,7 +3356,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -3407,7 +3407,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -3669,7 +3669,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 2,
@@ -3717,7 +3717,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-							sdkVersion: SDK_VERSION,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 3,
@@ -4004,7 +4004,7 @@ describe("Context", () => {
 				expect(sdkNameAttr.setAt).toEqual(expect.any(Number));
 
 				expect(sdkVersionAttr).toBeDefined();
-				expect(sdkVersionAttr.value).toEqual(expect.any(String));
+				expect(sdkVersionAttr.value).toEqual(SDK_VERSION);
 				expect(sdkVersionAttr.setAt).toEqual(expect.any(Number));
 
 				expect(applicationAttr).toBeDefined();

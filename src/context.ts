@@ -1,4 +1,4 @@
-import { arrayEqualsShallow, getApplicationName, getApplicationVersion, hashUnit, isObject, isPromise } from "./utils";
+import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
@@ -787,6 +787,31 @@ export default class Context {
 		}
 	}
 
+	private _buildAttributes(): Attribute[] {
+		const allAttributes: Attribute[] = [];
+
+		if (this._opts.includeSystemAttributes === true) {
+			const client = this._sdk.getClient();
+			const app = client.getApplication();
+			const now = Date.now();
+			allAttributes.push(
+				{ name: "sdk_name", value: client.getAgent(), setAt: now },
+				{ name: "sdk_version", value: SDK_VERSION, setAt: now },
+				{ name: "application", value: app.name, setAt: now },
+				{ name: "environment", value: client.getEnvironment(), setAt: now }
+			);
+			if (app.version > 0) {
+				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
+			}
+		}
+
+		for (const x of this._attrs) {
+			allAttributes.push({ name: x.name, value: x.value, setAt: x.setAt });
+		}
+
+		return allAttributes;
+	}
+
 	private _flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
@@ -799,81 +824,69 @@ export default class Context {
 			}
 		} else {
 			if (!this._failed) {
-				const request: PublishParams = {
-					publishedAt: Date.now(),
-					units: Object.entries(this._units).map((entry) => ({
-						type: entry[0],
-						uid: this._unitHash(entry[0]),
-					})),
-					hashed: true,
-					sdkVersion: SDK_VERSION,
-				};
+				try {
+					const request: PublishParams = {
+						publishedAt: Date.now(),
+						units: Object.entries(this._units).map((entry) => ({
+							type: entry[0],
+							uid: this._unitHash(entry[0]),
+						})),
+						hashed: true,
+						sdkVersion: SDK_VERSION,
+					};
 
-				if (this._goals.length > 0) {
-					request.goals = this._goals.map((x) => ({
-						name: x.name,
-						achievedAt: x.achievedAt,
-						properties: x.properties,
-					}));
-				}
+					if (this._goals.length > 0) {
+						request.goals = this._goals.map((x) => ({
+							name: x.name,
+							achievedAt: x.achievedAt,
+							properties: x.properties,
+						}));
+					}
 
-				if (this._exposures.length > 0) {
-					request.exposures = this._exposures.map((x) => ({
-						id: x.id,
-						name: x.name,
-						unit: x.unit,
-						exposedAt: x.exposedAt,
-						variant: x.variant,
-						assigned: x.assigned,
-						eligible: x.eligible,
-						overridden: x.overridden,
-						fullOn: x.fullOn,
-						custom: x.custom,
-						audienceMismatch: x.audienceMismatch,
-					}));
-				}
+					if (this._exposures.length > 0) {
+						request.exposures = this._exposures.map((x) => ({
+							id: x.id,
+							name: x.name,
+							unit: x.unit,
+							exposedAt: x.exposedAt,
+							variant: x.variant,
+							assigned: x.assigned,
+							eligible: x.eligible,
+							overridden: x.overridden,
+							fullOn: x.fullOn,
+							custom: x.custom,
+							audienceMismatch: x.audienceMismatch,
+						}));
+					}
 
-				const allAttributes: Attribute[] = [];
+					const allAttributes = this._buildAttributes();
+					if (allAttributes.length > 0) {
+						request.attributes = allAttributes;
+					}
 
-				if (this._opts.includeSystemAttributes === true) {
-					const client = this._sdk.getClient();
-					const now = Date.now();
-					const appVersion = getApplicationVersion(client.getApplication());
-					allAttributes.push(
-						{ name: "sdk_name", value: client.getAgent(), setAt: now },
-						{ name: "sdk_version", value: SDK_VERSION, setAt: now },
-						{ name: "application", value: getApplicationName(client.getApplication()), setAt: now },
-						{ name: "environment", value: client.getEnvironment(), setAt: now }
-					);
-					if (appVersion > 0) {
-						allAttributes.push({ name: "app_version", value: appVersion, setAt: now });
+					this._publisher
+						.publish(request, this._sdk, this, requestOptions)
+						.then(() => {
+							this._logEvent("publish", request);
+
+							if (typeof callback === "function") {
+								callback();
+							}
+						})
+						.catch((e: Error) => {
+							this._logError(e);
+
+							if (typeof callback === "function") {
+								callback(e);
+							}
+						});
+				} catch (e) {
+					this._logError(e as Error);
+
+					if (typeof callback === "function") {
+						callback(e as Error);
 					}
 				}
-
-				for (const x of this._attrs) {
-					allAttributes.push({ name: x.name, value: x.value, setAt: x.setAt });
-				}
-
-				if (allAttributes.length > 0) {
-					request.attributes = allAttributes;
-				}
-
-				this._publisher
-					.publish(request, this._sdk, this, requestOptions)
-					.then(() => {
-						this._logEvent("publish", request);
-
-						if (typeof callback === "function") {
-							callback();
-						}
-					})
-					.catch((e: Error) => {
-						this._logError(e);
-
-						if (typeof callback === "function") {
-							callback(e);
-						}
-					});
 			} else {
 				if (typeof callback === "function") {
 					callback();

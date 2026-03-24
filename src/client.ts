@@ -288,15 +288,15 @@ export default class Client {
 		});
 	}
 
-	getAgent() {
-		return this._opts.agent;
+	getAgent(): string {
+		return this._opts.agent as string;
 	}
 
-	getApplication() {
-		return this._opts.application;
+	getApplication(): { name: string; version: number } {
+		return this._opts.application as { name: string; version: number };
 	}
 
-	getEnvironment() {
+	getEnvironment(): string {
 		return this._opts.environment;
 	}
 
