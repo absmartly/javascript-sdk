@@ -30,7 +30,7 @@ export type ClientRequestOptions = {
 export type ClientOptions = {
 	agent?: string;
 	apiKey: string;
-	application: string | { name: string; version: number };
+	application: string | { name: string; version: number | string };
 	endpoint: string;
 	environment: string;
 	retries?: number;
@@ -292,8 +292,8 @@ export default class Client {
 		return this._opts.agent as string;
 	}
 
-	getApplication(): { name: string; version: number } {
-		return this._opts.application as { name: string; version: number };
+	getApplication(): { name: string; version: number | string } {
+		return this._opts.application as { name: string; version: number | string };
 	}
 
 	getEnvironment(): string {

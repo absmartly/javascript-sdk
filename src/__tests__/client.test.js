@@ -875,6 +875,7 @@ describe("Client", () => {
 			.publish({
 				units,
 				publishedAt,
+				sdkVersion: SDK_VERSION,
 				goals: [],
 				exposures: [],
 			})
@@ -894,6 +895,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt,
+						sdkVersion: SDK_VERSION,
 					}),
 					signal: expect.any(Object),
 				});
@@ -913,6 +915,7 @@ describe("Client", () => {
 		client
 			.publish({
 				units,
+				sdkVersion: SDK_VERSION,
 				goals: [],
 				exposures: [],
 			})
@@ -932,6 +935,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt: publishedAt + 100,
+						sdkVersion: SDK_VERSION,
 					}),
 					signal: expect.any(Object),
 				});
@@ -1015,6 +1019,11 @@ describe("Client", () => {
 	it("getApplication() should normalize string application to object", () => {
 		const client = new Client({ ...clientOptions, application: "website" });
 		expect(client.getApplication()).toEqual({ name: "website", version: 0 });
+	});
+
+	it("getApplication() should accept semver string version", () => {
+		const client = new Client({ ...clientOptions, application: { name: "website", version: "1.2.3" } });
+		expect(client.getApplication()).toEqual({ name: "website", version: "1.2.3" });
 	});
 
 	it("getEnvironment() should return the environment", () => {

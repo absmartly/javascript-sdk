@@ -4096,6 +4096,61 @@ describe("Context", () => {
 			});
 		});
 
+		it("should include app_version when application version is a semver string", (done) => {
+			client.getApplication.mockReturnValueOnce({ name: "website", version: "1.2.3" });
+
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
+				expect(appVersionAttr).toBeDefined();
+				expect(appVersionAttr.value).toEqual("1.2.3");
+
+				done();
+			});
+		});
+
+		it("should include app_version with application as plain string", (done) => {
+			client.getApplication.mockReturnValueOnce({ name: "website", version: 0 });
+
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				const applicationAttr = request.attributes.find((a) => a.name === "application");
+				expect(applicationAttr).toBeDefined();
+				expect(applicationAttr.value).toEqual("website");
+
+				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
+				expect(appVersionAttr).toBeUndefined();
+
+				done();
+			});
+		});
+
 		it("should only include user attributes when includeSystemAttributes is not set", (done) => {
 			const defaultOptions = {
 				publishDelay: -1,

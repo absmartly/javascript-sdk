@@ -800,7 +800,7 @@ export default class Context {
 				{ name: "application", value: app.name, setAt: now },
 				{ name: "environment", value: client.getEnvironment(), setAt: now }
 			);
-			if (app.version > 0) {
+			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
 				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
 			}
 		}

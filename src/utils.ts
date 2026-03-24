@@ -1,9 +1,9 @@
 import { md5 } from "./md5";
 
-export const getApplicationName = (app: string | { name: string; version: number }): string =>
+export const getApplicationName = (app: string | { name: string; version: number | string }): string =>
 	typeof app !== "string" ? app.name : app;
 
-export const getApplicationVersion = (app: string | { name: string; version: number }): number =>
+export const getApplicationVersion = (app: string | { name: string; version: number | string }): number | string =>
 	typeof app !== "string" ? app.version : 0;
 
 function isBrowser() {

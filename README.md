@@ -53,13 +53,13 @@ const sdk = new absmartly.SDK({
 });
 ```
 
-The `application` option can also be an object with `name` and `version` to track which version of your application is generating events:
+The `application` option can also be an object with `name` and `version` to track which version of your application is generating events. The version can be a number or a semver string:
 ```javascript
 const sdk = new absmartly.SDK({
     endpoint: 'https://sandbox.absmartly.io/v1',
     apiKey: process.env.ABSMARTLY_API_KEY,
     environment: process.env.NODE_ENV,
-    application: { name: 'website', version: 3 },
+    application: { name: 'website', version: '1.2.3' },
 });
 ```
 
