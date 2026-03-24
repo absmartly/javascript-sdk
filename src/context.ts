@@ -1,4 +1,4 @@
-import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
+import { arrayEqualsShallow, getApplicationName, getApplicationVersion, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
@@ -6,6 +6,7 @@ import SDK, { EventLogger, EventName } from "./sdk";
 import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { ClientRequestOptions } from "./client";
+import { SDK_VERSION } from "./version";
 
 type JSONPrimitive = string | number | boolean | null;
 type JSONObject = { [key: string]: JSONValue };
@@ -115,6 +116,7 @@ export type ContextOptions = {
 	eventLogger?: EventLogger;
 	refreshPeriod: number;
 	publishDelay: number;
+	includeSystemAttributes?: boolean;
 };
 
 export type ContextData = {
@@ -830,12 +832,29 @@ export default class Context {
 					}));
 				}
 
-				if (this._attrs.length > 0) {
-					request.attributes = this._attrs.map((x) => ({
-						name: x.name,
-						value: x.value,
-						setAt: x.setAt,
-					}));
+				const allAttributes: Attribute[] = [];
+
+				if (this._opts.includeSystemAttributes === true) {
+					const client = this._sdk.getClient();
+					const now = Date.now();
+					const appVersion = getApplicationVersion(client.getApplication());
+					allAttributes.push(
+						{ name: "sdk_name", value: client.getAgent(), setAt: now },
+						{ name: "sdk_version", value: SDK_VERSION, setAt: now },
+						{ name: "application", value: getApplicationName(client.getApplication()), setAt: now },
+						{ name: "environment", value: client.getEnvironment(), setAt: now }
+					);
+					if (appVersion > 0) {
+						allAttributes.push({ name: "app_version", value: appVersion, setAt: now });
+					}
+				}
+
+				for (const x of this._attrs) {
+					allAttributes.push({ name: x.name, value: x.value, setAt: x.setAt });
+				}
+
+				if (allAttributes.length > 0) {
+					request.attributes = allAttributes;
 				}
 
 				this._publisher

@@ -287,6 +287,18 @@ export default class Client {
 		});
 	}
 
+	getAgent() {
+		return this._opts.agent;
+	}
+
+	getApplication() {
+		return this._opts.application;
+	}
+
+	getEnvironment() {
+		return this._opts.environment;
+	}
+
 	getUnauthed(options: ClientRequestOptions) {
 		return this.request({
 			...options,

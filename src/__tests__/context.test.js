@@ -473,6 +473,16 @@ describe("Context", () => {
 	sdk.getClient.mockReturnValue(client);
 	sdk.getEventLogger.mockReturnValue(SDK.defaultEventLogger);
 
+	client.getAgent.mockReturnValue("absmartly-javascript-sdk");
+	client.getApplication.mockReturnValue({ name: "website", version: 0 });
+	client.getEnvironment.mockReturnValue("production");
+
+	const systemAttributes = [
+		{ name: "sdk_version", value: expect.any(String), setAt: expect.any(Number) },
+		{ name: "application", value: "website", setAt: expect.any(Number) },
+		{ name: "environment", value: "production", setAt: expect.any(Number) },
+	];
+
 	const contextOptions = {
 		publishDelay: -1,
 		refreshPeriod: 0,
@@ -3920,6 +3930,175 @@ describe("Context", () => {
 
 			expect(context.isReady()).toEqual(true);
 			expect(value).toEqual("string");
+		});
+	});
+
+	describe("includeSystemAttributes", () => {
+		it("should not include system attributes by default", (done) => {
+			const defaultOptions = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+			};
+
+			const context = new Context(sdk, defaultOptions, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				expect(request.attributes).toBeUndefined();
+
+				done();
+			});
+		});
+
+		it("should include system attributes when includeSystemAttributes is true", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				expect(request.attributes).toBeDefined();
+				expect(request.attributes.length).toBeGreaterThanOrEqual(4);
+
+				const sdkNameAttr = request.attributes.find((a) => a.name === "sdk_name");
+				const sdkVersionAttr = request.attributes.find((a) => a.name === "sdk_version");
+				const applicationAttr = request.attributes.find((a) => a.name === "application");
+				const environmentAttr = request.attributes.find((a) => a.name === "environment");
+
+				expect(sdkNameAttr).toBeDefined();
+				expect(sdkNameAttr.value).toEqual("absmartly-javascript-sdk");
+				expect(sdkNameAttr.setAt).toEqual(expect.any(Number));
+
+				expect(sdkVersionAttr).toBeDefined();
+				expect(sdkVersionAttr.value).toEqual(expect.any(String));
+				expect(sdkVersionAttr.setAt).toEqual(expect.any(Number));
+
+				expect(applicationAttr).toBeDefined();
+				expect(applicationAttr.value).toEqual("website");
+				expect(applicationAttr.setAt).toEqual(expect.any(Number));
+
+				expect(environmentAttr).toBeDefined();
+				expect(environmentAttr.value).toEqual("production");
+				expect(environmentAttr.setAt).toEqual(expect.any(Number));
+
+				done();
+			});
+		});
+
+		it("should prepend system attributes before user attributes", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("custom_attr", "custom_value");
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				expect(request.attributes[0].name).toEqual("sdk_name");
+				expect(request.attributes[1].name).toEqual("sdk_version");
+				expect(request.attributes[2].name).toEqual("application");
+				expect(request.attributes[3].name).toEqual("environment");
+				expect(request.attributes[4].name).toEqual("custom_attr");
+				expect(request.attributes[4].value).toEqual("custom_value");
+
+				done();
+			});
+		});
+
+		it("should include app_version when application version is set", (done) => {
+			client.getApplication.mockReturnValue({ name: "website", version: 3 });
+
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
+				expect(appVersionAttr).toBeDefined();
+				expect(appVersionAttr.value).toEqual(3);
+
+				client.getApplication.mockReturnValue({ name: "website", version: 0 });
+				done();
+			});
+		});
+
+		it("should not include app_version when application version is 0", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
+				expect(appVersionAttr).toBeUndefined();
+
+				done();
+			});
+		});
+
+		it("should only include user attributes when includeSystemAttributes is not set", (done) => {
+			const defaultOptions = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+			};
+
+			const context = new Context(sdk, defaultOptions, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("custom_attr", "custom_value");
+			context.treatment("exp_test_ab");
+
+			context.publish().then(() => {
+				const call = publisher.publish.mock.calls[0];
+				const request = call[0];
+
+				expect(request.attributes).toEqual([
+					{ name: "custom_attr", value: "custom_value", setAt: expect.any(Number) },
+				]);
+
+				done();
+			});
 		});
 	});
 });
