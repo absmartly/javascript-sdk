@@ -1000,15 +1000,15 @@ describe("Client", () => {
 			});
 	});
 
-	it("getAgent() should return the agent", () => {
-		const client = new Client(clientOptions);
-		expect(client.getAgent()).toEqual(agent);
-	});
-
 	it("getAgent() should return default agent when not specified", () => {
 		const { agent: _, ...optionsWithoutAgent } = clientOptions;
 		const client = new Client(optionsWithoutAgent);
 		expect(client.getAgent()).toEqual("javascript-client");
+	});
+
+	it("getAgent() should return custom agent when specified", () => {
+		const client = new Client({ ...clientOptions, agent: "custom-sdk" });
+		expect(client.getAgent()).toEqual("custom-sdk");
 	});
 
 	it("getApplication() should return normalized application object", () => {
