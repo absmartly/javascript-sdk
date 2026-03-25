@@ -2193,9 +2193,9 @@ describe("Context", () => {
 					name: "exp_test_abc",
 					unit: "session_id",
 					variant: 1,
-					assigned: true,
+					assigned: false,
 					eligible: true,
-					overridden: true,
+					overridden: false,
 					fullOn: false,
 					custom: false,
 					ruleOverride: true,
@@ -2244,9 +2244,9 @@ describe("Context", () => {
 				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
 				expect(exposure).toMatchObject({
 					variant: 1,
-					assigned: true,
+					assigned: false,
 					eligible: true,
-					overridden: true,
+					overridden: false,
 					fullOn: false,
 					custom: false,
 					audienceMismatch: true,

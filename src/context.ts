@@ -496,7 +496,7 @@ export default class Context {
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
 			if (hasOverride) {
-				if (assignment.overridden && !assignment.assigned && assignment.variant === this._overrides[experimentName]) {
+				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
 					// override up-to-date
 					return assignment;
 				}
@@ -559,10 +559,7 @@ export default class Context {
 				assignment.ruleVariant = ruleVariant;
 
 				if (ruleVariant !== null) {
-					assignment.assigned = true;
-					assignment.eligible = true;
 					assignment.variant = ruleVariant;
-					assignment.overridden = true;
 					assignment.ruleOverride = true;
 				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 					assignment.variant = 0;
@@ -758,7 +755,7 @@ export default class Context {
 					this._queueExposure(experimentName, assignment);
 				}
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
 					return assignment.variables[key] as string;
 				}
 			}
@@ -772,7 +769,7 @@ export default class Context {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
 					return assignment.variables[key] as string;
 				}
 			}
