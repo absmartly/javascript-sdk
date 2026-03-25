@@ -132,6 +132,46 @@ export default class Client {
 		});
 	}
 
+	publishBeacon(params: PublishParams): boolean {
+		if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+			return false;
+		}
+
+		const body: PublishParams & {
+			apiKey?: string;
+			agent?: string;
+			environment?: string;
+			application?: string;
+			applicationVersion?: number;
+		} = {
+			units: params.units,
+			hashed: params.hashed,
+			publishedAt: params.publishedAt || Date.now(),
+			apiKey: this._opts.apiKey,
+			agent: this._opts.agent,
+			environment: this._opts.environment,
+			application: getApplicationName(this._opts.application),
+			applicationVersion: getApplicationVersion(this._opts.application),
+		};
+
+		if (Array.isArray(params.goals) && params.goals.length > 0) {
+			body.goals = params.goals;
+		}
+
+		if (Array.isArray(params.exposures) && params.exposures.length > 0) {
+			body.exposures = params.exposures;
+		}
+
+		if (Array.isArray(params.attributes) && params.attributes.length > 0) {
+			body.attributes = params.attributes;
+		}
+
+		const url = `${this._opts.endpoint}/context`;
+		const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
+
+		return navigator.sendBeacon(url, blob);
+	}
+
 	request(options: ClientRequestOptions) {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
