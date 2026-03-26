@@ -17,7 +17,7 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	evaluateRules(audienceString: string, environmentName: string | null, vars: Record<string, unknown>): number | null {
+	evaluateRules(audienceString: string, environmentId: number | null, vars: Record<string, unknown>): number | null {
 		let audience;
 		try {
 			audience = JSON.parse(audienceString);
@@ -32,7 +32,7 @@ export class AudienceMatcher {
 			if (!ruleGroup || !Array.isArray(ruleGroup.or)) continue;
 			for (const rule of ruleGroup.or) {
 				if (Array.isArray(rule.environments) && rule.environments.length > 0) {
-					if (environmentName == null || !rule.environments.includes(environmentName)) {
+					if (environmentId == null || !rule.environments.includes(environmentId)) {
 						continue;
 					}
 				}

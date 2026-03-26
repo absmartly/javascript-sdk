@@ -28,12 +28,12 @@ describe("AudienceMatcher", () => {
 	});
 	describe("evaluateRules", () => {
 		it("should return null when no rules in audience", () => {
-			expect(matcher.evaluateRules("{}", "production", {})).toBe(null);
-			expect(matcher.evaluateRules('{"filter":[]}', "production", {})).toBe(null);
+			expect(matcher.evaluateRules("{}", 1, {})).toBe(null);
+			expect(matcher.evaluateRules('{"filter":[]}', 1, {})).toBe(null);
 		});
 
 		it("should return null when rules is empty array", () => {
-			expect(matcher.evaluateRules('{"rules":[]}', "production", {})).toBe(null);
+			expect(matcher.evaluateRules('{"rules":[]}', 1, {})).toBe(null);
 		});
 
 		it("should return variant when conditions match", () => {
@@ -51,7 +51,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(1);
+			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(1);
 		});
 
 		it("should return null when conditions do not match", () => {
@@ -69,10 +69,10 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "GB" })).toBe(null);
+			expect(matcher.evaluateRules(audience, 1, { country: "GB" })).toBe(null);
 		});
 
-		it("should skip rules with non-matching environments", () => {
+		it("should skip rules with non-matching environment ids", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
@@ -80,17 +80,17 @@ describe("AudienceMatcher", () => {
 							{
 								name: "rule1",
 								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: ["staging"],
+								environments: [2],
 								variant: 1,
 							},
 						],
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(null);
+			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(null);
 		});
 
-		it("should match when environment is in the environments list", () => {
+		it("should match when environment id is in the environments list", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
@@ -98,15 +98,15 @@ describe("AudienceMatcher", () => {
 							{
 								name: "rule1",
 								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: ["production", "staging"],
+								environments: [1, 2],
 								variant: 2,
 							},
 						],
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
-			expect(matcher.evaluateRules(audience, "staging", { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, 2, { country: "US" })).toBe(2);
 		});
 
 		it("should match all environments when environments is empty", () => {
@@ -124,12 +124,12 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(1);
-			expect(matcher.evaluateRules(audience, "staging", {})).toBe(1);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(1);
+			expect(matcher.evaluateRules(audience, 2, {})).toBe(1);
 			expect(matcher.evaluateRules(audience, null, {})).toBe(1);
 		});
 
-		it("should skip rules when environments is non-empty and environmentName is null", () => {
+		it("should skip rules when environments is non-empty and environmentId is null", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
@@ -137,7 +137,7 @@ describe("AudienceMatcher", () => {
 							{
 								name: "rule1",
 								and: [{ value: true }],
-								environments: ["production"],
+								environments: [1],
 								variant: 1,
 							},
 						],
@@ -168,7 +168,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(1);
+			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(1);
 		});
 
 		it("should return variant when conditions are empty (matches all)", () => {
@@ -186,7 +186,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(3);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(3);
 		});
 
 		it("should return variant when and field is absent (matches all)", () => {
@@ -203,12 +203,12 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(3);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(3);
 		});
 
 		it("should handle malformed audience JSON gracefully", () => {
-			expect(matcher.evaluateRules("not json", "production", {})).toBe(null);
-			expect(matcher.evaluateRules("", "production", {})).toBe(null);
+			expect(matcher.evaluateRules("not json", 1, {})).toBe(null);
+			expect(matcher.evaluateRules("", 1, {})).toBe(null);
 		});
 
 		it("should return null when rule has no variant property", () => {
@@ -225,7 +225,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(null);
 		});
 
 		it("should return null when variant is not a number", () => {
@@ -243,7 +243,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(null);
 		});
 
 		it("should skip rule with invalid variant and continue to next valid rule", () => {
@@ -267,7 +267,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(2);
 		});
 
 		it("should skip rule with missing variant and continue to next valid rule", () => {
@@ -290,13 +290,13 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(1);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(1);
 		});
 
 		it("should handle malformed rules gracefully", () => {
-			expect(matcher.evaluateRules('{"rules":"not an array"}', "production", {})).toBe(null);
-			expect(matcher.evaluateRules('{"rules":[{"or":"not an array"}]}', "production", {})).toBe(null);
-			expect(matcher.evaluateRules('{"rules":[null]}', "production", {})).toBe(null);
+			expect(matcher.evaluateRules('{"rules":"not an array"}', 1, {})).toBe(null);
+			expect(matcher.evaluateRules('{"rules":[{"or":"not an array"}]}', 1, {})).toBe(null);
+			expect(matcher.evaluateRules('{"rules":[null]}', 1, {})).toBe(null);
 		});
 
 		it("should skip to second rule when first does not match", () => {
@@ -320,7 +320,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(2);
 		});
 
 		it("should evaluate second rule group when first has no match", () => {
@@ -348,7 +348,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(2);
 		});
 
 		it("should support variant 0", () => {
@@ -366,7 +366,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(0);
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(0);
 		});
 	});
 });

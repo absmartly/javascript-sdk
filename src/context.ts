@@ -124,6 +124,7 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
+	environment_id?: number;
 };
 
 export default class Context {
@@ -132,7 +133,7 @@ export default class Context {
 	private readonly _audienceMatcher: AudienceMatcher;
 	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
-	private readonly _environmentName: string | null;
+	private _environmentId: number | null;
 	private readonly _eventLogger: EventLogger;
 	private readonly _opts: ContextOptions;
 	private readonly _publisher: ContextPublisher;
@@ -172,7 +173,7 @@ export default class Context {
 		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
-		this._environmentName = sdk.getClient().getEnvironment();
+		this._environmentId = null;
 		this._attrsSeq = 0;
 
 		if (params.units) {
@@ -477,7 +478,7 @@ export default class Context {
 						return false;
 					}
 
-					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.audience, this._environmentName, attrs);
+					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.audience, this._environmentId, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
@@ -553,7 +554,7 @@ export default class Context {
 						assignment.audienceMismatch = !result;
 					}
 
-					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.audience, this._environmentName, attrs);
+					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.audience, this._environmentId, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;
@@ -979,6 +980,7 @@ export default class Context {
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
 		this._data = data;
+		this._environmentId = data.environment_id ?? null;
 
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};

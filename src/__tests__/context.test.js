@@ -2084,6 +2084,7 @@ describe("Context", () => {
 
 		const envScopedRulesContextResponse = {
 			...getContextResponse,
+			environment_id: 10,
 			experiments: getContextResponse.experiments.map((x) => {
 				if (x.name === "exp_test_abc") {
 					return {
@@ -2096,7 +2097,7 @@ describe("Context", () => {
 										{
 											name: "Production Only",
 											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-											environments: ["production"],
+											environments: [10],
 											variant: 1,
 										},
 									],
@@ -2138,7 +2139,6 @@ describe("Context", () => {
 		};
 
 		it("should return rule variant when rule matches", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 			// Normal assignment would return 2, rules force variant 1
@@ -2146,31 +2146,42 @@ describe("Context", () => {
 		});
 
 		it("should return normal assignment when no rules match", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
 			// No rule matches, should get normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
-		it("should skip rule when environment does not match", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("staging");
-			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
+		it("should skip rule when environment id does not match", () => {
+			const stagingResponse = {
+				...envScopedRulesContextResponse,
+				environment_id: 20,
+			};
+			const context = new Context(sdk, contextOptions, contextParams, stagingResponse);
 			context.attribute("country", "US");
-			// Rule scoped to production, SDK is staging — should get normal assignment (2)
+			// Rule scoped to env 10, context has env 20 — should get normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
-		it("should match rule when environment matches", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
+		it("should skip environment-scoped rules when API response has no environment_id", () => {
+			const noEnvIdResponse = {
+				...envScopedRulesContextResponse,
+			};
+			delete noEnvIdResponse.environment_id;
+			const context = new Context(sdk, contextOptions, contextParams, noEnvIdResponse);
+			context.attribute("country", "US");
+			// Rule requires env 10, but no environment_id in response — should get normal assignment
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule when environment id matches", () => {
 			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
 			context.attribute("country", "US");
-			// Rule scoped to production, SDK is production — should get rule variant (1)
+			// Rule scoped to env 10, context has env 10 — should get rule variant (1)
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
 		it("should override takes priority over rules", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 			context.override("exp_test_abc", 0);
@@ -2178,7 +2189,6 @@ describe("Context", () => {
 		});
 
 		it("should set correct flags in exposure when rule matches", (done) => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
@@ -2205,7 +2215,6 @@ describe("Context", () => {
 		});
 
 		it("should set correct flags in exposure when no rule matches (normal assignment)", (done) => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
 			expect(context.treatment("exp_test_abc")).toEqual(2);
@@ -2232,7 +2241,6 @@ describe("Context", () => {
 		});
 
 		it("should set correct flags when rule matches with audienceMismatch", (done) => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
@@ -2257,7 +2265,6 @@ describe("Context", () => {
 		});
 
 		it("should set correct flags when override takes priority over rule", (done) => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 			context.override("exp_test_abc", 0);
@@ -2281,7 +2288,6 @@ describe("Context", () => {
 		});
 
 		it("should set correct override flags even when override variant matches rule variant", (done) => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 
@@ -2308,7 +2314,6 @@ describe("Context", () => {
 		});
 
 		it("should invalidate cached assignment when rule result changes due to attribute change", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 
 			// First call: no country set, rule doesn't match → normal assignment (2)
@@ -2322,7 +2327,6 @@ describe("Context", () => {
 		});
 
 		it("should invalidate cached assignment when rule stops matching due to attribute change", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 
 			// First call: country=US, rule matches → variant 1
@@ -2337,7 +2341,6 @@ describe("Context", () => {
 		});
 
 		it("rule should take priority over audienceStrict when rule matches", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "US");
 			// audienceStrict is on, user doesn't match audience filter (no age set),
@@ -2346,7 +2349,6 @@ describe("Context", () => {
 		});
 
 		it("should fall back to audienceStrict behavior when no rule matches", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "GB");
 			// No rule matches, audienceStrict on, audience filter mismatch — variant 0
@@ -2354,7 +2356,6 @@ describe("Context", () => {
 		});
 
 		it("should return correct variableValue when rule forces a different variant", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 			// Rule forces variant 1 (B) which has config {"button.color":"blue"}
@@ -2364,7 +2365,6 @@ describe("Context", () => {
 		});
 
 		it("should invalidate cache when rule switches to a different matching variant", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const twoRulesContextResponse = {
 				...getContextResponse,
 				experiments: getContextResponse.experiments.map((x) => {
@@ -2409,7 +2409,6 @@ describe("Context", () => {
 		});
 
 		it("should match rule with multiple and conditions", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const multiAndResponse = {
 				...getContextResponse,
 				experiments: getContextResponse.experiments.map((x) => {
@@ -2449,10 +2448,10 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
-		it("should match rule scoped to multiple environments", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("staging");
+		it("should match rule scoped to multiple environment ids", () => {
 			const multiEnvResponse = {
 				...getContextResponse,
+				environment_id: 20,
 				experiments: getContextResponse.experiments.map((x) => {
 					if (x.name === "exp_test_abc") {
 						return {
@@ -2465,7 +2464,7 @@ describe("Context", () => {
 											{
 												name: "Prod and Staging",
 												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-												environments: ["production", "staging"],
+												environments: [10, 20],
 												variant: 1,
 											},
 										],
@@ -2483,7 +2482,6 @@ describe("Context", () => {
 		});
 
 		it("should evaluate multiple or rules and match the first", () => {
-			client.getEnvironment = jest.fn().mockReturnValue("production");
 			const multiOrResponse = {
 				...getContextResponse,
 				experiments: getContextResponse.experiments.map((x) => {
