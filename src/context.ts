@@ -6,6 +6,7 @@ import SDK, { EventLogger, EventName } from "./sdk";
 import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { ClientRequestOptions } from "./client";
+import { SDK_VERSION } from "./version";
 
 type JSONPrimitive = string | number | boolean | null;
 type JSONObject = { [key: string]: JSONValue };
@@ -115,6 +116,7 @@ export type ContextOptions = {
 	eventLogger?: EventLogger;
 	refreshPeriod: number;
 	publishDelay: number;
+	includeSystemAttributes?: boolean;
 };
 
 export type ContextData = {
@@ -785,6 +787,31 @@ export default class Context {
 		}
 	}
 
+	private _buildAttributes(): Attribute[] {
+		const allAttributes: Attribute[] = [];
+
+		if (this._opts.includeSystemAttributes === true) {
+			const client = this._sdk.getClient();
+			const app = client.getApplication();
+			const now = Date.now();
+			allAttributes.push(
+				{ name: "sdk_name", value: client.getAgent(), setAt: now },
+				{ name: "sdk_version", value: SDK_VERSION, setAt: now },
+				{ name: "application", value: app.name, setAt: now },
+				{ name: "environment", value: client.getEnvironment(), setAt: now }
+			);
+			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
+				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
+			}
+		}
+
+		for (const x of this._attrs) {
+			allAttributes.push({ name: x.name, value: x.value, setAt: x.setAt });
+		}
+
+		return allAttributes;
+	}
+
 	private _flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
@@ -797,63 +824,69 @@ export default class Context {
 			}
 		} else {
 			if (!this._failed) {
-				const request: PublishParams = {
-					publishedAt: Date.now(),
-					units: Object.entries(this._units).map((entry) => ({
-						type: entry[0],
-						uid: this._unitHash(entry[0]),
-					})),
-					hashed: true,
-				};
+				try {
+					const request: PublishParams = {
+						publishedAt: Date.now(),
+						units: Object.entries(this._units).map((entry) => ({
+							type: entry[0],
+							uid: this._unitHash(entry[0]),
+						})),
+						hashed: true,
+						sdkVersion: SDK_VERSION,
+					};
 
-				if (this._goals.length > 0) {
-					request.goals = this._goals.map((x) => ({
-						name: x.name,
-						achievedAt: x.achievedAt,
-						properties: x.properties,
-					}));
+					if (this._goals.length > 0) {
+						request.goals = this._goals.map((x) => ({
+							name: x.name,
+							achievedAt: x.achievedAt,
+							properties: x.properties,
+						}));
+					}
+
+					if (this._exposures.length > 0) {
+						request.exposures = this._exposures.map((x) => ({
+							id: x.id,
+							name: x.name,
+							unit: x.unit,
+							exposedAt: x.exposedAt,
+							variant: x.variant,
+							assigned: x.assigned,
+							eligible: x.eligible,
+							overridden: x.overridden,
+							fullOn: x.fullOn,
+							custom: x.custom,
+							audienceMismatch: x.audienceMismatch,
+						}));
+					}
+
+					const allAttributes = this._buildAttributes();
+					if (allAttributes.length > 0) {
+						request.attributes = allAttributes;
+					}
+
+					this._publisher
+						.publish(request, this._sdk, this, requestOptions)
+						.then(() => {
+							this._logEvent("publish", request);
+
+							if (typeof callback === "function") {
+								callback();
+							}
+						})
+						.catch((e: Error) => {
+							this._logError(e);
+
+							if (typeof callback === "function") {
+								callback(e);
+							}
+						});
+				} catch (e) {
+					this._logError(e as Error);
+
+					if (typeof callback === "function") {
+						callback(e as Error);
+					}
 				}
-
-				if (this._exposures.length > 0) {
-					request.exposures = this._exposures.map((x) => ({
-						id: x.id,
-						name: x.name,
-						unit: x.unit,
-						exposedAt: x.exposedAt,
-						variant: x.variant,
-						assigned: x.assigned,
-						eligible: x.eligible,
-						overridden: x.overridden,
-						fullOn: x.fullOn,
-						custom: x.custom,
-						audienceMismatch: x.audienceMismatch,
-					}));
-				}
-
-				if (this._attrs.length > 0) {
-					request.attributes = this._attrs.map((x) => ({
-						name: x.name,
-						value: x.value,
-						setAt: x.setAt,
-					}));
-				}
-
-				this._publisher
-					.publish(request, this._sdk, this, requestOptions)
-					.then(() => {
-						this._logEvent("publish", request);
-
-						if (typeof callback === "function") {
-							callback();
-						}
-					})
-					.catch((e: Error) => {
-						this._logError(e);
-
-						if (typeof callback === "function") {
-							callback(e);
-						}
-					});
 			} else {
 				if (typeof callback === "function") {
 					callback();

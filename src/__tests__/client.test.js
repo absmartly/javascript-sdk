@@ -4,6 +4,7 @@ import fetch from "../fetch";
 // eslint-disable-next-line no-shadow
 import { AbortController } from "../abort";
 import { AbortError, RetryError, TimeoutError } from "../errors"; //eslint-disable-line no-shadow
+import { SDK_VERSION } from "../version";
 
 jest.mock("../fetch");
 
@@ -830,6 +831,7 @@ describe("Client", () => {
 			.publish({
 				units,
 				publishedAt,
+				sdkVersion: SDK_VERSION,
 				goals,
 				exposures,
 				attributes,
@@ -850,6 +852,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt,
+						sdkVersion: SDK_VERSION,
 						goals,
 						exposures,
 						attributes,
@@ -872,6 +875,7 @@ describe("Client", () => {
 			.publish({
 				units,
 				publishedAt,
+				sdkVersion: SDK_VERSION,
 				goals: [],
 				exposures: [],
 			})
@@ -891,6 +895,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt,
+						sdkVersion: SDK_VERSION,
 					}),
 					signal: expect.any(Object),
 				});
@@ -910,6 +915,7 @@ describe("Client", () => {
 		client
 			.publish({
 				units,
+				sdkVersion: SDK_VERSION,
 				goals: [],
 				exposures: [],
 			})
@@ -929,6 +935,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt: publishedAt + 100,
+						sdkVersion: SDK_VERSION,
 					}),
 					signal: expect.any(Object),
 				});
@@ -970,6 +977,58 @@ describe("Client", () => {
 
 				done();
 			});
+	});
+
+	it("publish() should include sdkVersion in body", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(clientOptions);
+
+		client
+			.publish({
+				units,
+				publishedAt,
+				sdkVersion: "1.2.3",
+				goals: [],
+				exposures: [],
+			})
+			.then(() => {
+				const body = JSON.parse(fetch.mock.calls[0][1].body);
+				expect(body.sdkVersion).toEqual("1.2.3");
+
+				done();
+			});
+	});
+
+	it("getAgent() should return default agent when not specified", () => {
+		const { agent: _, ...optionsWithoutAgent } = clientOptions;
+		const client = new Client(optionsWithoutAgent);
+		expect(client.getAgent()).toEqual("javascript-client");
+	});
+
+	it("getAgent() should return custom agent when specified", () => {
+		const client = new Client({ ...clientOptions, agent: "custom-sdk" });
+		expect(client.getAgent()).toEqual("custom-sdk");
+	});
+
+	it("getApplication() should return normalized application object", () => {
+		const client = new Client(clientOptions);
+		expect(client.getApplication()).toEqual({ name: "test_app", version: 1000000 });
+	});
+
+	it("getApplication() should normalize string application to object", () => {
+		const client = new Client({ ...clientOptions, application: "website" });
+		expect(client.getApplication()).toEqual({ name: "website", version: 0 });
+	});
+
+	it("getApplication() should accept semver string version", () => {
+		const client = new Client({ ...clientOptions, application: { name: "website", version: "1.2.3" } });
+		expect(client.getApplication()).toEqual({ name: "website", version: "1.2.3" });
+	});
+
+	it("getEnvironment() should return the environment", () => {
+		const client = new Client(clientOptions);
+		expect(client.getEnvironment()).toEqual(environment);
 	});
 
 	it("publish() should not have the keepalive flag if specified", (done) => {

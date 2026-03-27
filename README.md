@@ -53,6 +53,16 @@ const sdk = new absmartly.SDK({
 });
 ```
 
+The `application` option can also be an object with `name` and `version` to track which version of your application is generating events. The version can be a number or a semver string:
+```javascript
+const sdk = new absmartly.SDK({
+    endpoint: 'https://sandbox.absmartly.io/v1',
+    apiKey: process.env.ABSMARTLY_API_KEY,
+    environment: process.env.NODE_ENV,
+    application: { name: 'website', version: '1.2.3' },
+});
+```
+
 #### Creating a new Context with raw promises
 ```javascript
 // define a new context request
@@ -136,6 +146,28 @@ context.attributes({
     customer_age: 'new_customer',
 });
 ```
+
+#### Including system attributes
+You can opt in to automatically include system attributes (SDK name, SDK version, application, environment, and application version) in every publish payload. These are sent as context attributes and can be useful for debugging and filtering in the Web Console.
+
+To enable this, set the `includeSystemAttributes` option to `true` when creating the context:
+```javascript
+const context = sdk.createContext(request, {
+    includeSystemAttributes: true,
+});
+```
+
+When enabled, the following attributes are automatically prepended to the publish request payload:
+
+| Attribute | Description |
+|:--- |---|
+| `sdk_name` | The SDK agent name (e.g. `"absmartly-javascript-sdk"`) |
+| `sdk_version` | The SDK version (e.g. `"1.13.4"`) |
+| `application` | The application name from the SDK configuration |
+| `environment` | The environment from the SDK configuration |
+| `app_version` | The application version, only included if greater than `0` |
+
+These system attributes are prepended before any user-defined attributes.
 
 #### Selecting a treatment
 ```javascript

@@ -4,7 +4,6 @@ import { AbortController } from "./abort";
 // eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import { getApplicationName, getApplicationVersion } from "./utils";
 import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
 import { ContextOptions, ContextParams } from "./context";
 import { PublishParams } from "./publisher";
@@ -27,10 +26,12 @@ export type ClientRequestOptions = {
 	timeout?: number;
 };
 
+export type ApplicationObject = { name: string; version: number | string };
+
 export type ClientOptions = {
 	agent?: string;
 	apiKey: string;
-	application: string | { name: string; version: number };
+	application: string | ApplicationObject;
 	endpoint: string;
 	environment: string;
 	retries?: number;
@@ -38,18 +39,18 @@ export type ClientOptions = {
 	keepalive?: boolean;
 };
 
+type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
+	application: ApplicationObject;
+};
+
 export default class Client {
-	private readonly _opts: ClientOptions;
+	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
 
 	constructor(opts: ClientOptions) {
-		this._opts = Object.assign(
+		const merged: Record<string, unknown> = Object.assign(
 			{
 				agent: "javascript-client",
-				apiKey: undefined,
-				application: undefined,
-				endpoint: undefined,
-				environment: undefined,
 				retries: 5,
 				timeout: 3000,
 				keepalive: true,
@@ -57,12 +58,12 @@ export default class Client {
 			opts
 		);
 
-		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"] as const) {
-			if (key in this._opts && this._opts[key] !== undefined) {
-				const value = this._opts[key];
-				if (typeof value !== "string" || value.length === 0) {
+		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"]) {
+			if (key in merged && merged[key] !== undefined) {
+				const value = merged[key];
+				if (typeof value !== "string" || (value as string).length === 0) {
 					if (key === "application") {
-						if (value !== null && typeof value === "object" && "name" in value) {
+						if (value !== null && typeof value === "object" && "name" in (value as object)) {
 							continue;
 						}
 					}
@@ -73,13 +74,14 @@ export default class Client {
 			}
 		}
 
-		if (typeof this._opts.application === "string") {
-			this._opts.application = {
-				name: this._opts.application,
+		if (typeof merged.application === "string") {
+			merged.application = {
+				name: merged.application,
 				version: 0,
 			};
 		}
 
+		this._opts = merged as unknown as NormalizedClientOptions;
 		this._delay = 50;
 	}
 
@@ -88,7 +90,7 @@ export default class Client {
 			...options,
 			path: "/context",
 			query: {
-				application: getApplicationName(this._opts.application),
+				application: this._opts.application.name,
 				environment: this._opts.environment,
 			},
 		});
@@ -111,6 +113,7 @@ export default class Client {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
+			sdkVersion: params.sdkVersion,
 		};
 
 		if (Array.isArray(params.goals) && params.goals.length > 0) {
@@ -160,8 +163,8 @@ export default class Client {
 					"X-API-Key": this._opts.apiKey,
 					"X-Agent": this._opts.agent,
 					"X-Environment": this._opts.environment,
-					"X-Application": getApplicationName(this._opts.application),
-					"X-Application-Version": getApplicationVersion(this._opts.application),
+					"X-Application": this._opts.application.name,
+					"X-Application-Version": this._opts.application.version,
 				};
 			}
 
@@ -285,6 +288,18 @@ export default class Client {
 			auth: true,
 			method: "PUT",
 		});
+	}
+
+	getAgent(): string {
+		return this._opts.agent;
+	}
+
+	getApplication(): ApplicationObject {
+		return this._opts.application;
+	}
+
+	getEnvironment(): string {
+		return this._opts.environment;
 	}
 
 	getUnauthed(options: ClientRequestOptions) {
