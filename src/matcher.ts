@@ -2,7 +2,9 @@ import { isObject } from "./utils";
 import { JsonExpr } from "./jsonexpr/jsonexpr";
 
 export class AudienceMatcher {
-	evaluate(audienceString: string, vars: Record<string, unknown>) {
+	private readonly _jsonExpr = new JsonExpr();
+
+	evaluate(audienceString: string, vars: Record<string, unknown>): boolean | null {
 		try {
 			const audience = JSON.parse(audienceString);
 			if (audience && audience.filter) {
@@ -10,12 +12,9 @@ export class AudienceMatcher {
 					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
 				}
 			}
-		} catch (e) {
-			console.error(e);
+		} catch {
+			// invalid JSON
 		}
-
 		return null;
 	}
-
-	_jsonExpr = new JsonExpr();
 }
