@@ -1,19 +1,11 @@
-import Context, { Attribute, Exposure, Goal, Unit } from "./context";
-import SDK from "./sdk";
-import { ClientRequestOptions } from "./client";
+import type { ClientRequestOptions, PublishParams } from "./types";
 
-export type PublishParams = {
-	units: Unit[];
-	publishedAt: number;
-	hashed: boolean;
-	sdkVersion: string;
-	attributes?: Attribute[];
-	goals?: Goal[];
-	exposures?: Exposure[];
-};
+interface SDKLike {
+	getClient(): { publish(request: PublishParams, options?: ClientRequestOptions): Promise<unknown> };
+}
 
 export class ContextPublisher {
-	publish(request: PublishParams, sdk: SDK, _: Context, requestOptions?: ClientRequestOptions) {
+	publish(request: PublishParams, sdk: SDKLike, _context: unknown, requestOptions?: ClientRequestOptions): Promise<unknown> {
 		return sdk.getClient().publish(request, requestOptions);
 	}
 }
