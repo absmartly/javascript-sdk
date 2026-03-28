@@ -1,116 +1,41 @@
-import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
+import { hashUnit } from "./hashing";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
-import SDK, { EventLogger, EventName } from "./sdk";
-import { ContextPublisher, PublishParams } from "./publisher";
-import { ContextDataProvider } from "./provider";
-import { ClientRequestOptions } from "./client";
+import { arrayEqualsShallow, isObject, isPromise } from "./utils";
 import { SDK_VERSION } from "./version";
+import { ContextPublisher } from "./publisher";
+import { ContextDataProvider } from "./provider";
+import type {
+	Assignment,
+	Attribute,
+	ContextData,
+	ContextParams,
+	Experiment,
+	ExperimentData,
+	Exposure,
+	Goal,
+	Units,
+	PublishParams,
+	ClientRequestOptions,
+	EventLogger,
+	EventName,
+	JSONValue,
+	CustomFieldValue,
+} from "./types";
 
-type JSONPrimitive = string | number | boolean | null;
-type JSONObject = { [key: string]: JSONValue };
-type JSONArray = JSONValue[];
-type JSONValue = JSONPrimitive | JSONObject | JSONArray;
+interface SDKLike {
+	getClient(): {
+		getAgent(): string;
+		getApplication(): { name: string; version: number | string };
+		getEnvironment(): string;
+	};
+	getContextPublisher(): ContextPublisher;
+	getContextDataProvider(): ContextDataProvider;
+	getEventLogger(): EventLogger;
+}
 
-type CustomFieldValueType = "text" | "string" | "number" | "json" | "boolean";
-
-type CustomFieldValue = {
-	name: string;
-	value: string;
-	type: CustomFieldValueType;
-};
-
-export type ExperimentData = {
-	id: number;
-	name: string;
-	unitType: string | null;
-	iteration: number;
-	fullOnVariant: number;
-	trafficSplit: number[];
-	trafficSeedHi: number;
-	trafficSeedLo: number;
-	audience: string;
-	audienceStrict: boolean;
-	split: number[];
-	seedHi: number;
-	seedLo: number;
-	variants: { config: null | string }[];
-	variables: Record<string, unknown>;
-	variant: number;
-	overridden: boolean;
-	assigned: boolean;
-	exposed: boolean;
-	eligible: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-	customFieldValues: CustomFieldValue[] | null;
-};
-
-type Assignment = {
-	id: number;
-	iteration: number;
-	fullOnVariant: number;
-	unitType: string | null;
-	variant: number;
-	overridden: boolean;
-	assigned: boolean;
-	exposed: boolean;
-	eligible: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-	trafficSplit?: number[];
-	variables?: Record<string, unknown>;
-	attrsSeq?: number;
-};
-
-export type Experiment = {
-	data: ExperimentData;
-	variables: Record<string, unknown>[];
-};
-
-export type Unit = {
-	type: string;
-	uid: string | null;
-};
-
-export type Exposure = {
-	id: number;
-	name: string;
-	exposedAt: number;
-	unit: string | null;
-	variant: number;
-	assigned: boolean;
-	eligible: boolean;
-	overridden: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-};
-
-export type Attribute = {
-	name: string;
-	value: unknown;
-	setAt: number;
-};
-
-export type Units = {
-	[key: string]: string | number;
-};
-
-export type Goal = {
-	name: string;
-	properties: Record<string, unknown> | null;
-	achievedAt: number;
-};
-
-export type ContextParams = {
-	units: Record<string, string | number>;
-};
-
-export type ContextOptions = {
+type ContextOptionsInternal = {
 	publisher?: ContextPublisher;
 	dataProvider?: ContextDataProvider;
 	eventLogger?: EventLogger;
@@ -119,30 +44,26 @@ export type ContextOptions = {
 	includeSystemAttributes?: boolean;
 };
 
-export type ContextData = {
-	experiments?: ExperimentData[];
-};
-
-export default class Context {
+export class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _attrs: Attribute[];
 	private readonly _audienceMatcher: AudienceMatcher;
 	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
 	private readonly _eventLogger: EventLogger;
-	private readonly _opts: ContextOptions;
+	private readonly _opts: ContextOptionsInternal;
 	private readonly _publisher: ContextPublisher;
-	private readonly _sdk: SDK;
+	private readonly _sdk: SDKLike;
 	private readonly _units: Units;
 	private _assignments: Record<string, Assignment>;
-	private _data: ContextData;
+	private _data!: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
 	private _finalized: boolean;
 	private _finalizing: boolean | Promise<void> | null;
 	private _goals: Goal[];
-	private _index: Record<string, Experiment>;
-	private _indexVariables: Record<string, Experiment[]>;
+	private _index!: Record<string, Experiment>;
+	private _indexVariables!: Record<string, Experiment[]>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
@@ -151,7 +72,7 @@ export default class Context {
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
 	private _refreshInterval?: ReturnType<typeof setInterval>;
 
-	constructor(sdk: SDK, options: ContextOptions, params: ContextParams, promise: ContextData | Promise<ContextData>) {
+	constructor(sdk: SDKLike, options: ContextOptionsInternal, params: ContextParams, promise: ContextData | Promise<ContextData>) {
 		this._sdk = sdk;
 		this._publisher = options.publisher || this._sdk.getContextPublisher();
 		this._dataProvider = options.dataProvider || this._sdk.getContextDataProvider();
@@ -195,10 +116,8 @@ export default class Context {
 					this._logError(error);
 				});
 		} else {
-			promise = promise as ContextData;
-			this._init(promise);
-
-			this._logEvent("ready", promise);
+			this._init(promise as ContextData);
+			this._logEvent("ready", promise as ContextData);
 		}
 	}
 
@@ -234,7 +153,6 @@ export default class Context {
 
 	data() {
 		this._checkReady();
-
 		return this._data;
 	}
 
@@ -309,18 +227,16 @@ export default class Context {
 	}
 
 	units(units: Record<string, number | string>) {
-		Object.entries(units).forEach(([unitType, uid]) => {
+		for (const [unitType, uid] of Object.entries(units)) {
 			this.unit(unitType, uid);
-		});
+		}
 	}
 
 	getAttribute(attrName: string) {
 		let result;
-
-		this._attrs.forEach((attr) => {
+		for (const attr of this._attrs) {
 			if (attr.name === attrName) result = attr.value;
-		});
-
+		}
 		return result;
 	}
 
@@ -333,35 +249,30 @@ export default class Context {
 
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
-		this._attrs
-			.map((a) => [a.name, a.value])
-			.forEach(([key, value]) => {
-				attributes[key as string] = value;
-			});
+		for (const a of this._attrs) {
+			attributes[a.name] = a.value;
+		}
 		return attributes;
 	}
 
 	attributes(attrs: Record<string, unknown>) {
-		Object.entries(attrs).forEach(([attrName, value]) => {
+		for (const [attrName, value] of Object.entries(attrs)) {
 			this.attribute(attrName, value);
-		});
+		}
 	}
 
 	peek(experimentName: string) {
 		this._checkReady(true);
-
 		return this._peek(experimentName).variant;
 	}
 
 	treatment(experimentName: string) {
 		this._checkReady(true);
-
 		return this._treatment(experimentName).variant;
 	}
 
 	track(goalName: string, properties?: Record<string, unknown>) {
 		this._checkNotFinalized();
-
 		return this._track(goalName, properties);
 	}
 
@@ -371,19 +282,16 @@ export default class Context {
 
 	experiments() {
 		this._checkReady();
-
 		return this._data.experiments?.map((x) => x.name);
 	}
 
 	variableValue(key: string, defaultValue: string): string {
 		this._checkReady(true);
-
 		return this._variableValue(key, defaultValue);
 	}
 
 	peekVariableValue(key: string, defaultValue: string): string {
 		this._checkReady(true);
-
 		return this._peekVariable(key, defaultValue);
 	}
 
@@ -392,12 +300,12 @@ export default class Context {
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
-		Object.entries(this._indexVariables).forEach(([key, values]) => {
-			values.forEach((value) => {
+		for (const [key, values] of Object.entries(this._indexVariables)) {
+			for (const value of values) {
 				if (variableExperiments[key]) variableExperiments[key].push(value.data.name);
 				else variableExperiments[key] = [value.data.name];
-			});
-		});
+			}
+		}
 
 		return variableExperiments;
 	}
@@ -407,21 +315,35 @@ export default class Context {
 	}
 
 	overrides(experimentVariants: Record<string, number>) {
-		Object.entries(experimentVariants).forEach(([experimentName, variant]) => {
+		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
 			this.override(experimentName, variant);
-		});
+		}
 	}
 
 	customAssignment(experimentName: string, variant: number) {
 		this._checkNotFinalized();
-
 		this._cassignments[experimentName] = variant;
 	}
 
 	customAssignments(experimentVariants: Record<string, number>) {
-		Object.entries(experimentVariants).forEach(([experimentName, variant]) => {
+		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
 			this.customAssignment(experimentName, variant);
-		});
+		}
+	}
+
+	customFieldKeys() {
+		this._checkReady(true);
+		return this._customFieldKeys();
+	}
+
+	customFieldValue(experimentName: string, key: string) {
+		this._checkReady(true);
+		return this._customFieldValue(experimentName, key);
+	}
+
+	customFieldValueType(experimentName: string, key: string) {
+		this._checkReady(true);
+		return this._customFieldValueType(experimentName, key);
 	}
 
 	private _checkNotFinalized() {
@@ -444,9 +366,9 @@ export default class Context {
 
 	private _getAttributesMap(): Record<string, unknown> {
 		const attrs: Record<string, unknown> = {};
-		this._attrs.forEach((attr) => {
+		for (const attr of this._attrs) {
 			attrs[attr.name] = attr.value;
-		});
+		}
 		return attrs;
 	}
 
@@ -485,17 +407,14 @@ export default class Context {
 			const assignment = this._assignments[experimentName];
 			if (hasOverride) {
 				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
-					// override up-to-date
 					return assignment;
 				}
 			} else if (experiment == null) {
 				if (!assignment.assigned) {
-					// previously not-running experiment
 					return assignment;
 				}
 			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
 				if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
-					// assignment up-to-date
 					return assignment;
 				}
 			}
@@ -583,7 +502,6 @@ export default class Context {
 					assignment.fullOn = true;
 				}
 
-				// store these so we can detect changes to running experiment
 				assignment.unitType = unitType;
 				assignment.id = experiment.data.id;
 				assignment.iteration = experiment.data.iteration;
@@ -609,7 +527,6 @@ export default class Context {
 
 		if (!assignment.exposed) {
 			assignment.exposed = true;
-
 			this._queueExposure(experimentName, assignment);
 		}
 
@@ -654,17 +571,11 @@ export default class Context {
 		return Array.from(keys);
 	}
 
-	customFieldKeys() {
-		this._checkReady(true);
-
-		return this._customFieldKeys();
-	}
-
 	private _customFieldValue(experimentName: string, key: string): JSONValue {
 		const experiment = this._index[experimentName];
 
 		if (experiment != null) {
-			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			const field = experiment.data.customFieldValues?.find((x: CustomFieldValue) => x.name === key);
 			if (field != null) {
 				switch (field.type) {
 					case "text":
@@ -677,7 +588,7 @@ export default class Context {
 							if (field.value === "null") return null;
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
-						} catch (e) {
+						} catch (_e) {
 							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
 							return null;
 						}
@@ -695,29 +606,17 @@ export default class Context {
 		return null;
 	}
 
-	customFieldValue(experimentName: string, key: string) {
-		this._checkReady(true);
-
-		return this._customFieldValue(experimentName, key);
-	}
-
 	private _customFieldValueType(experimentName: string, key: string) {
 		const experiment = this._index[experimentName];
 
 		if (experiment != null) {
-			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			const field = experiment.data.customFieldValues?.find((x: CustomFieldValue) => x.name === key);
 			if (field != null) {
 				return field.type;
 			}
 		}
 
 		return null;
-	}
-
-	customFieldValueType(experimentName: string, key: string) {
-		this._checkReady(true);
-
-		return this._customFieldValueType(experimentName, key);
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
@@ -727,7 +626,6 @@ export default class Context {
 			if (assignment.variables !== undefined) {
 				if (!assignment.exposed) {
 					assignment.exposed = true;
-
 					this._queueExposure(experimentName, assignment);
 				}
 
@@ -926,9 +824,9 @@ export default class Context {
 		}
 	}
 
-	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
+	private _logEvent(eventName: EventName, data?: unknown) {
 		if (this._eventLogger) {
-			this._eventLogger(this, eventName, data);
+			this._eventLogger(this, eventName, data as any);
 		}
 	}
 
@@ -971,7 +869,7 @@ export default class Context {
 				const config = variant.config;
 				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
 
-				Object.keys(parsed).forEach((key) => {
+				for (const key of Object.keys(parsed)) {
 					const value = entry;
 					if (indexVariables[key]) {
 						insertUniqueSorted(
@@ -980,7 +878,7 @@ export default class Context {
 							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
 					} else indexVariables[key] = [value];
-				});
+				}
 
 				variables[i] = parsed;
 			});
@@ -1013,7 +911,6 @@ export default class Context {
 							} else {
 								this._finalized = true;
 								this._logEvent("finalize");
-
 								resolve();
 							}
 						}, requestOptions);
