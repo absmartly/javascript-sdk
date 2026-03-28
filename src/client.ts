@@ -1,61 +1,21 @@
-import fetch from "./fetch"; // eslint-disable-line no-shadow
-// eslint-disable-next-line no-shadow
-import { AbortController } from "./abort";
-// eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
+import type {
+	ApplicationObject,
+	ClientOptions,
+	ClientRequestOptions,
+	ContextParams,
+	NormalizedClientOptions,
+	PublishParams,
+} from "./types";
 
-import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
-import { ContextOptions, ContextParams } from "./context";
-import { PublishParams } from "./publisher";
-
-export type FetchResponse = {
-	status: number;
-	ok: boolean;
-	text: () => Promise<string>;
-	statusText: string;
-	json: () => Promise<string>;
-};
-
-export type ClientRequestOptions = {
-	query?: Record<string, string | number | boolean>;
-	path: string;
-	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
-	body?: Record<string, unknown>;
-	auth?: boolean;
-	signal?: AbortSignal | ABsmartlyAbortSignal;
-	timeout?: number;
-};
-
-export type ApplicationObject = { name: string; version: number | string };
-
-export type ClientOptions = {
-	agent?: string;
-	apiKey: string;
-	application: string | ApplicationObject;
-	endpoint: string;
-	environment: string;
-	retries?: number;
-	timeout?: number;
-	keepalive?: boolean;
-};
-
-type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
-	application: ApplicationObject;
-};
-
-export default class Client {
+export class Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
 
 	constructor(opts: ClientOptions) {
 		const merged: Record<string, unknown> = Object.assign(
-			{
-				agent: "javascript-client",
-				retries: 5,
-				timeout: 3000,
-				keepalive: true,
-			},
-			opts
+			{ agent: "javascript-client", retries: 5, timeout: 3000, keepalive: true },
+			opts,
 		);
 
 		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"]) {
@@ -63,9 +23,7 @@ export default class Client {
 				const value = merged[key];
 				if (typeof value !== "string" || (value as string).length === 0) {
 					if (key === "application") {
-						if (value !== null && typeof value === "object" && "name" in (value as object)) {
-							continue;
-						}
+						if (value !== null && typeof value === "object" && "name" in (value as object)) continue;
 					}
 					throw new Error(`Invalid '${key}' in options argument`);
 				}
@@ -75,17 +33,14 @@ export default class Client {
 		}
 
 		if (typeof merged.application === "string") {
-			merged.application = {
-				name: merged.application,
-				version: 0,
-			};
+			merged.application = { name: merged.application, version: 0 };
 		}
 
 		this._opts = merged as unknown as NormalizedClientOptions;
 		this._delay = 50;
 	}
 
-	getContext(options?: Partial<ClientRequestOptions>) {
+	getContext(options?: Partial<ClientRequestOptions>): Promise<unknown> {
 		return this.getUnauthed({
 			...options,
 			path: "/context",
@@ -96,20 +51,12 @@ export default class Client {
 		});
 	}
 
-	createContext(params: ContextParams, options: ContextOptions) {
-		const body = {
-			units: params.units,
-		};
-
-		return this.post({
-			...options,
-			path: "/context",
-			body,
-		});
+	createContext(params: ContextParams): Promise<unknown> {
+		return this.post({ path: "/context", body: { units: params.units } });
 	}
 
-	publish(params: PublishParams, options?: ClientRequestOptions) {
-		const body: PublishParams = {
+	publish(params: PublishParams, options?: ClientRequestOptions): Promise<unknown> {
+		const body: Record<string, unknown> = {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
@@ -119,29 +66,23 @@ export default class Client {
 		if (Array.isArray(params.goals) && params.goals.length > 0) {
 			body.goals = params.goals;
 		}
-
 		if (Array.isArray(params.exposures) && params.exposures.length > 0) {
 			body.exposures = params.exposures;
 		}
-
 		if (Array.isArray(params.attributes) && params.attributes.length > 0) {
 			body.attributes = params.attributes;
 		}
 
-		return this.put({
-			...options,
-			path: "/context",
-			body,
-		});
+		return this.put({ ...options, path: "/context", body });
 	}
 
-	request(options: ClientRequestOptions) {
+	request(options: ClientRequestOptions): Promise<unknown> {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
 			const keys = Object.keys(options.query);
 			if (keys.length > 0) {
 				const encoded = keys
-					.map((k) => (options.query ? `${k}=${encodeURIComponent(options.query[k])}` : null))
+					.map((k) => (options.query ? `${k}=${encodeURIComponent(options.query[k]!)}` : null))
 					.join("&");
 				url = `${url}?${encoded}`;
 			}
@@ -149,8 +90,8 @@ export default class Client {
 
 		const controller = new AbortController();
 
-		const tryOnce = () => {
-			const opts: Record<string, unknown> = {
+		const tryOnce = (): Promise<unknown> => {
+			const opts: RequestInit = {
 				method: options.method,
 				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
 				signal: controller.signal,
@@ -164,34 +105,27 @@ export default class Client {
 					"X-Agent": this._opts.agent,
 					"X-Environment": this._opts.environment,
 					"X-Application": this._opts.application.name,
-					"X-Application-Version": this._opts.application.version,
+					"X-Application-Version": String(this._opts.application.version),
 				};
 			}
 
-			return fetch(url, opts).then((response: FetchResponse) => {
+			return fetch(url, opts).then((response: Response) => {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text: string) => {
 						const error: Error & { _bail?: boolean } = new Error(
-							text !== null && text.length > 0 ? text : response.statusText
+							text !== null && text.length > 0 ? text : response.statusText,
 						);
 						error._bail = bail;
-
 						return Promise.reject(error);
 					});
 				}
-
 				return response.json();
 			});
 		};
 
 		type WaitFn = ((ms: number) => Promise<void>) & { reject?: (reason: AbortError) => void };
-		type TryWithFn = ((
-			retries: number,
-			timeout: number,
-			tries?: number,
-			waited?: number
-		) => ReturnType<typeof tryOnce>) & {
+		type TryWithFn = ((retries: number, timeout: number, tries?: number, waited?: number) => Promise<unknown>) & {
 			timedout?: boolean;
 		};
 
@@ -212,24 +146,15 @@ export default class Client {
 			delete tryWith.timedout;
 
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
-				console.warn(reason);
-
-				if (reason._bail || retries <= 0) {
-					throw new Error(reason.message);
-				} else if (tries >= retries) {
-					throw new RetryError(tries, reason, url);
-				} else if (waited >= timeout || reason.name === "AbortError") {
-					if (tryWith.timedout) {
-						throw new TimeoutError(timeout);
-					}
-
+				if (reason._bail || retries <= 0) throw new Error(reason.message);
+				if (tries >= retries) throw new RetryError(tries, reason, url);
+				if (waited >= timeout || reason.name === "AbortError") {
+					if (tryWith.timedout) throw new TimeoutError(timeout);
 					throw reason;
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (waited + delay > timeout) {
-					delay = timeout - waited;
-				}
+				if (waited + delay > timeout) delay = timeout - waited;
 
 				return wait(delay).then(() => tryWith(retries, timeout, tries + 1, waited + delay));
 			});
@@ -253,7 +178,7 @@ export default class Client {
 				? setTimeout(() => {
 						tryWith.timedout = true;
 						abort();
-				  }, timeout)
+					}, timeout)
 				: 0;
 
 		const finalCleanUp = () => {
@@ -264,7 +189,7 @@ export default class Client {
 		};
 
 		return tryWith(this._opts.retries ?? 5, this._opts.timeout ?? 3000)
-			.then((value: string) => {
+			.then((value) => {
 				finalCleanUp();
 				return value;
 			})
@@ -274,20 +199,12 @@ export default class Client {
 			});
 	}
 
-	post(options: ClientRequestOptions) {
-		return this.request({
-			...options,
-			auth: true,
-			method: "POST",
-		});
+	post(options: ClientRequestOptions): Promise<unknown> {
+		return this.request({ ...options, auth: true, method: "POST" });
 	}
 
-	put(options: ClientRequestOptions) {
-		return this.request({
-			...options,
-			auth: true,
-			method: "PUT",
-		});
+	put(options: ClientRequestOptions): Promise<unknown> {
+		return this.request({ ...options, auth: true, method: "PUT" });
 	}
 
 	getAgent(): string {
@@ -302,10 +219,7 @@ export default class Client {
 		return this._opts.environment;
 	}
 
-	getUnauthed(options: ClientRequestOptions) {
-		return this.request({
-			...options,
-			method: "GET",
-		});
+	getUnauthed(options: ClientRequestOptions): Promise<unknown> {
+		return this.request({ ...options, method: "GET" });
 	}
 }
