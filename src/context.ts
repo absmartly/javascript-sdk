@@ -29,6 +29,8 @@ interface SDKLike {
 		getAgent(): string;
 		getApplication(): { name: string; version: number | string };
 		getEnvironment(): string;
+		publish(request: PublishParams, options?: ClientRequestOptions): Promise<unknown>;
+		getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData>;
 	};
 	getContextPublisher(): ContextPublisher;
 	getContextDataProvider(): ContextDataProvider;
@@ -55,12 +57,12 @@ export class Context {
 	private readonly _publisher: ContextPublisher;
 	private readonly _sdk: SDKLike;
 	private readonly _units: Units;
-	private _assignments: Record<string, Assignment>;
+	private _assignments: Record<string, Assignment> = {};
 	private _data!: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
 	private _finalized: boolean;
-	private _finalizing: boolean | Promise<void> | null;
+	private _finalizing: boolean | Promise<void> | null = null;
 	private _goals: Goal[];
 	private _index!: Record<string, Experiment>;
 	private _indexVariables!: Record<string, Experiment[]>;
@@ -372,7 +374,7 @@ export class Context {
 		return attrs;
 	}
 
-	private _assign(experimentName: string) {
+	private _assign(experimentName: string): Assignment {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
 				experiment.id === assignment.id &&
@@ -401,19 +403,19 @@ export class Context {
 
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
-		const experiment = experimentName in this._index ? this._index[experimentName] : null;
+		const experiment = experimentName in this._index ? this._index[experimentName]! : null;
 
 		if (experimentName in this._assignments) {
-			const assignment = this._assignments[experimentName];
+			const assignment = this._assignments[experimentName]!;
 			if (hasOverride) {
-				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
+				if (assignment.overridden && assignment.variant === this._overrides[experimentName]!) {
 					return assignment;
 				}
 			} else if (experiment == null) {
 				if (!assignment.assigned) {
 					return assignment;
 				}
-			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
+			} else if (!hasCustom || this._cassignments[experimentName]! === assignment.variant) {
 				if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
 					return assignment;
 				}
@@ -444,7 +446,7 @@ export class Context {
 			}
 
 			assignment.overridden = true;
-			assignment.variant = this._overrides[experimentName];
+			assignment.variant = this._overrides[experimentName]!;
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
@@ -466,7 +468,7 @@ export class Context {
 							if (unit !== null) {
 								const assigner =
 									unitType in this._assigners
-										? this._assigners[unitType]
+										? this._assigners[unitType]!
 										: (this._assigners[unitType] = new VariantAssigner(unit));
 								const eligible =
 									assigner.assign(
@@ -480,7 +482,7 @@ export class Context {
 
 								if (eligible) {
 									if (hasCustom) {
-										assignment.variant = this._cassignments[experimentName];
+										assignment.variant = this._cassignments[experimentName]!;
 										assignment.custom = true;
 									} else {
 										assignment.variant = assigner.assign(
@@ -620,17 +622,20 @@ export class Context {
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (!assignment.exposed) {
-					assignment.exposed = true;
-					this._queueExposure(experimentName, assignment);
-				}
+		const experiments = this._indexVariables[key];
+		if (experiments) {
+			for (const i in experiments) {
+				const experimentName = experiments[i]!.data.name;
+				const assignment = this._assign(experimentName);
+				if (assignment.variables !== undefined) {
+					if (!assignment.exposed) {
+						assignment.exposed = true;
+						this._queueExposure(experimentName, assignment);
+					}
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
-					return assignment.variables[key] as string;
+					if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
+						return assignment.variables[key] as string;
+					}
 				}
 			}
 		}
@@ -639,12 +644,15 @@ export class Context {
 	}
 
 	private _peekVariable(key: string, defaultValue: string): string {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
-					return assignment.variables[key] as string;
+		const experiments = this._indexVariables[key];
+		if (experiments) {
+			for (const i in experiments) {
+				const experimentName = experiments[i]!.data.name;
+				const assignment = this._assign(experimentName);
+				if (assignment.variables !== undefined) {
+					if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
+						return assignment.variables[key] as string;
+					}
 				}
 			}
 		}
@@ -836,18 +844,18 @@ export class Context {
 		}
 	}
 
-	private _unitHash(unitType: string) {
+	private _unitHash(unitType: string): string | null {
 		if (!this._hashes) {
 			this._hashes = {};
 		}
 
 		if (!(unitType in this._hashes)) {
-			const hash = unitType in this._units ? hashUnit(this._units[unitType]) : null;
+			const hash = unitType in this._units ? hashUnit(this._units[unitType]!) : null;
 			this._hashes[unitType] = hash;
 			return hash;
 		}
 
-		return this._hashes[unitType];
+		return this._hashes[unitType]!;
 	}
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {

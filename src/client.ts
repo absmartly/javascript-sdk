@@ -3,6 +3,7 @@ import type {
 	ApplicationObject,
 	ClientOptions,
 	ClientRequestOptions,
+	ContextData,
 	ContextParams,
 	NormalizedClientOptions,
 	PublishParams,
@@ -40,7 +41,7 @@ export class Client {
 		this._delay = 50;
 	}
 
-	getContext(options?: Partial<ClientRequestOptions>): Promise<unknown> {
+	getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData> {
 		return this.getUnauthed({
 			...options,
 			path: "/context",
@@ -48,7 +49,7 @@ export class Client {
 				application: this._opts.application.name,
 				environment: this._opts.environment,
 			},
-		});
+		}) as Promise<ContextData>;
 	}
 
 	createContext(params: ContextParams): Promise<unknown> {
