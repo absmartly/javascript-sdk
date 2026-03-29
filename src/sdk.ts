@@ -1,14 +1,27 @@
-import Client, { ClientOptions, ClientRequestOptions } from "./client";
-import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
-import { ContextPublisher, PublishParams } from "./publisher";
+import { Client } from "./client";
+import { Context } from "./context";
+import { ContextPublisher } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { isLongLivedApp } from "./utils";
+import type {
+	ClientOptions,
+	ClientRequestOptions,
+	ContextData,
+	ContextParams,
+	EventLogger,
+	EventLoggerData,
+} from "./types";
 
-export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
+type ContextOptionsInput = {
+	publisher?: ContextPublisher;
+	dataProvider?: ContextDataProvider;
+	eventLogger?: EventLogger;
+	refreshPeriod?: number;
+	publishDelay?: number;
+	includeSystemAttributes?: boolean;
+};
 
-export type EventName = "error" | "ready" | "refresh" | "publish" | "exposure" | "goal" | "finalize";
-
-export type EventLogger = (context: Context, eventName: EventName, data?: EventLoggerData) => void;
+type ContextOptionsFull = Required<Pick<ContextOptionsInput, "refreshPeriod" | "publishDelay">> &
+	Omit<ContextOptionsInput, "refreshPeriod" | "publishDelay">;
 
 export type SDKOptions = {
 	client?: Client;
@@ -17,12 +30,29 @@ export type SDKOptions = {
 	provider?: ContextDataProvider;
 };
 
-export default class SDK {
-	static defaultEventLogger: EventLogger = (_, eventName, data) => {
-		if (eventName === "error") {
-			console.error(data);
-		}
+function isLongLivedApp(): boolean {
+	return (
+		(typeof window !== "undefined" && typeof window.document !== "undefined") ||
+		(typeof navigator !== "undefined" && navigator.product === "ReactNative")
+	);
+}
+
+const CLIENT_OPTION_KEYS = [
+	"application",
+	"agent",
+	"apiKey",
+	"endpoint",
+	"keepalive",
+	"environment",
+	"retries",
+	"timeout",
+];
+
+export class SDK {
+	static defaultEventLogger: EventLogger = (_: unknown, eventName: string, data?: EventLoggerData) => {
+		if (eventName === "error") console.error(data);
 	};
+
 	private _eventLogger: EventLogger;
 	private _publisher: ContextPublisher;
 	private _provider: ContextDataProvider;
@@ -30,20 +60,11 @@ export default class SDK {
 
 	constructor(options: ClientOptions & SDKOptions) {
 		const clientOptions = Object.assign(
-			{
-				agent: "absmartly-javascript-sdk",
-			},
+			{ agent: "absmartly-javascript-sdk" },
 			...Object.entries(options || {})
-				.filter(
-					(x) =>
-						["application", "agent", "apiKey", "endpoint", "keepalive", "environment", "retries", "timeout"].indexOf(
-							x[0]
-						) !== -1
-				)
-				.map((x) => ({ [x[0]]: x[1] }))
-		);
-
-		options = Object.assign({}, options);
+				.filter((x) => CLIENT_OPTION_KEYS.indexOf(x[0]) !== -1)
+				.map((x) => ({ [x[0]]: x[1] })),
+		) as ClientOptions;
 
 		this._client = options.client || new Client(clientOptions);
 		this._eventLogger = options.eventLogger || SDK.defaultEventLogger;
@@ -51,86 +72,77 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	getContextData(requestOptions: ClientRequestOptions) {
+	getContextData(requestOptions: ClientRequestOptions): Promise<ContextData> {
 		return this._provider.getContextData(this, requestOptions);
 	}
 
 	createContext(
 		params: ContextParams,
-		options?: Partial<ContextOptions>,
-		requestOptions?: Partial<ClientRequestOptions>
-	) {
+		options?: Partial<ContextOptionsInput>,
+		requestOptions?: Partial<ClientRequestOptions>,
+	): Context {
 		SDK._validateParams(params);
-
 		const fullOptions = SDK._contextOptions(options);
 		const data = this._provider.getContextData(this, requestOptions);
 		return new Context(this, fullOptions, params, data);
 	}
 
-	setEventLogger(logger: EventLogger) {
-		this._eventLogger = logger;
-	}
-
-	getEventLogger() {
-		return this._eventLogger;
-	}
-
-	setContextPublisher(publisher: ContextPublisher) {
-		this._publisher = publisher;
-	}
-
-	getContextPublisher() {
-		return this._publisher;
-	}
-
-	setContextDataProvider(provider: ContextDataProvider) {
-		this._provider = provider;
-	}
-
-	getContextDataProvider() {
-		return this._provider;
-	}
-
-	getClient() {
-		return this._client;
-	}
-
 	createContextWith(
 		params: ContextParams,
 		data: ContextData | Promise<ContextData>,
-		options?: Partial<ContextOptions>
-	) {
+		options?: Partial<ContextOptionsInput>,
+	): Context {
 		SDK._validateParams(params);
-
 		const fullOptions = SDK._contextOptions(options);
-
 		return new Context(this, fullOptions, params, data);
 	}
 
-	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
-		return Object.assign(
-			{
-				publishDelay: isLongLivedApp() ? 100 : -1,
-				refreshPeriod: 0,
-			},
-			options || {}
-		);
+	setEventLogger(logger: EventLogger): void {
+		this._eventLogger = logger;
 	}
 
-	private static _validateParams(params: ContextParams) {
-		Object.entries(params.units).forEach((entry) => {
-			const type = typeof entry[1];
+	getEventLogger(): EventLogger {
+		return this._eventLogger;
+	}
+
+	setContextPublisher(publisher: ContextPublisher): void {
+		this._publisher = publisher;
+	}
+
+	getContextPublisher(): ContextPublisher {
+		return this._publisher;
+	}
+
+	setContextDataProvider(provider: ContextDataProvider): void {
+		this._provider = provider;
+	}
+
+	getContextDataProvider(): ContextDataProvider {
+		return this._provider;
+	}
+
+	getClient(): Client {
+		return this._client;
+	}
+
+	private static _contextOptions(options?: Partial<ContextOptionsInput>): ContextOptionsFull {
+		return Object.assign(
+			{ publishDelay: isLongLivedApp() ? 100 : -1, refreshPeriod: 0 },
+			options || {},
+		) as ContextOptionsFull;
+	}
+
+	private static _validateParams(params: ContextParams): void {
+		for (const [key, value] of Object.entries(params.units)) {
+			const type = typeof value;
 			if (type !== "string" && type !== "number") {
 				throw new Error(
-					`Unit '${entry[0]}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
+					`Unit '${key}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`,
 				);
 			}
-
-			if (typeof entry[1] === "string") {
-				if (entry[1].length === 0) {
-					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`);
-				}
+			if (typeof value === "string" && value.length === 0) {
+				throw new Error(`Unit '${key}' UID length must be >= 1`);
 			}
-		});
+		}
 	}
 }
