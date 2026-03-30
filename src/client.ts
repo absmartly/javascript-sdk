@@ -12,6 +12,8 @@ import type {
 export class Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
+	private readonly _fetchImpl: typeof fetch;
+	private readonly _AbortControllerImpl: typeof AbortController;
 
 	constructor(opts: ClientOptions) {
 		const merged: Record<string, unknown> = Object.assign(
@@ -39,7 +41,10 @@ export class Client {
 
 		this._opts = merged as unknown as NormalizedClientOptions;
 		this._delay = 50;
+		this._fetchImpl = (opts.fetchImpl ?? globalThis.fetch).bind(globalThis) as typeof fetch;
+		this._AbortControllerImpl = opts.AbortControllerImpl ?? AbortController;
 	}
+
 
 	getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData> {
 		return this.getUnauthed({
@@ -89,7 +94,7 @@ export class Client {
 			}
 		}
 
-		const controller = new AbortController();
+		const controller = new this._AbortControllerImpl();
 
 		const tryOnce = (): Promise<unknown> => {
 			const opts: RequestInit = {
@@ -110,7 +115,7 @@ export class Client {
 				};
 			}
 
-			return fetch(url, opts).then((response: Response) => {
+			return this._fetchImpl(url, opts).then((response: Response) => {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text: string) => {

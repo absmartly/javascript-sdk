@@ -123,6 +123,8 @@ export type ClientOptions = {
 	retries?: number;
 	timeout?: number;
 	keepalive?: boolean;
+	fetchImpl?: typeof fetch;
+	AbortControllerImpl?: typeof AbortController;
 };
 
 export type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {

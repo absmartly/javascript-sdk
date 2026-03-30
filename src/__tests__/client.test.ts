@@ -17,6 +17,31 @@ describe("Client", () => {
 			expect(() => new Client(opts)).toThrow("Missing 'apiKey' in options argument");
 		});
 
+		test("uses injected fetch implementation", async () => {
+			const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) });
+			const client = new Client({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+			await client.getContext();
+			expect(fetchImpl).toHaveBeenCalledTimes(1);
+		});
+
+		test("uses injected AbortController implementation", async () => {
+			const abort = vi.fn();
+			class FakeAbortController {
+				signal = { addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as AbortSignal;
+				abort = abort;
+			}
+			const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) });
+			const client = new Client({
+				...defaultOpts,
+				retries: 0,
+				timeout: 1000,
+				fetchImpl,
+				AbortControllerImpl: FakeAbortController as unknown as typeof AbortController,
+			});
+			await client.getContext();
+			expect(fetchImpl).toHaveBeenCalledTimes(1);
+		});
+
 		test("throws for missing endpoint", () => {
 			const opts = { ...defaultOpts, endpoint: undefined } as unknown as ClientOptions;
 			expect(() => new Client(opts)).toThrow("Missing 'endpoint' in options argument");

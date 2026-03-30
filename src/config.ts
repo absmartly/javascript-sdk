@@ -5,8 +5,24 @@ interface ConfigContext {
 	variableValue(key: string, defaultValue: unknown): unknown;
 }
 
+function deepClone<T>(value: T): T {
+	if (Array.isArray(value)) {
+		return value.map((item) => deepClone(item)) as T;
+	}
+
+	if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+		const result: Record<string, unknown> = {};
+		for (const [key, item] of Object.entries(value)) {
+			result[key] = deepClone(item);
+		}
+		return result as T;
+	}
+
+	return value;
+}
+
 export function mergeConfig(context: ConfigContext, previousConfig: Record<string, unknown>): Record<string, unknown> {
-	const merged = structuredClone(previousConfig);
+	const merged = deepClone(previousConfig);
 	const keys = context.variableKeys();
 
 	for (const [variableKey, experimentName] of Object.entries(keys)) {
