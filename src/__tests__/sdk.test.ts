@@ -81,4 +81,28 @@ describe("SDK", () => {
 		sdk.setContextDataProvider(provider as never);
 		expect(sdk.getContextDataProvider()).toBe(provider);
 	});
+
+	test("forwards fetchImpl and AbortControllerImpl to Client", async () => {
+		const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) });
+		let abortControllerInstances = 0;
+		class FakeAbortController {
+			signal = { addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as AbortSignal;
+			constructor() {
+				abortControllerInstances += 1;
+			}
+			abort = vi.fn();
+		}
+
+		const sdk = new SDK({
+			...defaultOpts,
+			fetchImpl,
+			AbortControllerImpl: FakeAbortController as unknown as typeof AbortController,
+		});
+		const context = sdk.createContext({ units: { session_id: "abc" } });
+		await context.ready();
+
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(abortControllerInstances).toBe(1);
+	});
 });
+

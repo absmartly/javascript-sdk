@@ -46,6 +46,8 @@ const CLIENT_OPTION_KEYS = [
 	"environment",
 	"retries",
 	"timeout",
+	"fetchImpl",
+	"AbortControllerImpl",
 ];
 
 export class SDK {

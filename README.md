@@ -27,9 +27,12 @@ const sdk = new SDK({
 });
 ```
 
-### Legacy Browsers (IE11+, old Safari, old Android)
+### Legacy Browsers
 A pre-built legacy bundle transpiled to ES2015 is available at `dist/index.legacy.js`.
-You must provide polyfills for missing APIs:
+
+**Important:** This is an ES2015 build, not an ES5 build. It can help with older browsers that support ES2015, but it does **not** restore IE11 or IE10 compatibility on its own.
+
+If you need legacy browser support, you must provide polyfills for missing APIs:
 
 | API | Polyfill |
 |---|---|
@@ -54,7 +57,7 @@ You must provide polyfills for missing APIs:
 | `dist/index.js` | ES2022 ESM | Modern bundlers (Vite, webpack, Rollup) |
 | `dist/index.cjs` | ES2022 CJS | Node.js `require()` |
 | `dist/index.global.js` | ES2022 IIFE | Modern browsers via `<script>` tag |
-| `dist/index.legacy.js` | ES2015 IIFE | Legacy browsers (IE11+) via `<script>` tag |
+| `dist/index.legacy.js` | ES2015 IIFE | Older browsers that already support ES2015 syntax |
 | `dist/index.d.ts` | TypeScript | Type declarations |
 
 ## Installation
@@ -81,7 +84,7 @@ const { SDK } = require("@absmartly/javascript-sdk");
 </script>
 ```
 
-#### Directly in the browser (legacy / IE11+)
+#### Directly in the browser (legacy / ES2015-capable browsers)
 ```html
 <!-- Include polyfills first (see Legacy Browsers section above) -->
 <script src="https://unpkg.com/@absmartly/javascript-sdk/dist/index.legacy.js"></script>
@@ -372,9 +375,9 @@ clearTimeout(timeoutId);
 ### Breaking changes
 - **Named exports** instead of default export: `import { SDK } from "@absmartly/javascript-sdk"` instead of `import absmartly from "@absmartly/javascript-sdk"`
 - **Node.js 14+** minimum (was Node.js 6+)
-- **IE10 no longer supported** - IE11+ is supported via the legacy build
+- **IE10 and IE11 are not supported by the shipped bundles** - `index.legacy.js` is ES2015, not ES5. Supporting IE10/IE11 would require an additional ES5 build plus polyfills.
 - **No bundled polyfills** - `core-js`, `node-fetch`, and `rfdc` are no longer bundled. Legacy environments must provide polyfills explicitly.
-- **Browser bundle renamed** - `dist/absmartly.min.js` is now `dist/index.global.js` (modern) or `dist/index.legacy.js` (IE11+)
+- **Browser bundle renamed** - `dist/absmartly.min.js` is now `dist/index.global.js` (modern) or `dist/index.legacy.js` (ES2015 legacy build)
 
 ### New features
 - Full TypeScript support with type declarations
@@ -382,6 +385,11 @@ clearTimeout(timeoutId);
 - Optional polyfill injection (`fetchImpl`, `AbortControllerImpl`)
 - ESM, CJS, and IIFE builds from a single source
 - Smaller bundle size
+
+### Removed exports
+- `AbortController` is no longer exported by the SDK package.
+- Use the platform/global `AbortController` instead.
+- In legacy environments, provide your own polyfill and pass it via `AbortControllerImpl`.
 
 ## About A/B Smartly
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
