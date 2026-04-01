@@ -302,10 +302,6 @@ export default class Client {
 		return this._opts.application;
 	}
 
-	getEnvironment(): string {
-		return this._opts.environment;
-	}
-
 	getUnauthed(options: ClientRequestOptions) {
 		return this.request({
 			...options,

@@ -17,18 +17,18 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	evaluateRules(audienceString: string, environmentId: number | null, vars: Record<string, unknown>): number | null {
-		let audience;
+	evaluateRules(assignmentRulesString: string, environmentId: number | null, vars: Record<string, unknown>): number | null {
+		let assignmentRules;
 		try {
-			audience = JSON.parse(audienceString);
+			assignmentRules = JSON.parse(assignmentRulesString);
 		} catch (error) {
 			console.error(error);
 			return null;
 		}
 
-		if (!audience || !Array.isArray(audience.rules)) return null;
+		if (!assignmentRules || !Array.isArray(assignmentRules.rules)) return null;
 
-		for (const ruleGroup of audience.rules) {
+		for (const ruleGroup of assignmentRules.rules) {
 			if (!ruleGroup || !Array.isArray(ruleGroup.or)) continue;
 			for (const rule of ruleGroup.or) {
 				if (Array.isArray(rule.environments) && rule.environments.length > 0) {

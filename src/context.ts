@@ -31,6 +31,7 @@ export type ExperimentData = {
 	trafficSeedHi: number;
 	trafficSeedLo: number;
 	audience: string;
+	assignment_rules: string;
 	audienceStrict: boolean;
 	split: number[];
 	seedHi: number;
@@ -468,24 +469,28 @@ export default class Context {
 		};
 
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
-			if (experiment.audience && experiment.audience.length > 0) {
-				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
-					const attrs = this._getAttributesMap();
+			if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
+				const attrs = this._getAttributesMap();
+
+				if (experiment.audience && experiment.audience.length > 0) {
 					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
 					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
 					}
+				}
 
-					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.audience, this._environmentId, attrs);
+				if (experiment.assignment_rules && experiment.assignment_rules.length > 0) {
+					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.assignment_rules, this._environmentId, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
 
 					assignment.ruleVariant = ruleVariant;
-					assignment.attrsSeq = this._attrsSeq;
 				}
+
+				assignment.attrsSeq = this._attrsSeq;
 			}
 			return true;
 		};
@@ -545,16 +550,18 @@ export default class Context {
 				const unitType = experiment.data.unitType;
 
 				let ruleVariant: number | null = null;
+				const attrs = this._getAttributesMap();
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const attrs = this._getAttributesMap();
 					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
 					if (typeof result === "boolean") {
 						assignment.audienceMismatch = !result;
 					}
+				}
 
-					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.audience, this._environmentId, attrs);
+				if (experiment.data.assignment_rules && experiment.data.assignment_rules.length > 0) {
+					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.assignment_rules, this._environmentId, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;

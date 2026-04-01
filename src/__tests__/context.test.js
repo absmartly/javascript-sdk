@@ -2063,6 +2063,8 @@ describe("Context", () => {
 						...x,
 						audience: JSON.stringify({
 							filter: [{ value: true }],
+						}),
+						assignment_rules: JSON.stringify({
 							rules: [
 								{
 									or: [
@@ -2091,6 +2093,8 @@ describe("Context", () => {
 						...x,
 						audience: JSON.stringify({
 							filter: [{ value: true }],
+						}),
+						assignment_rules: JSON.stringify({
 							rules: [
 								{
 									or: [
@@ -2119,6 +2123,8 @@ describe("Context", () => {
 						audienceStrict: true,
 						audience: JSON.stringify({
 							filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
+						}),
+						assignment_rules: JSON.stringify({
 							rules: [
 								{
 									or: [
@@ -2373,6 +2379,8 @@ describe("Context", () => {
 							...x,
 							audience: JSON.stringify({
 								filter: [{ value: true }],
+							}),
+							assignment_rules: JSON.stringify({
 								rules: [
 									{
 										or: [
@@ -2417,6 +2425,8 @@ describe("Context", () => {
 							...x,
 							audience: JSON.stringify({
 								filter: [{ value: true }],
+							}),
+							assignment_rules: JSON.stringify({
 								rules: [
 									{
 										or: [
@@ -2458,6 +2468,8 @@ describe("Context", () => {
 							...x,
 							audience: JSON.stringify({
 								filter: [{ value: true }],
+							}),
+							assignment_rules: JSON.stringify({
 								rules: [
 									{
 										or: [
@@ -2490,6 +2502,8 @@ describe("Context", () => {
 							...x,
 							audience: JSON.stringify({
 								filter: [{ value: true }],
+							}),
+							assignment_rules: JSON.stringify({
 								rules: [
 									{
 										or: [
