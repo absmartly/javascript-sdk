@@ -28,29 +28,28 @@ export class AudienceMatcher {
 
 		if (!assignmentRules || !Array.isArray(assignmentRules.rules)) return null;
 
-		for (const ruleGroup of assignmentRules.rules) {
-			if (!ruleGroup || !Array.isArray(ruleGroup.or)) continue;
-			for (const rule of ruleGroup.or) {
-				if (Array.isArray(rule.environments) && rule.environments.length > 0) {
-					if (environmentId == null || !rule.environments.includes(environmentId)) {
-						continue;
-					}
+		for (const rule of assignmentRules.rules) {
+			if (!rule) continue;
+
+			if (Array.isArray(rule.environments) && rule.environments.length > 0) {
+				if (environmentId == null || !rule.environments.includes(environmentId)) {
+					continue;
 				}
+			}
 
-				if (typeof rule.variant !== "number") continue;
+			if (typeof rule.variant !== "number") continue;
 
-				const conditions = rule.and;
+			const conditions = rule.and;
 
-				if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
-					return rule.variant;
-				}
+			if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
+				return rule.variant;
+			}
 
-				if (!Array.isArray(conditions)) continue;
+			if (!Array.isArray(conditions)) continue;
 
-				const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
-				if (result === true) {
-					return rule.variant;
-				}
+			const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
+			if (result === true) {
+				return rule.variant;
 			}
 		}
 

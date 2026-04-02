@@ -2067,14 +2067,10 @@ describe("Context", () => {
 						assignment_rules: JSON.stringify({
 							rules: [
 								{
-									or: [
-										{
-											name: "US Internal Users",
-											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-											environments: [],
-											variant: 1,
-										},
-									],
+									name: "US Internal Users",
+									and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+									environments: [],
+									variant: 1,
 								},
 							],
 						}),
@@ -2097,14 +2093,10 @@ describe("Context", () => {
 						assignment_rules: JSON.stringify({
 							rules: [
 								{
-									or: [
-										{
-											name: "Production Only",
-											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-											environments: [10],
-											variant: 1,
-										},
-									],
+									name: "Production Only",
+									and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+									environments: [10],
+									variant: 1,
 								},
 							],
 						}),
@@ -2127,14 +2119,10 @@ describe("Context", () => {
 						assignment_rules: JSON.stringify({
 							rules: [
 								{
-									or: [
-										{
-											name: "US Users",
-											and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-											environments: [],
-											variant: 1,
-										},
-									],
+									name: "US Users",
+									and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+									environments: [],
+									variant: 1,
 								},
 							],
 						}),
@@ -2383,20 +2371,16 @@ describe("Context", () => {
 							assignment_rules: JSON.stringify({
 								rules: [
 									{
-										or: [
-											{
-												name: "US Users",
-												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-												environments: [],
-												variant: 1,
-											},
-											{
-												name: "GB Users",
-												and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
-												environments: [],
-												variant: 2,
-											},
-										],
+										name: "US Users",
+										and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+										environments: [],
+										variant: 1,
+									},
+									{
+										name: "GB Users",
+										and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+										environments: [],
+										variant: 2,
 									},
 								],
 							}),
@@ -2429,17 +2413,13 @@ describe("Context", () => {
 							assignment_rules: JSON.stringify({
 								rules: [
 									{
-										or: [
-											{
-												name: "US Internal",
-												and: [
-													{ eq: [{ var: "country" }, { value: "US" }] },
-													{ eq: [{ var: "user_type" }, { value: "internal" }] },
-												],
-												environments: [],
-												variant: 1,
-											},
+										name: "US Internal",
+										and: [
+											{ eq: [{ var: "country" }, { value: "US" }] },
+											{ eq: [{ var: "user_type" }, { value: "internal" }] },
 										],
+										environments: [],
+										variant: 1,
 									},
 								],
 							}),
@@ -2472,14 +2452,10 @@ describe("Context", () => {
 							assignment_rules: JSON.stringify({
 								rules: [
 									{
-										or: [
-											{
-												name: "Prod and Staging",
-												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-												environments: [10, 20],
-												variant: 1,
-											},
-										],
+										name: "Prod and Staging",
+										and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+										environments: [10, 20],
+										variant: 1,
 									},
 								],
 							}),
@@ -2506,26 +2482,22 @@ describe("Context", () => {
 							assignment_rules: JSON.stringify({
 								rules: [
 									{
-										or: [
-											{
-												name: "US Users",
-												and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-												environments: [],
-												variant: 1,
-											},
-											{
-												name: "GB Users",
-												and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
-												environments: [],
-												variant: 2,
-											},
-											{
-												name: "FR Users",
-												and: [{ eq: [{ var: "country" }, { value: "FR" }] }],
-												environments: [],
-												variant: 0,
-											},
-										],
+										name: "US Users",
+										and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+										environments: [],
+										variant: 1,
+									},
+									{
+										name: "GB Users",
+										and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+										environments: [],
+										variant: 2,
+									},
+									{
+										name: "FR Users",
+										and: [{ eq: [{ var: "country" }, { value: "FR" }] }],
+										environments: [],
+										variant: 0,
 									},
 								],
 							}),

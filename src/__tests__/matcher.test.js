@@ -40,14 +40,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [],
-								variant: 1,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [],
+						variant: 1,
 					},
 				],
 			});
@@ -58,14 +54,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [],
-								variant: 1,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [],
+						variant: 1,
 					},
 				],
 			});
@@ -76,14 +68,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [2],
-								variant: 1,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [2],
+						variant: 1,
 					},
 				],
 			});
@@ -94,14 +82,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [1, 2],
-								variant: 2,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [1, 2],
+						variant: 2,
 					},
 				],
 			});
@@ -113,14 +97,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ value: true }],
-								environments: [],
-								variant: 1,
-							},
-						],
+						name: "rule1",
+						and: [{ value: true }],
+						environments: [],
+						variant: 1,
 					},
 				],
 			});
@@ -133,14 +113,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ value: true }],
-								environments: [1],
-								variant: 1,
-							},
-						],
+						name: "rule1",
+						and: [{ value: true }],
+						environments: [1],
+						variant: 1,
 					},
 				],
 			});
@@ -151,20 +127,16 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [],
-								variant: 1,
-							},
-							{
-								name: "rule2",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [],
-								variant: 2,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [],
+						variant: 1,
+					},
+					{
+						name: "rule2",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [],
+						variant: 2,
 					},
 				],
 			});
@@ -175,14 +147,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [],
-								environments: [],
-								variant: 3,
-							},
-						],
+						name: "rule1",
+						and: [],
+						environments: [],
+						variant: 3,
 					},
 				],
 			});
@@ -193,13 +161,9 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								environments: [],
-								variant: 3,
-							},
-						],
+						name: "rule1",
+						environments: [],
+						variant: 3,
 					},
 				],
 			});
@@ -215,13 +179,9 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [],
-								environments: [],
-							},
-						],
+						name: "rule1",
+						and: [],
+						environments: [],
 					},
 				],
 			});
@@ -232,14 +192,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [],
-								environments: [],
-								variant: "bad",
-							},
-						],
+						name: "rule1",
+						and: [],
+						environments: [],
+						variant: "bad",
 					},
 				],
 			});
@@ -250,20 +206,16 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "bad rule",
-								and: [],
-								environments: [],
-								variant: "not a number",
-							},
-							{
-								name: "good rule",
-								and: [],
-								environments: [],
-								variant: 2,
-							},
-						],
+						name: "bad rule",
+						and: [],
+						environments: [],
+						variant: "not a number",
+					},
+					{
+						name: "good rule",
+						and: [],
+						environments: [],
+						variant: 2,
 					},
 				],
 			});
@@ -274,19 +226,15 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "no variant",
-								and: [],
-								environments: [],
-							},
-							{
-								name: "good rule",
-								and: [],
-								environments: [],
-								variant: 1,
-							},
-						],
+						name: "no variant",
+						and: [],
+						environments: [],
+					},
+					{
+						name: "good rule",
+						and: [],
+						environments: [],
+						variant: 1,
 					},
 				],
 			});
@@ -295,7 +243,6 @@ describe("AudienceMatcher", () => {
 
 		it("should handle malformed rules gracefully", () => {
 			expect(matcher.evaluateRules('{"rules":"not an array"}', 1, {})).toBe(null);
-			expect(matcher.evaluateRules('{"rules":[{"or":"not an array"}]}', 1, {})).toBe(null);
 			expect(matcher.evaluateRules('{"rules":[null]}', 1, {})).toBe(null);
 		});
 
@@ -303,48 +250,36 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
-								environments: [],
-								variant: 1,
-							},
-							{
-								name: "rule2",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [],
-								variant: 2,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+						environments: [],
+						variant: 1,
+					},
+					{
+						name: "rule2",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [],
+						variant: 2,
 					},
 				],
 			});
 			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(2);
 		});
 
-		it("should evaluate second rule group when first has no match", () => {
+		it("should skip to later rule when earlier rules do not match", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
-								environments: [],
-								variant: 1,
-							},
-						],
+						name: "rule1",
+						and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+						environments: [],
+						variant: 1,
 					},
 					{
-						or: [
-							{
-								name: "rule2",
-								and: [{ eq: [{ var: "country" }, { value: "US" }] }],
-								environments: [],
-								variant: 2,
-							},
-						],
+						name: "rule2",
+						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						environments: [],
+						variant: 2,
 					},
 				],
 			});
@@ -355,14 +290,10 @@ describe("AudienceMatcher", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
-						or: [
-							{
-								name: "rule1",
-								and: [{ value: true }],
-								environments: [],
-								variant: 0,
-							},
-						],
+						name: "rule1",
+						and: [{ value: true }],
+						environments: [],
+						variant: 0,
 					},
 				],
 			});
