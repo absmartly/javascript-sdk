@@ -35,7 +35,7 @@ export type ExperimentData = {
 	split: number[];
 	seedHi: number;
 	seedLo: number;
-	variants: { config: null | string }[];
+	variants: { config: null | string; name?: string }[];
 	variables: Record<string, unknown>;
 	variant: number;
 	overridden: boolean;
