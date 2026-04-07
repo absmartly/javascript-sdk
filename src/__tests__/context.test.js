@@ -2068,7 +2068,8 @@ describe("Context", () => {
 							rules: [
 								{
 									name: "US Internal Users",
-									and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+									type: "assign",
+									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 									environments: [],
 									variant: 1,
 								},
@@ -2094,7 +2095,8 @@ describe("Context", () => {
 							rules: [
 								{
 									name: "Production Only",
-									and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+									type: "assign",
+									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 									environments: [10],
 									variant: 1,
 								},
@@ -2120,7 +2122,8 @@ describe("Context", () => {
 							rules: [
 								{
 									name: "US Users",
-									and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+									type: "assign",
+									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 									environments: [],
 									variant: 1,
 								},
@@ -2372,13 +2375,15 @@ describe("Context", () => {
 								rules: [
 									{
 										name: "US Users",
-										and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 										environments: [],
 										variant: 1,
 									},
 									{
 										name: "GB Users",
-										and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
 										environments: [],
 										variant: 2,
 									},
@@ -2414,10 +2419,11 @@ describe("Context", () => {
 								rules: [
 									{
 										name: "US Internal",
-										and: [
+										type: "assign",
+										conditions: { and: [
 											{ eq: [{ var: "country" }, { value: "US" }] },
 											{ eq: [{ var: "user_type" }, { value: "internal" }] },
-										],
+										] },
 										environments: [],
 										variant: 1,
 									},
@@ -2453,7 +2459,8 @@ describe("Context", () => {
 								rules: [
 									{
 										name: "Prod and Staging",
-										and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 										environments: [10, 20],
 										variant: 1,
 									},
@@ -2483,19 +2490,22 @@ describe("Context", () => {
 								rules: [
 									{
 										name: "US Users",
-										and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 										environments: [],
 										variant: 1,
 									},
 									{
 										name: "GB Users",
-										and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
 										environments: [],
 										variant: 2,
 									},
 									{
 										name: "FR Users",
-										and: [{ eq: [{ var: "country" }, { value: "FR" }] }],
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "FR" }] }] },
 										environments: [],
 										variant: 0,
 									},

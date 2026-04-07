@@ -31,6 +31,8 @@ export class AudienceMatcher {
 		for (const rule of assignmentRules.rules) {
 			if (!rule) continue;
 
+			if (rule.type !== "assign") continue;
+
 			if (Array.isArray(rule.environments) && rule.environments.length > 0) {
 				if (environmentId == null || !rule.environments.includes(environmentId)) {
 					continue;
@@ -39,17 +41,21 @@ export class AudienceMatcher {
 
 			if (typeof rule.variant !== "number") continue;
 
-			const conditions = rule.and;
+			const conditions = rule.conditions;
 
-			if (!conditions || (Array.isArray(conditions) && conditions.length === 0)) {
+			if (conditions == null) {
 				return rule.variant;
 			}
 
-			if (!Array.isArray(conditions)) continue;
+			if (!isObject(conditions)) continue;
 
-			const result = this._jsonExpr.evaluateBooleanExpr({ and: conditions }, vars);
-			if (result === true) {
-				return rule.variant;
+			try {
+				const result = this._jsonExpr.evaluateBooleanExpr(conditions, vars);
+				if (result === true) {
+					return rule.variant;
+				}
+			} catch (e) {
+				console.warn(`Failed to evaluate assignment rule conditions for variant ${rule.variant}: ${e}`);
 			}
 		}
 

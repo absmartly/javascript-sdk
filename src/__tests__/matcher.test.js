@@ -41,7 +41,8 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [],
 						variant: 1,
 					},
@@ -55,7 +56,8 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [],
 						variant: 1,
 					},
@@ -69,7 +71,8 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [2],
 						variant: 1,
 					},
@@ -83,7 +86,8 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [1, 2],
 						variant: 2,
 					},
@@ -98,7 +102,8 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ value: true }],
+						type: "assign",
+						conditions: { value: true },
 						environments: [],
 						variant: 1,
 					},
@@ -114,7 +119,8 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ value: true }],
+						type: "assign",
+						conditions: { value: true },
 						environments: [1],
 						variant: 1,
 					},
@@ -128,13 +134,15 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [],
 						variant: 1,
 					},
 					{
 						name: "rule2",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [],
 						variant: 2,
 					},
@@ -143,12 +151,13 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(1);
 		});
 
-		it("should return variant when conditions are empty (matches all)", () => {
+		it("should return variant when conditions is null (matches all)", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
 						name: "rule1",
-						and: [],
+						type: "assign",
+						conditions: null,
 						environments: [],
 						variant: 3,
 					},
@@ -157,11 +166,12 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, 1, {})).toBe(3);
 		});
 
-		it("should return variant when and field is absent (matches all)", () => {
+		it("should return variant when conditions field is absent (matches all)", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
 						name: "rule1",
+						type: "assign",
 						environments: [],
 						variant: 3,
 					},
@@ -180,7 +190,7 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [],
+						type: "assign",
 						environments: [],
 					},
 				],
@@ -193,7 +203,7 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [],
+						type: "assign",
 						environments: [],
 						variant: "bad",
 					},
@@ -207,13 +217,13 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "bad rule",
-						and: [],
+						type: "assign",
 						environments: [],
 						variant: "not a number",
 					},
 					{
 						name: "good rule",
-						and: [],
+						type: "assign",
 						environments: [],
 						variant: 2,
 					},
@@ -227,12 +237,12 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "no variant",
-						and: [],
+						type: "assign",
 						environments: [],
 					},
 					{
 						name: "good rule",
-						and: [],
+						type: "assign",
 						environments: [],
 						variant: 1,
 					},
@@ -246,18 +256,53 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules('{"rules":[null]}', 1, {})).toBe(null);
 		});
 
-		it("should skip to second rule when first does not match", () => {
+		it("should skip rules with non-assign type", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+						type: "other",
 						environments: [],
 						variant: 1,
 					},
 					{
 						name: "rule2",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						environments: [],
+						variant: 2,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(2);
+		});
+
+		it("should skip rules with missing type", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						environments: [],
+						variant: 1,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(null);
+		});
+
+		it("should skip to second rule when first does not match", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+						environments: [],
+						variant: 1,
+					},
+					{
+						name: "rule2",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [],
 						variant: 2,
 					},
@@ -271,13 +316,15 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ eq: [{ var: "country" }, { value: "GB" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
 						environments: [],
 						variant: 1,
 					},
 					{
 						name: "rule2",
-						and: [{ eq: [{ var: "country" }, { value: "US" }] }],
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
 						environments: [],
 						variant: 2,
 					},
@@ -291,13 +338,35 @@ describe("AudienceMatcher", () => {
 				rules: [
 					{
 						name: "rule1",
-						and: [{ value: true }],
+						type: "assign",
+						conditions: { value: true },
 						environments: [],
 						variant: 0,
 					},
 				],
 			});
 			expect(matcher.evaluateRules(audience, 1, {})).toBe(0);
+		});
+
+		it("should skip rule with non-object conditions", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: "invalid",
+						environments: [],
+						variant: 1,
+					},
+					{
+						name: "rule2",
+						type: "assign",
+						environments: [],
+						variant: 2,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(2);
 		});
 	});
 });
