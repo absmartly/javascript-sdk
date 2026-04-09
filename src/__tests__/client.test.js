@@ -814,6 +814,75 @@ describe("Client", () => {
 			});
 	});
 
+	it("request() should still send headers when auth is explicitly true (deprecated)", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(clientOptions);
+
+		client
+			.request({
+				auth: true,
+				method: "PUT",
+				path: "/context",
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					body: undefined,
+					keepalive: true,
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
+	it("get() should send a GET request with headers", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(clientOptions);
+
+		client
+			.get({
+				path: "/context",
+				query: { application: "test_app", environment: "test" },
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(
+					`${endpoint}/context?application=test_app&environment=test`,
+					{
+						method: "GET",
+						headers: {
+							"Content-Type": "application/json",
+							"X-API-Key": apiKey,
+							"X-Agent": "javascript-client",
+							"X-Environment": "test",
+							"X-Application": "test_app",
+							"X-Application-Version": 1000000,
+						},
+						keepalive: true,
+						signal: expect.any(Object),
+					}
+				);
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
 	it("publish() calls endpoint", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
