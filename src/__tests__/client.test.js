@@ -788,6 +788,32 @@ describe("Client", () => {
 			});
 	});
 
+	it("request() should not send headers when auth argument is false", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(Object.assign({}, clientOptions, { application: "website" }));
+
+		client
+			.request({
+				auth: false,
+				method: "PUT",
+				path: "/context",
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
+					method: "PUT",
+					body: undefined,
+					keepalive: true,
+					signal: expect.any(Object),
+				});
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
 	it("publish() calls endpoint", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 

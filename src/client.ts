@@ -21,6 +21,8 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
+	/** @deprecated The API key is now always sent. This option will be removed in a future version. */
+	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
 };
@@ -160,14 +162,16 @@ export default class Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			opts.headers = {
-				"Content-Type": "application/json",
-				"X-API-Key": this._opts.apiKey,
-				"X-Agent": this._opts.agent,
-				"X-Environment": this._opts.environment,
-				"X-Application": this._opts.application.name,
-				"X-Application-Version": this._opts.application.version,
-			};
+			if (options.auth !== false) {
+				opts.headers = {
+					"Content-Type": "application/json",
+					"X-API-Key": this._opts.apiKey,
+					"X-Agent": this._opts.agent,
+					"X-Environment": this._opts.environment,
+					"X-Application": this._opts.application.name,
+					"X-Application-Version": this._opts.application.version,
+				};
+			}
 
 			return fetch(url, opts).then((response: FetchResponse) => {
 				if (!response.ok) {
