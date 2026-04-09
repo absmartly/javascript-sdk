@@ -197,6 +197,14 @@ describe("Client", () => {
 			expect(fetch).toHaveBeenCalledTimes(1);
 			expect(fetch).toHaveBeenCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
 				method: "GET",
+				headers: {
+					"Content-Type": "application/json",
+					"X-API-Key": apiKey,
+					"X-Agent": "javascript-client",
+					"X-Environment": "test",
+					"X-Application": "test_app",
+					"X-Application-Version": 1000000,
+				},
 				keepalive: true,
 				signal: expect.any(Object),
 			});
@@ -217,7 +225,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -266,7 +273,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -310,7 +316,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -361,7 +366,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -402,7 +406,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -428,7 +431,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -455,7 +457,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -497,7 +498,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -532,7 +532,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -562,7 +561,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -587,7 +585,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "POST",
 				path: "/context",
 				query: { a: 1 },
@@ -625,7 +622,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "POST",
 				path: "/context",
 				query: { a: 1 },
@@ -663,7 +659,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1, b: "ã=á" },
@@ -699,7 +694,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: {},
@@ -735,7 +729,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 			})
@@ -769,7 +762,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 			})
@@ -787,32 +779,6 @@ describe("Client", () => {
 					},
 					keepalive: true,
 					body: undefined,
-					signal: expect.any(Object),
-				});
-
-				expect(response).toEqual(defaultMockResponse);
-
-				done();
-			});
-	});
-
-	it("request() should not send headers when auth argument is false", (done) => {
-		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
-
-		const client = new Client(Object.assign({}, clientOptions, { application: "website" }));
-
-		client
-			.request({
-				auth: false,
-				method: "PUT",
-				path: "/context",
-			})
-			.then((response) => {
-				expect(fetch).toHaveBeenCalledTimes(1);
-				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context`, {
-					method: "PUT",
-					body: undefined,
-					keepalive: true,
 					signal: expect.any(Object),
 				});
 
@@ -954,7 +920,6 @@ describe("Client", () => {
 
 		client
 			.request({
-				auth: true,
 				method: "PUT",
 				path: "/context",
 			})

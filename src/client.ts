@@ -21,7 +21,6 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
-	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
 };
@@ -90,7 +89,7 @@ export default class Client {
 	}
 
 	getContext(options?: Partial<ClientRequestOptions>) {
-		return this.getUnauthed({
+		return this.get({
 			...options,
 			path: "/context",
 			query: {
@@ -161,16 +160,14 @@ export default class Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			if (options.auth) {
-				opts.headers = {
-					"Content-Type": "application/json",
-					"X-API-Key": this._opts.apiKey,
-					"X-Agent": this._opts.agent,
-					"X-Environment": this._opts.environment,
-					"X-Application": this._opts.application.name,
-					"X-Application-Version": this._opts.application.version,
-				};
-			}
+			opts.headers = {
+				"Content-Type": "application/json",
+				"X-API-Key": this._opts.apiKey,
+				"X-Agent": this._opts.agent,
+				"X-Environment": this._opts.environment,
+				"X-Application": this._opts.application.name,
+				"X-Application-Version": this._opts.application.version,
+			};
 
 			return fetch(url, opts).then((response: FetchResponse) => {
 				if (!response.ok) {
@@ -281,7 +278,6 @@ export default class Client {
 	post(options: ClientRequestOptions) {
 		return this.request({
 			...options,
-			auth: true,
 			method: "POST",
 		});
 	}
@@ -289,7 +285,6 @@ export default class Client {
 	put(options: ClientRequestOptions) {
 		return this.request({
 			...options,
-			auth: true,
 			method: "PUT",
 		});
 	}
@@ -302,7 +297,7 @@ export default class Client {
 		return this._opts.application;
 	}
 
-	getUnauthed(options: ClientRequestOptions) {
+	get(options: ClientRequestOptions) {
 		return this.request({
 			...options,
 			method: "GET",
