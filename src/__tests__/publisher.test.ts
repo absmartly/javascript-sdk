@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
-import { ContextPublisher } from "../publisher";
+import { DefaultContextPublisher } from "../publisher";
 
-describe("ContextPublisher", () => {
+describe("DefaultContextPublisher", () => {
 	test("delegates to sdk.getClient().publish()", async () => {
 		const mockPublish = vi.fn().mockResolvedValue({});
 		const mockSdk = { getClient: () => ({ publish: mockPublish }) };
@@ -12,7 +12,7 @@ describe("ContextPublisher", () => {
 			sdkVersion: "2.0.0",
 		};
 
-		const publisher = new ContextPublisher();
+		const publisher = new DefaultContextPublisher();
 		await publisher.publish(request, mockSdk, {}, { path: "/test" });
 
 		expect(mockPublish).toHaveBeenCalledWith(request, { path: "/test" });

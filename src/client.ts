@@ -1,15 +1,13 @@
 import { AbortError, RetryError, TimeoutError } from "./errors";
-import type {
-	ApplicationObject,
-	ClientOptions,
-	ClientRequestOptions,
-	ContextData,
-	ContextParams,
-	NormalizedClientOptions,
-	PublishParams,
-} from "./types";
+import type { ApplicationObject, ContextData, PublishParams } from "./models";
+import type { ContextParams } from "./interfaces";
+import type { Client, ClientOptions, ClientRequestOptions } from "./interfaces";
 
-export class Client {
+type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
+	application: ApplicationObject;
+};
+
+export class DefaultClient implements Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
 	private readonly _fetchImpl: typeof fetch;
@@ -194,7 +192,7 @@ export class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? 5, this._opts.timeout ?? 3000)
+		return tryWith(this._opts.retries ?? 5, timeout || this._opts.timeout || 3000)
 			.then((value) => {
 				finalCleanUp();
 				return value;

@@ -1,3 +1,24 @@
+export class ABSmartlyError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ABSmartlyError";
+	}
+}
+
+export class ContextNotReadyError extends ABSmartlyError {
+	constructor() {
+		super("Context is not yet ready");
+		this.name = "ContextNotReadyError";
+	}
+}
+
+export class ContextFinalizedError extends ABSmartlyError {
+	constructor() {
+		super("Context has been finalized");
+		this.name = "ContextFinalizedError";
+	}
+}
+
 export class TimeoutError extends Error {
 	readonly timeout: number;
 	constructor(timeout: number) {

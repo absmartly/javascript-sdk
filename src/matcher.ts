@@ -5,15 +5,17 @@ export class AudienceMatcher {
 	private readonly _jsonExpr = new JsonExpr();
 
 	evaluate(audienceString: string, vars: Record<string, unknown>): boolean | null {
+		let audience;
 		try {
-			const audience = JSON.parse(audienceString);
-			if (audience && audience.filter) {
-				if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
-				}
-			}
+			audience = JSON.parse(audienceString);
 		} catch {
-			// invalid JSON
+			return null;
+		}
+
+		if (audience && audience.filter) {
+			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
+				return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
+			}
 		}
 		return null;
 	}

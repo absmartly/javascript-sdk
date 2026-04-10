@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { SDK } from "../sdk";
-import type { ClientOptions } from "../types";
+import type { ClientOptions } from "../interfaces";
 
 const defaultOpts: ClientOptions = {
 	agent: "test-agent",
@@ -80,6 +80,25 @@ describe("SDK", () => {
 		const provider = { getContextData: vi.fn() };
 		sdk.setContextDataProvider(provider as never);
 		expect(sdk.getContextDataProvider()).toBe(provider);
+	});
+
+	test("accepts custom client via SDKOptions", () => {
+		const mockClient = {
+			getContext: vi.fn().mockResolvedValue({ experiments: [] }),
+			publish: vi.fn().mockResolvedValue("ok"),
+			getAgent: vi.fn().mockReturnValue("custom-agent"),
+			getApplication: vi.fn().mockReturnValue({ name: "custom-app", version: 0 }),
+			getEnvironment: vi.fn().mockReturnValue("custom-env"),
+		};
+		const sdk = new SDK({ ...defaultOpts, client: mockClient } as any);
+		expect(sdk.getClient()).toBe(mockClient);
+	});
+
+	test("event logger fires ready event on createContextWith", () => {
+		const logger = vi.fn();
+		const sdk = new SDK({ ...defaultOpts, eventLogger: logger });
+		const context = sdk.createContextWith({ units: { session_id: "abc" } }, { experiments: [] });
+		expect(logger).toHaveBeenCalledWith(context, "ready", expect.anything());
 	});
 
 	test("forwards fetchImpl and AbortControllerImpl to Client", async () => {

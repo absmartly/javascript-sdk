@@ -1,5 +1,37 @@
 import { describe, expect, test } from "vitest";
-import { AbortError, RetryError, TimeoutError } from "../errors";
+import { ABSmartlyError, AbortError, ContextFinalizedError, ContextNotReadyError, RetryError, TimeoutError } from "../errors";
+
+describe("ABSmartlyError", () => {
+	test("has correct name and message", () => {
+		const error = new ABSmartlyError("test message");
+		expect(error).toBeInstanceOf(Error);
+		expect(error).toBeInstanceOf(ABSmartlyError);
+		expect(error.name).toBe("ABSmartlyError");
+		expect(error.message).toBe("test message");
+	});
+});
+
+describe("ContextNotReadyError", () => {
+	test("has correct name, message, and extends ABSmartlyError", () => {
+		const error = new ContextNotReadyError();
+		expect(error).toBeInstanceOf(Error);
+		expect(error).toBeInstanceOf(ABSmartlyError);
+		expect(error).toBeInstanceOf(ContextNotReadyError);
+		expect(error.name).toBe("ContextNotReadyError");
+		expect(error.message).toBe("Context is not yet ready");
+	});
+});
+
+describe("ContextFinalizedError", () => {
+	test("has correct name, message, and extends ABSmartlyError", () => {
+		const error = new ContextFinalizedError();
+		expect(error).toBeInstanceOf(Error);
+		expect(error).toBeInstanceOf(ABSmartlyError);
+		expect(error).toBeInstanceOf(ContextFinalizedError);
+		expect(error.name).toBe("ContextFinalizedError");
+		expect(error.message).toBe("Context has been finalized");
+	});
+});
 
 describe("TimeoutError", () => {
 	test("has correct name, message, and timeout", () => {

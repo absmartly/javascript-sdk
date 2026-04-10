@@ -104,7 +104,7 @@ export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?
 	return false;
 }
 
-export function arrayEqualsShallow(a?: unknown[], b?: unknown[]): boolean {
+export function arrayEqualsShallow(a?: unknown[] | null, b?: unknown[] | null): boolean {
 	return a === b || (a?.length === b?.length && !a?.some((va, vi) => b && va !== b[vi]));
 }
 

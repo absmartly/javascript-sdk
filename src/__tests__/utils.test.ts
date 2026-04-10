@@ -89,6 +89,18 @@ describe("arrayEqualsShallow", () => {
 	test("both undefined", () => {
 		expect(arrayEqualsShallow(undefined, undefined)).toBe(true);
 	});
+
+	test("both null", () => {
+		expect(arrayEqualsShallow(null, null)).toBe(true);
+	});
+
+	test("array vs null returns false", () => {
+		expect(arrayEqualsShallow([1], null)).toBe(false);
+	});
+
+	test("null vs array returns false", () => {
+		expect(arrayEqualsShallow(null, [1])).toBe(false);
+	});
 });
 
 describe("chooseVariant", () => {
@@ -109,5 +121,9 @@ describe("chooseVariant", () => {
 
 	test("returns last variant for probability >= 1", () => {
 		expect(chooseVariant([0.5, 0.5], 1.0)).toBe(1);
+	});
+
+	test("zero-weight first variant [0.0, 1.0] with prob=0.0 returns 1", () => {
+		expect(chooseVariant([0.0, 1.0], 0.0)).toBe(1);
 	});
 });

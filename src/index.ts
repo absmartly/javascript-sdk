@@ -1,29 +1,47 @@
 export { SDK } from "./sdk";
 export { Context } from "./context";
-export { ContextDataProvider } from "./provider";
-export { ContextPublisher } from "./publisher";
+export { DefaultContextDataProvider } from "./provider";
+export { DefaultContextPublisher } from "./publisher";
 export { mergeConfig } from "./config";
+
+export {
+	ABSmartlyError,
+	ContextNotReadyError,
+	ContextFinalizedError,
+	TimeoutError,
+	RetryError,
+	AbortError,
+} from "./errors";
 
 export type {
 	ApplicationObject,
-	Attribute,
 	Assignment,
-	ClientOptions,
-	ClientRequestOptions,
+	Attribute,
 	ContextData,
-	ContextParams,
 	CustomFieldValue,
 	CustomFieldValueType,
-	EventLogger,
-	EventLoggerData,
-	EventName,
 	Experiment,
+	ExperimentApplication,
 	ExperimentData,
+	ExperimentVariant,
 	Exposure,
-	Goal,
+	GoalAchievement,
 	JSONValue,
-	NormalizedClientOptions,
 	PublishParams,
 	Unit,
 	Units,
-} from "./types";
+} from "./models";
+
+export type {
+	Client,
+	ClientOptions,
+	ClientRequestOptions,
+	ContextDataProvider,
+	ContextOptions,
+	ContextParams,
+	ContextPublisher,
+	EventLogger,
+	EventLoggerData,
+	EventName,
+	SDKOptions,
+} from "./interfaces";

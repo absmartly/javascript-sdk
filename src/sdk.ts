@@ -1,15 +1,19 @@
-import { Client } from "./client";
+import { DefaultClient } from "./client";
 import { Context } from "./context";
-import { ContextPublisher } from "./publisher";
-import { ContextDataProvider } from "./provider";
+import { DefaultContextPublisher } from "./publisher";
+import { DefaultContextDataProvider } from "./provider";
 import type {
+	Client,
 	ClientOptions,
 	ClientRequestOptions,
-	ContextData,
+	ContextDataProvider,
 	ContextParams,
+	ContextPublisher,
 	EventLogger,
 	EventLoggerData,
-} from "./types";
+	SDKOptions,
+} from "./interfaces";
+import type { ContextData } from "./models";
 
 type ContextOptionsInput = {
 	publisher?: ContextPublisher;
@@ -22,13 +26,6 @@ type ContextOptionsInput = {
 
 type ContextOptionsFull = Required<Pick<ContextOptionsInput, "refreshPeriod" | "publishDelay">> &
 	Omit<ContextOptionsInput, "refreshPeriod" | "publishDelay">;
-
-export type SDKOptions = {
-	client?: Client;
-	eventLogger?: EventLogger;
-	publisher?: ContextPublisher;
-	provider?: ContextDataProvider;
-};
 
 function isLongLivedApp(): boolean {
 	return (
@@ -61,20 +58,25 @@ export class SDK {
 	private readonly _client: Client;
 
 	constructor(options: ClientOptions & SDKOptions) {
-		const clientOptions = Object.assign(
-			{ agent: "absmartly-javascript-sdk" },
-			...Object.entries(options || {})
-				.filter((x) => CLIENT_OPTION_KEYS.indexOf(x[0]) !== -1)
-				.map((x) => ({ [x[0]]: x[1] })),
-		) as ClientOptions;
+		if (options.client) {
+			this._client = options.client;
+		} else {
+			const clientOptions = Object.assign(
+				{ agent: "absmartly-javascript-sdk" },
+				...Object.entries(options || {})
+					.filter((x) => CLIENT_OPTION_KEYS.indexOf(x[0]) !== -1)
+					.map((x) => ({ [x[0]]: x[1] })),
+			) as ClientOptions;
 
-		this._client = options.client || new Client(clientOptions);
+			this._client = new DefaultClient(clientOptions);
+		}
+
 		this._eventLogger = options.eventLogger || SDK.defaultEventLogger;
-		this._publisher = options.publisher || new ContextPublisher();
-		this._provider = options.provider || new ContextDataProvider();
+		this._publisher = options.publisher || new DefaultContextPublisher();
+		this._provider = options.provider || new DefaultContextDataProvider();
 	}
 
-	getContextData(requestOptions: ClientRequestOptions): Promise<ContextData> {
+	getContextData(requestOptions?: Partial<ClientRequestOptions>): Promise<ContextData> {
 		return this._provider.getContextData(this, requestOptions);
 	}
 

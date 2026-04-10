@@ -16,6 +16,12 @@ describe("stringToUint8Array", () => {
 		const result = stringToUint8Array("");
 		expect(result.length).toBe(0);
 	});
+
+	test("encodes 4-byte characters (emoji/surrogate pairs)", () => {
+		const result = stringToUint8Array("\u{1F600}");
+		// U+1F600 = F0 9F 98 80 in UTF-8
+		expect(Array.from(result)).toEqual([0xf0, 0x9f, 0x98, 0x80]);
+	});
 });
 
 describe("base64UrlNoPadding", () => {
@@ -33,6 +39,13 @@ describe("base64UrlNoPadding", () => {
 
 	test("encodes 3 bytes", () => {
 		expect(base64UrlNoPadding(new Uint8Array([0, 0, 0]))).toBe("AAAA");
+	});
+
+	test("uses URL-safe characters (no +, /, =)", () => {
+		const result = base64UrlNoPadding(new Uint8Array([255, 254, 253, 252, 251, 250]));
+		expect(result).not.toContain("+");
+		expect(result).not.toContain("/");
+		expect(result).not.toContain("=");
 	});
 });
 
@@ -56,5 +69,12 @@ describe("hashUnit", () => {
 
 	test("produces different results for different inputs", () => {
 		expect(hashUnit("abc")).not.toBe(hashUnit("def"));
+	});
+
+	test("returns exactly 22 chars (MD5 = 16 bytes = 22 base64url chars)", () => {
+		expect(hashUnit("a").length).toBe(22);
+		expect(hashUnit("abcdefghijklmnopqrstuvwxyz").length).toBe(22);
+		expect(hashUnit("bleh@absmartly.com").length).toBe(22);
+		expect(hashUnit(123456789).length).toBe(22);
 	});
 });

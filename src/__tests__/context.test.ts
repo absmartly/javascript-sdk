@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Context } from "../context";
-import { ContextPublisher } from "../publisher";
-import { ContextDataProvider } from "../provider";
+import { DefaultContextPublisher } from "../publisher";
+import { DefaultContextDataProvider } from "../provider";
 import { hashUnit } from "../hashing";
 import { SDK_VERSION } from "../version";
+import type { ContextPublisher, ContextDataProvider } from "../interfaces";
 
 function clone<T>(obj: T): T {
 	return JSON.parse(JSON.stringify(obj));
@@ -429,6 +430,32 @@ describe("Context", () => {
 			expect(context.eventLogger()).toBe(defaultEventLogger);
 			expect(context.provider()).toBe(provider);
 			expect(context.publisher()).toBe(publisher);
+		});
+
+		it("ready() should resolve true even when context fails", async () => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.reject(new Error("network error")) as any);
+			const result = await context.ready();
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(true);
+			expect(context.isReady()).toBe(true);
+		});
+
+		it("should return control variant (0) for all experiments after failure", async () => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.reject(new Error("server error")) as any);
+			await context.ready();
+			expect(context.isFailed()).toBe(true);
+
+			expect(context.treatment("exp_test_ab")).toBe(0);
+			expect(context.treatment("exp_test_abc")).toBe(0);
+			expect(context.treatment("any_unknown_experiment")).toBe(0);
+			expect(context.peek("exp_test_ab")).toBe(0);
+		});
+
+		it("ready() should resolve true on success", async () => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse as any));
+			const result = await context.ready();
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(false);
 		});
 
 		it("should call event logger on error", async () => {
@@ -1105,7 +1132,7 @@ describe("Context", () => {
 							variant: 0,
 							fullOn: false,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 						{
 							id: 4,
@@ -1118,7 +1145,7 @@ describe("Context", () => {
 							variant: 2,
 							fullOn: true,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 						{
 							id: 5,
@@ -1175,7 +1202,7 @@ describe("Context", () => {
 					variant: expectedVariants[experiment.name],
 					fullOn: experiment.name === "exp_test_fullon",
 					custom: false,
-					audienceMismatch: false,
+					audienceMismatch: experiment.name === "exp_test_not_eligible" || experiment.name === "exp_test_fullon",
 				});
 			}
 
@@ -1570,7 +1597,7 @@ describe("Context", () => {
 							variant: 0,
 							fullOn: false,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 						{
 							id: 4,
@@ -1583,7 +1610,7 @@ describe("Context", () => {
 							variant: 2,
 							fullOn: true,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 						{
 							id: 5,
@@ -1886,7 +1913,7 @@ describe("Context", () => {
 							overridden: false,
 							fullOn: false,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 					],
 					goals: [
@@ -2520,7 +2547,7 @@ describe("Context", () => {
 							variant: 0,
 							fullOn: false,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 						{
 							id: 4,
@@ -2533,7 +2560,7 @@ describe("Context", () => {
 							variant: 2,
 							fullOn: true,
 							custom: false,
-							audienceMismatch: false,
+							audienceMismatch: true,
 						},
 					],
 				},
@@ -2701,30 +2728,32 @@ describe("Context", () => {
 			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
 		});
 
-		it("should console an error when JSON cannot be parsed", () => {
-			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		it("should log an error when JSON cannot be parsed", () => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
+			expect(defaultEventLogger).toHaveBeenCalledWith(
+				context,
+				"error",
+				expect.objectContaining({
+					message: expect.stringContaining("Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'")
+				})
 			);
-			errorSpy.mockRestore();
 		});
 
-		it("should console an error when a field type is invalid", () => {
-			const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		it("should log an error when a field type is invalid", () => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
+			expect(defaultEventLogger).toHaveBeenCalledWith(
+				context,
+				"error",
+				expect.objectContaining({
+					message: "Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
+				})
 			);
-			errorSpy.mockRestore();
 		});
 	});
 
@@ -2903,6 +2932,315 @@ describe("Context", () => {
 			expect(request.attributes).toEqual([
 				{ name: "custom_attr", value: "custom_value", setAt: expect.any(Number) },
 			]);
+		});
+	});
+
+	describe("publishDelay auto-flush", () => {
+		beforeEach(() => {
+			vi.useFakeTimers({ shouldAdvanceTime: false });
+			vi.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("should auto-flush after publishDelay ms when treatment is called", async () => {
+			const options = { publishDelay: 100, refreshPeriod: 0 };
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			const context = new Context(sdk, options, contextParams, getContextResponse as any);
+			context.treatment("exp_test_ab");
+			expect(publisher.publish).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(100);
+			expect(publisher.publish).toHaveBeenCalledTimes(1);
+		});
+
+		it("should auto-flush after publishDelay ms when track is called", async () => {
+			const options = { publishDelay: 100, refreshPeriod: 0 };
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			const context = new Context(sdk, options, contextParams, getContextResponse as any);
+			context.track("goal1", { amount: 100 });
+			expect(publisher.publish).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(100);
+			expect(publisher.publish).toHaveBeenCalledTimes(1);
+		});
+
+		it("should not create multiple timers for multiple queued events", async () => {
+			const options = { publishDelay: 100, refreshPeriod: 0 };
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			const context = new Context(sdk, options, contextParams, getContextResponse as any);
+			context.treatment("exp_test_ab");
+			context.treatment("exp_test_abc");
+			context.track("goal1");
+
+			await vi.advanceTimersByTimeAsync(100);
+			expect(publisher.publish).toHaveBeenCalledTimes(1);
+		});
+
+		it("should start auto-flush timer after ready if events queued before ready", async () => {
+			const options = { publishDelay: 100, refreshPeriod: 0 };
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			let resolveData: (data: any) => void;
+			const dataPromise = new Promise<any>((resolve) => { resolveData = resolve; });
+
+			const context = new Context(sdk, options, contextParams, dataPromise);
+			expect(context.isReady()).toBe(false);
+
+			// Resolve the promise to make context ready
+			resolveData!(getContextResponse);
+			await context.ready();
+			expect(context.isReady()).toBe(true);
+
+			// Queue events after ready
+			context.treatment("exp_test_ab");
+
+			// Timer should fire after publishDelay
+			await vi.advanceTimersByTimeAsync(100);
+			expect(publisher.publish).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("refreshPeriod auto-refresh", () => {
+		beforeEach(() => {
+			vi.useFakeTimers({ shouldAdvanceTime: false });
+			vi.spyOn(Date, "now").mockImplementation(() => timeOrigin);
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("should start refresh timer when refreshPeriod > 0", async () => {
+			const options = { publishDelay: -1, refreshPeriod: 1000 };
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(getContextResponse));
+
+			const context = new Context(sdk, options, contextParams, getContextResponse as any);
+			expect(context.isReady()).toBe(true);
+
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(provider.getContextData).toHaveBeenCalledTimes(1);
+		});
+
+		it("should call refresh multiple times on interval", async () => {
+			const options = { publishDelay: -1, refreshPeriod: 1000 };
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(getContextResponse));
+
+			const context = new Context(sdk, options, contextParams, getContextResponse as any);
+
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(provider.getContextData).toHaveBeenCalledTimes(3);
+		});
+
+		it("should stop refresh timer on finalize", async () => {
+			const options = { publishDelay: -1, refreshPeriod: 1000 };
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(getContextResponse));
+
+			const context = new Context(sdk, options, contextParams, getContextResponse as any);
+
+			await context.finalize();
+
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(provider.getContextData).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("event logger resilience", () => {
+		it("should not crash when event logger throws on treatment", () => {
+			const throwingLogger = vi.fn().mockImplementation(() => { throw new Error("logger broken"); });
+			const context = new Context(sdk, { ...contextOptions, eventLogger: throwingLogger }, contextParams, getContextResponse as any);
+			expect(() => context.treatment("exp_test_ab")).not.toThrow();
+		});
+
+		it("should not crash when event logger throws on track", () => {
+			const throwingLogger = vi.fn().mockImplementation(() => { throw new Error("logger broken"); });
+			const context = new Context(sdk, { ...contextOptions, eventLogger: throwingLogger }, contextParams, getContextResponse as any);
+			expect(() => context.track("goal1", { amount: 1 })).not.toThrow();
+		});
+
+		it("should not crash when event logger throws on publish", async () => {
+			const throwingLogger = vi.fn().mockImplementation(() => { throw new Error("logger broken"); });
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+			const context = new Context(sdk, { ...contextOptions, eventLogger: throwingLogger }, contextParams, getContextResponse as any);
+			context.treatment("exp_test_ab");
+			await expect(context.publish()).resolves.toBeUndefined();
+		});
+	});
+
+	describe("flush data preservation on failure", () => {
+		it("should preserve events on publish failure and retry", async () => {
+			(publisher.publish as ReturnType<typeof vi.fn>)
+				.mockReturnValueOnce(Promise.reject(new Error("network error")))
+				.mockReturnValueOnce(Promise.resolve());
+
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			context.treatment("exp_test_ab");
+
+			// First publish fails
+			await expect(context.publish()).rejects.toThrow("network error");
+
+			// Events should still be pending
+			expect(context.pending()).toBe(1);
+
+			// Second publish succeeds with the preserved events
+			await context.publish();
+			expect(context.pending()).toBe(0);
+			expect(publisher.publish).toHaveBeenCalledTimes(2);
+		});
+
+		it("should not lose new events queued during in-flight publish", async () => {
+			let resolvePublish: () => void;
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(new Promise<void>((resolve) => { resolvePublish = resolve; }));
+
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			context.treatment("exp_test_ab");
+
+			const publishPromise = context.publish();
+
+			// Queue new event while publish is in-flight
+			context.track("goal1");
+			expect(context.pending()).toBe(1); // new event pending
+
+			// Resolve the first publish
+			resolvePublish!();
+			await publishPromise;
+
+			// New event should still be pending
+			expect(context.pending()).toBe(1);
+		});
+	});
+
+	describe("override cache invalidation", () => {
+		it("should queue new exposure when override value changes", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			context.override("exp_test_ab", 2);
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toBe(1);
+
+			// Same override value — no new exposure
+			context.override("exp_test_ab", 2);
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toBe(1);
+
+			// Different override value — new exposure
+			context.override("exp_test_ab", 3);
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toBe(2);
+		});
+	});
+
+	describe("input validation", () => {
+		it("treatment() should throw for empty experiment name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.treatment("")).toThrow("Experiment name must be a non-empty string");
+		});
+
+		it("peek() should throw for empty experiment name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.peek("")).toThrow("Experiment name must be a non-empty string");
+		});
+
+		it("track() should throw for empty goal name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.track("")).toThrow("Goal name must be a non-empty string");
+		});
+
+		it("attribute() should throw for empty attribute name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.attribute("", "value")).toThrow("Attribute name must be a non-empty string");
+		});
+
+		it("variableValue() should throw for empty key", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.variableValue("", "default")).toThrow("Variable key must be a non-empty string");
+		});
+
+		it("override() should throw for empty experiment name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.override("", 1)).toThrow("Experiment name must be a non-empty string");
+		});
+
+		it("override() should throw for negative variant", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.override("exp_test_ab", -1)).toThrow("Variant must be a non-negative integer");
+		});
+
+		it("override() should throw for non-integer variant", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.override("exp_test_ab", 1.5)).toThrow("Variant must be a non-negative integer");
+		});
+
+		it("customAssignment() should throw for empty experiment name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.customAssignment("", 1)).toThrow("Experiment name must be a non-empty string");
+		});
+
+		it("customAssignment() should throw for negative variant", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.customAssignment("exp_test_ab", -1)).toThrow("Variant must be a non-negative integer");
+		});
+
+		it("customFieldValue() should throw for empty experiment name", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.customFieldValue("", "key")).toThrow("Experiment name must be a non-empty string");
+		});
+
+		it("customFieldValue() should throw for empty key", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(() => context.customFieldValue("exp_test_ab", "")).toThrow("Key must be a non-empty string");
+		});
+	});
+
+	describe("readyError()", () => {
+		it("should return null when context succeeds", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(context.readyError()).toBe(null);
+		});
+
+		it("should return the error when context fails", async () => {
+			const error = new Error("network failure");
+			const context = new Context(sdk, contextOptions, contextParams, Promise.reject(error) as any);
+			await context.ready();
+			expect(context.readyError()).toBe(error);
+		});
+	});
+
+	describe("getSDK() and getOptions()", () => {
+		it("getSDK() should return the sdk", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			expect(context.getSDK()).toBe(sdk);
+		});
+
+		it("getOptions() should return a copy of options", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			const options = context.getOptions();
+			expect(options.publishDelay).toBe(contextOptions.publishDelay);
+			expect(options.refreshPeriod).toBe(contextOptions.refreshPeriod);
+			expect(options).not.toBe(contextOptions); // should be a copy
+		});
+	});
+
+	describe("getUnits() defensive copy", () => {
+		it("should return a copy that does not mutate internal state", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			const units = context.getUnits();
+			units["hacked"] = "value";
+			expect(context.getUnit("hacked")).toBeUndefined();
+		});
+	});
+
+	describe("peek then treatment", () => {
+		it("should queue exposure on treatment after peek", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+			context.peek("exp_test_ab");
+			expect(context.pending()).toBe(0);
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toBe(1);
 		});
 	});
 });

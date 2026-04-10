@@ -4,25 +4,28 @@ import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
 import { arrayEqualsShallow, isObject, isPromise } from "./utils";
 import { SDK_VERSION } from "./version";
-import { ContextPublisher } from "./publisher";
-import { ContextDataProvider } from "./provider";
+import { ContextNotReadyError, ContextFinalizedError } from "./errors";
 import type {
 	Assignment,
 	Attribute,
 	ContextData,
-	ContextParams,
 	Experiment,
 	ExperimentData,
 	Exposure,
-	Goal,
+	GoalAchievement,
 	Units,
 	PublishParams,
-	ClientRequestOptions,
-	EventLogger,
-	EventName,
 	JSONValue,
 	CustomFieldValue,
-} from "./types";
+} from "./models";
+import type {
+	ClientRequestOptions,
+	ContextDataProvider,
+	ContextPublisher,
+	EventLogger,
+	EventName,
+	ContextParams,
+} from "./interfaces";
 
 interface SDKLike {
 	getClient(): {
@@ -61,14 +64,17 @@ export class Context {
 	private _data!: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
+	private _failedError: Error | null = null;
 	private _finalized: boolean;
-	private _finalizing: boolean | Promise<void> | null = null;
-	private _goals: Goal[];
+	private _finalizing: Promise<void> | null = null;
+	private _goals: GoalAchievement[];
 	private _index!: Record<string, Experiment>;
 	private _indexVariables!: Record<string, Experiment[]>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
+	private _attrsMapCache: Record<string, unknown> | null = null;
+	private _attrsMapCacheSeq: number = -1;
 	private _hashes?: Record<string, string | null>;
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
@@ -113,6 +119,7 @@ export class Context {
 					this._init({});
 
 					this._failed = true;
+					this._failedError = error;
 					delete this._promise;
 
 					this._logError(error);
@@ -139,13 +146,17 @@ export class Context {
 		return this._failed;
 	}
 
-	ready() {
+	readyError(): Error | null {
+		return this._failedError;
+	}
+
+	ready(): Promise<true> {
 		if (this.isReady()) {
 			return Promise.resolve(true);
 		}
 
 		return new Promise((resolve) => {
-			this._promise?.then(() => resolve(true)).catch((e) => resolve(e));
+			this._promise?.then(() => resolve(true)).catch(() => resolve(true));
 		});
 	}
 
@@ -168,6 +179,14 @@ export class Context {
 
 	provider() {
 		return this._dataProvider;
+	}
+
+	getSDK() {
+		return this._sdk;
+	}
+
+	getOptions(): ContextOptionsInternal {
+		return { ...this._opts };
 	}
 
 	publish(requestOptions?: ClientRequestOptions) {
@@ -222,10 +241,14 @@ export class Context {
 		}
 
 		this._units[unitType] = uid;
+
+		if (this._hashes) {
+			delete this._hashes[unitType];
+		}
 	}
 
 	getUnits() {
-		return this._units;
+		return { ...this._units };
 	}
 
 	units(units: Record<string, number | string>) {
@@ -243,6 +266,9 @@ export class Context {
 	}
 
 	attribute(attrName: string, value: unknown) {
+		if (typeof attrName !== "string" || attrName.trim().length === 0) {
+			throw new Error("Attribute name must be a non-empty string");
+		}
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
@@ -264,16 +290,25 @@ export class Context {
 	}
 
 	peek(experimentName: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
 		this._checkReady(true);
 		return this._peek(experimentName).variant;
 	}
 
 	treatment(experimentName: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
 		this._checkReady(true);
 		return this._treatment(experimentName).variant;
 	}
 
 	track(goalName: string, properties?: Record<string, unknown>) {
+		if (typeof goalName !== "string" || goalName.trim().length === 0) {
+			throw new Error("Goal name must be a non-empty string");
+		}
 		this._checkNotFinalized();
 		return this._track(goalName, properties);
 	}
@@ -287,12 +322,18 @@ export class Context {
 		return this._data.experiments?.map((x) => x.name);
 	}
 
-	variableValue(key: string, defaultValue: string): string {
+	variableValue<T>(key: string, defaultValue: T): T {
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Variable key must be a non-empty string");
+		}
 		this._checkReady(true);
 		return this._variableValue(key, defaultValue);
 	}
 
-	peekVariableValue(key: string, defaultValue: string): string {
+	peekVariableValue<T>(key: string, defaultValue: T): T {
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Variable key must be a non-empty string");
+		}
 		this._checkReady(true);
 		return this._peekVariable(key, defaultValue);
 	}
@@ -313,6 +354,13 @@ export class Context {
 	}
 
 	override(experimentName: string, variant: number) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
+			throw new Error("Variant must be a non-negative integer");
+		}
+		this._checkNotFinalized();
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
@@ -323,6 +371,12 @@ export class Context {
 	}
 
 	customAssignment(experimentName: string, variant: number) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
+			throw new Error("Variant must be a non-negative integer");
+		}
 		this._checkNotFinalized();
 		this._cassignments[experimentName] = variant;
 	}
@@ -339,26 +393,38 @@ export class Context {
 	}
 
 	customFieldValue(experimentName: string, key: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Key must be a non-empty string");
+		}
 		this._checkReady(true);
 		return this._customFieldValue(experimentName, key);
 	}
 
 	customFieldValueType(experimentName: string, key: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Key must be a non-empty string");
+		}
 		this._checkReady(true);
 		return this._customFieldValueType(experimentName, key);
 	}
 
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
-			throw new Error("ABSmartly Context is finalized.");
+			throw new ContextFinalizedError();
 		} else if (this.isFinalizing()) {
-			throw new Error("ABSmartly Context is finalizing.");
+			throw new ContextFinalizedError();
 		}
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
-			throw new Error("ABSmartly Context is not yet ready.");
+			throw new ContextNotReadyError();
 		}
 
 		if (expectNotFinalized) {
@@ -367,11 +433,25 @@ export class Context {
 	}
 
 	private _getAttributesMap(): Record<string, unknown> {
+		if (this._attrsMapCache !== null && this._attrsMapCacheSeq === this._attrsSeq) {
+			return this._attrsMapCache;
+		}
 		const attrs: Record<string, unknown> = {};
 		for (const attr of this._attrs) {
 			attrs[attr.name] = attr.value;
 		}
+		this._attrsMapCache = attrs;
+		this._attrsMapCacheSeq = this._attrsSeq;
 		return attrs;
+	}
+
+	private _evaluateAudience(audience: string): boolean | null {
+		try {
+			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
+		} catch (error) {
+			this._logError(error as Error);
+			return null;
+		}
 	}
 
 	private _assign(experimentName: string): Assignment {
@@ -387,9 +467,9 @@ export class Context {
 
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			if (experiment.audience && experiment.audience.length > 0) {
-				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, this._getAttributesMap());
-					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
+				if (this._attrsSeq > assignment.attrsSeq) {
+					const result = this._evaluateAudience(experiment.audience);
+					const newAudienceMismatch = typeof result === "boolean" ? !result : true;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
@@ -435,6 +515,9 @@ export class Context {
 			fullOn: false,
 			custom: false,
 			audienceMismatch: false,
+			trafficSplit: null,
+			variables: null,
+			attrsSeq: 0,
 		};
 
 		this._assignments[experimentName] = assignment;
@@ -452,11 +535,8 @@ export class Context {
 				const unitType = experiment.data.unitType;
 
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.data.audience, this._getAttributesMap());
-
-					if (typeof result === "boolean") {
-						assignment.audienceMismatch = !result;
-					}
+					const result = this._evaluateAudience(experiment.data.audience);
+					assignment.audienceMismatch = typeof result === "boolean" ? !result : true;
 				}
 
 				if (experiment.data.audienceStrict && assignment.audienceMismatch) {
@@ -514,7 +594,7 @@ export class Context {
 		}
 
 		if (experiment != null && assignment.variant < experiment.data.variants.length) {
-			assignment.variables = experiment.variables[assignment.variant];
+			assignment.variables = experiment.variables[assignment.variant] ?? null;
 		}
 
 		return assignment;
@@ -579,6 +659,8 @@ export class Context {
 		if (experiment != null) {
 			const field = experiment.data.customFieldValues?.find((x: CustomFieldValue) => x.name === key);
 			if (field != null) {
+				if (field.value === null) return null;
+
 				switch (field.type) {
 					case "text":
 					case "string":
@@ -590,15 +672,17 @@ export class Context {
 							if (field.value === "null") return null;
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
-						} catch (_e) {
-							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
+						} catch (e) {
+							this._logError(new Error(
+								`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${(e as Error).message}`
+							));
 							return null;
 						}
 					case "boolean":
 						return field.value === "true";
 					default:
-						console.error(
-							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+						this._logError(
+							new Error(`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`)
 						);
 						return null;
 				}
@@ -621,20 +705,20 @@ export class Context {
 		return null;
 	}
 
-	private _variableValue(key: string, defaultValue: string): string {
+	private _variableValue<T>(key: string, defaultValue: T): T {
 		const experiments = this._indexVariables[key];
 		if (experiments) {
-			for (const i in experiments) {
-				const experimentName = experiments[i]!.data.name;
+			for (const experiment of experiments) {
+				const experimentName = experiment.data.name;
 				const assignment = this._assign(experimentName);
-				if (assignment.variables !== undefined) {
+				if (assignment.variables != null) {
 					if (!assignment.exposed) {
 						assignment.exposed = true;
 						this._queueExposure(experimentName, assignment);
 					}
 
 					if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
-						return assignment.variables[key] as string;
+						return assignment.variables[key] as T;
 					}
 				}
 			}
@@ -643,15 +727,15 @@ export class Context {
 		return defaultValue;
 	}
 
-	private _peekVariable(key: string, defaultValue: string): string {
+	private _peekVariable<T>(key: string, defaultValue: T): T {
 		const experiments = this._indexVariables[key];
 		if (experiments) {
-			for (const i in experiments) {
-				const experimentName = experiments[i]!.data.name;
+			for (const experiment of experiments) {
+				const experimentName = experiment.data.name;
 				const assignment = this._assign(experimentName);
-				if (assignment.variables !== undefined) {
+				if (assignment.variables != null) {
 					if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
-						return assignment.variables[key] as string;
+						return assignment.variables[key] as T;
 					}
 				}
 			}
@@ -674,7 +758,7 @@ export class Context {
 
 	private _track(goalName: string, properties?: Record<string, unknown>) {
 		const props = this._validateGoal(goalName, properties);
-		const goalEvent: Goal = { name: goalName, properties: props, achievedAt: Date.now() };
+		const goalEvent: GoalAchievement = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
 
 		this._goals.push(goalEvent);
@@ -770,6 +854,17 @@ export class Context {
 						request.attributes = allAttributes;
 					}
 
+					// Snapshot and clear synchronously before async publish.
+					// New events accumulate in fresh arrays during in-flight publish.
+					// On failure, restore the snapshot so events are retried.
+					const pendingCount = this._pending;
+					const pendingExposures = this._exposures;
+					const pendingGoals = this._goals;
+
+					this._pending = 0;
+					this._exposures = [];
+					this._goals = [];
+
 					this._publisher
 						.publish(request, this._sdk, this, requestOptions)
 						.then(() => {
@@ -780,6 +875,10 @@ export class Context {
 							}
 						})
 						.catch((e: Error) => {
+							this._pending += pendingCount;
+							this._exposures.push(...pendingExposures);
+							this._goals.push(...pendingGoals);
+
 							this._logError(e);
 
 							if (typeof callback === "function") {
@@ -794,14 +893,18 @@ export class Context {
 					}
 				}
 			} else {
+				this._logError(new Error(
+					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+				));
+
+				this._pending = 0;
+				this._exposures = [];
+				this._goals = [];
+
 				if (typeof callback === "function") {
 					callback();
 				}
 			}
-
-			this._pending = 0;
-			this._exposures = [];
-			this._goals = [];
 		}
 	}
 
@@ -834,13 +937,21 @@ export class Context {
 
 	private _logEvent(eventName: EventName, data?: unknown) {
 		if (this._eventLogger) {
-			this._eventLogger(this, eventName, data as any);
+			try {
+				this._eventLogger(this, eventName, data as any);
+			} catch {
+				// ignore logger errors
+			}
 		}
 	}
 
 	private _logError(error: Error) {
 		if (this._eventLogger) {
-			this._eventLogger(this, "error", error);
+			try {
+				this._eventLogger(this, "error", error);
+			} catch {
+				// ignore logger errors
+			}
 		}
 	}
 
@@ -864,7 +975,7 @@ export class Context {
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
 
-		(data.experiments || []).forEach((experiment) => {
+		for (const experiment of data.experiments || []) {
 			const variables: Record<string, unknown>[] = [];
 			const entry = {
 				data: experiment,
@@ -873,9 +984,23 @@ export class Context {
 
 			index[experiment.name] = entry;
 
-			experiment.variants.forEach((variant, i) => {
+			for (let i = 0; i < experiment.variants.length; i++) {
+				const variant = experiment.variants[i]!;
 				const config = variant.config;
-				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
+				let parsed: Record<string, unknown> = {};
+
+				if (config != null && config.length > 0) {
+					try {
+						const value = JSON.parse(config);
+						if (isObject(value)) {
+							parsed = value as Record<string, unknown>;
+						}
+					} catch (error) {
+						this._logError(new Error(
+							`Failed to parse config for experiment '${experiment.name}' variant ${i}: ${(error as Error).message}`
+						));
+					}
+				}
 
 				for (const key of Object.keys(parsed)) {
 					const value = entry;
@@ -889,8 +1014,8 @@ export class Context {
 				}
 
 				variables[i] = parsed;
-			});
-		});
+			}
+		}
 
 		this._index = index;
 		this._indexVariables = indexVariables;

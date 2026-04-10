@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
-import { Client } from "../client";
-import type { ClientOptions } from "../types";
+import { DefaultClient } from "../client";
+import type { ClientOptions } from "../interfaces";
 
 const defaultOpts: ClientOptions = {
 	agent: "test-agent",
@@ -14,12 +14,12 @@ describe("Client", () => {
 	describe("constructor validation", () => {
 		test("throws for missing apiKey", () => {
 			const opts = { ...defaultOpts, apiKey: undefined } as unknown as ClientOptions;
-			expect(() => new Client(opts)).toThrow("Missing 'apiKey' in options argument");
+			expect(() => new DefaultClient(opts)).toThrow("Missing 'apiKey' in options argument");
 		});
 
 		test("uses injected fetch implementation", async () => {
 			const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) });
-			const client = new Client({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
 			await client.getContext();
 			expect(fetchImpl).toHaveBeenCalledTimes(1);
 		});
@@ -31,7 +31,7 @@ describe("Client", () => {
 				abort = abort;
 			}
 			const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) });
-			const client = new Client({
+			const client = new DefaultClient({
 				...defaultOpts,
 				retries: 0,
 				timeout: 1000,
@@ -44,44 +44,44 @@ describe("Client", () => {
 
 		test("throws for missing endpoint", () => {
 			const opts = { ...defaultOpts, endpoint: undefined } as unknown as ClientOptions;
-			expect(() => new Client(opts)).toThrow("Missing 'endpoint' in options argument");
+			expect(() => new DefaultClient(opts)).toThrow("Missing 'endpoint' in options argument");
 		});
 
 		test("throws for missing environment", () => {
 			const opts = { ...defaultOpts, environment: undefined } as unknown as ClientOptions;
-			expect(() => new Client(opts)).toThrow("Missing 'environment' in options argument");
+			expect(() => new DefaultClient(opts)).toThrow("Missing 'environment' in options argument");
 		});
 
 		test("throws for missing application", () => {
 			const opts = { ...defaultOpts, application: undefined } as unknown as ClientOptions;
-			expect(() => new Client(opts)).toThrow("Missing 'application' in options argument");
+			expect(() => new DefaultClient(opts)).toThrow("Missing 'application' in options argument");
 		});
 
 		test("throws for empty apiKey", () => {
 			const opts = { ...defaultOpts, apiKey: "" };
-			expect(() => new Client(opts)).toThrow("Invalid 'apiKey' in options argument");
+			expect(() => new DefaultClient(opts)).toThrow("Invalid 'apiKey' in options argument");
 		});
 
 		test("accepts ApplicationObject", () => {
 			const opts = { ...defaultOpts, application: { name: "my-app", version: "1.0.0" } };
-			const client = new Client(opts);
+			const client = new DefaultClient(opts);
 			expect(client.getApplication()).toEqual({ name: "my-app", version: "1.0.0" });
 		});
 
 		test("converts string application to ApplicationObject", () => {
-			const client = new Client(defaultOpts);
+			const client = new DefaultClient(defaultOpts);
 			expect(client.getApplication()).toEqual({ name: "test-app", version: 0 });
 		});
 	});
 
 	describe("accessors", () => {
 		test("getAgent", () => {
-			const client = new Client(defaultOpts);
+			const client = new DefaultClient(defaultOpts);
 			expect(client.getAgent()).toBe("test-agent");
 		});
 
 		test("getEnvironment", () => {
-			const client = new Client(defaultOpts);
+			const client = new DefaultClient(defaultOpts);
 			expect(client.getEnvironment()).toBe("test");
 		});
 	});
@@ -99,7 +99,7 @@ describe("Client", () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({ experiments: [] }) };
 			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-			const client = new Client({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
 			await client.getContext();
 
 			expect(globalThis.fetch).toHaveBeenCalledTimes(1);
@@ -107,6 +107,17 @@ describe("Client", () => {
 			expect(url).toContain("/context");
 			expect(url).toContain("application=test-app");
 			expect(url).toContain("environment=test");
+		});
+
+		test("GET /context does NOT include auth headers", async () => {
+			const mockResponse = { ok: true, json: () => Promise.resolve({ experiments: [] }) };
+			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
+			await client.getContext();
+
+			const [, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+			expect(opts.headers).toBeUndefined();
 		});
 	});
 
@@ -123,7 +134,7 @@ describe("Client", () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({}) };
 			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-			const client = new Client({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
 			await client.publish({
 				units: [{ type: "session_id", uid: "abc" }],
 				publishedAt: 1000,
@@ -142,7 +153,7 @@ describe("Client", () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({}) };
 			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
-			const client = new Client({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
 			await client.publish({
 				units: [{ type: "session_id", uid: "abc" }],
 				publishedAt: 1000,
@@ -178,7 +189,7 @@ describe("Client", () => {
 				.mockResolvedValueOnce(failResponse)
 				.mockResolvedValueOnce(successResponse);
 
-			const client = new Client({ ...defaultOpts, retries: 3, timeout: 10000 });
+			const client = new DefaultClient({ ...defaultOpts, retries: 3, timeout: 10000 });
 			const promise = client.getContext();
 
 			await vi.runAllTimersAsync();
@@ -198,7 +209,7 @@ describe("Client", () => {
 
 			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(failResponse);
 
-			const client = new Client({ ...defaultOpts, retries: 3, timeout: 10000 });
+			const client = new DefaultClient({ ...defaultOpts, retries: 3, timeout: 10000 });
 			const promise = client.getContext();
 
 			await expect(promise).rejects.toThrow("bad request");
