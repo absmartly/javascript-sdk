@@ -382,7 +382,7 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, 1, {})).toBe(null);
 		});
 
-		it("should not match when environments list contains fractional IDs", () => {
+		it("should not match integer environmentIds against fractional entries in environments list", () => {
 			const audience = JSON.stringify({
 				rules: [
 					{

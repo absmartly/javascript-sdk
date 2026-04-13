@@ -31,7 +31,7 @@ export type ExperimentData = {
 	trafficSeedHi: number;
 	trafficSeedLo: number;
 	audience: string;
-	assignmentRules: string;
+	assignmentRules?: string;
 	audienceStrict: boolean;
 	split: number[];
 	seedHi: number;
@@ -64,6 +64,7 @@ type Assignment = {
 	audienceMismatch: boolean;
 	ruleOverride: boolean;
 	ruleVariant?: number | null;
+	ruleKey?: string;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
@@ -469,7 +470,21 @@ export default class Context {
 		};
 
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
-			if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
+			const ruleKey = experiment.assignmentRules
+				? `${experiment.assignmentRules}:${this._environmentId}`
+				: "";
+			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
+
+			if (ruleKeyChanged) {
+				if (!ruleKey && (assignment.ruleVariant != null || assignment.ruleOverride)) {
+					assignment.ruleVariant = undefined;
+					assignment.ruleOverride = false;
+					assignment.ruleKey = undefined;
+					return false;
+				}
+			}
+
+			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.audience && experiment.audience.length > 0) {
@@ -490,6 +505,7 @@ export default class Context {
 					assignment.ruleVariant = ruleVariant;
 				}
 
+				assignment.ruleKey = ruleKey;
 				assignment.attrsSeq = this._attrsSeq;
 			}
 			return true;
@@ -565,6 +581,9 @@ export default class Context {
 				}
 
 				assignment.ruleVariant = ruleVariant;
+				assignment.ruleKey = experiment.data.assignmentRules
+					? `${experiment.data.assignmentRules}:${this._environmentId}`
+					: "";
 
 				if (ruleVariant !== null && ruleVariant >= 0 && ruleVariant < experiment.data.variants.length) {
 					assignment.variant = ruleVariant;
