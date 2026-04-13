@@ -2055,85 +2055,68 @@ describe("Context", () => {
 	});
 
 	describe("rules evaluation", () => {
-		const rulesContextResponse = {
+		const buildRulesResponse = (overrides = {}, responseOverrides = {}) => ({
 			...getContextResponse,
+			...responseOverrides,
 			experiments: getContextResponse.experiments.map((x) => {
 				if (x.name === "exp_test_abc") {
-					return {
-						...x,
-						audience: JSON.stringify({
-							filter: [{ value: true }],
-						}),
-						assignmentRules: JSON.stringify({
-							rules: [
-								{
-									name: "US Internal Users",
-									type: "assign",
-									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-									environments: [],
-									variant: 1,
-								},
-							],
-						}),
-					};
+					return { ...x, ...overrides };
 				}
 				return x;
 			}),
-		};
+		});
 
-		const envScopedRulesContextResponse = {
-			...getContextResponse,
-			environment_id: 10,
-			experiments: getContextResponse.experiments.map((x) => {
-				if (x.name === "exp_test_abc") {
-					return {
-						...x,
-						audience: JSON.stringify({
-							filter: [{ value: true }],
-						}),
-						assignmentRules: JSON.stringify({
-							rules: [
-								{
-									name: "Production Only",
-									type: "assign",
-									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-									environments: [10],
-									variant: 1,
-								},
-							],
-						}),
-					};
-				}
-				return x;
+		const rulesContextResponse = buildRulesResponse({
+			audience: JSON.stringify({
+				filter: [{ value: true }],
 			}),
-		};
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						name: "US Internal Users",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+						environments: [],
+						variant: 1,
+					},
+				],
+			}),
+		});
 
-		const rulesStrictContextResponse = {
-			...getContextResponse,
-			experiments: getContextResponse.experiments.map((x) => {
-				if (x.name === "exp_test_abc") {
-					return {
-						...x,
-						audienceStrict: true,
-						audience: JSON.stringify({
-							filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
-						}),
-						assignmentRules: JSON.stringify({
-							rules: [
-								{
-									name: "US Users",
-									type: "assign",
-									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-									environments: [],
-									variant: 1,
-								},
-							],
-						}),
-					};
-				}
-				return x;
+		const envScopedRulesContextResponse = buildRulesResponse({
+			audience: JSON.stringify({
+				filter: [{ value: true }],
 			}),
-		};
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						name: "Production Only",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+						environments: [10],
+						variant: 1,
+					},
+				],
+			}),
+		}, { environment_id: 10 });
+
+		const rulesStrictContextResponse = buildRulesResponse({
+			audienceStrict: true,
+			audience: JSON.stringify({
+				filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
+			}),
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						name: "US Users",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+						environments: [],
+						variant: 1,
+					},
+				],
+			}),
+		});
 
 		it("should return rule variant when rule matches", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
@@ -2161,9 +2144,7 @@ describe("Context", () => {
 		});
 
 		it("should skip environment-scoped rules when API response has no environment_id", () => {
-			const noEnvIdResponse = {
-				...envScopedRulesContextResponse,
-			};
+			const noEnvIdResponse = { ...envScopedRulesContextResponse };
 			delete noEnvIdResponse.environment_id;
 			const context = new Context(sdk, contextOptions, contextParams, noEnvIdResponse);
 			context.attribute("country", "US");
@@ -2362,38 +2343,29 @@ describe("Context", () => {
 		});
 
 		it("should invalidate cache when rule switches to a different matching variant", () => {
-			const twoRulesContextResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "US Users",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-										environments: [],
-										variant: 1,
-									},
-									{
-										name: "GB Users",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
-										environments: [],
-										variant: 2,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const twoRulesContextResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "US Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 1,
+						},
+						{
+							name: "GB Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+							environments: [],
+							variant: 2,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, twoRulesContextResponse);
 
 			// First: US → rule variant 1
@@ -2406,34 +2378,25 @@ describe("Context", () => {
 		});
 
 		it("should match rule with multiple and conditions", () => {
-			const multiAndResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "US Internal",
-										type: "assign",
-										conditions: { and: [
-											{ eq: [{ var: "country" }, { value: "US" }] },
-											{ eq: [{ var: "user_type" }, { value: "internal" }] },
-										] },
-										environments: [],
-										variant: 1,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const multiAndResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "US Internal",
+							type: "assign",
+							conditions: { and: [
+								{ eq: [{ var: "country" }, { value: "US" }] },
+								{ eq: [{ var: "user_type" }, { value: "internal" }] },
+							] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, multiAndResponse);
 
 			context.attribute("country", "US");
@@ -2445,77 +2408,58 @@ describe("Context", () => {
 		});
 
 		it("should match rule scoped to multiple environment ids", () => {
-			const multiEnvResponse = {
-				...getContextResponse,
-				environment_id: 20,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "Prod and Staging",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-										environments: [10, 20],
-										variant: 1,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const multiEnvResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Prod and Staging",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [10, 20],
+							variant: 1,
+						},
+					],
+				}),
+			}, { environment_id: 20 });
 			const context = new Context(sdk, contextOptions, contextParams, multiEnvResponse);
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
 		it("should evaluate multiple or rules and match the first", () => {
-			const multiOrResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "US Users",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-										environments: [],
-										variant: 1,
-									},
-									{
-										name: "GB Users",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
-										environments: [],
-										variant: 2,
-									},
-									{
-										name: "FR Users",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "FR" }] }] },
-										environments: [],
-										variant: 0,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const multiOrResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "US Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 1,
+						},
+						{
+							name: "GB Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+							environments: [],
+							variant: 2,
+						},
+						{
+							name: "FR Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "FR" }] }] },
+							environments: [],
+							variant: 0,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, multiOrResponse);
 
 			context.attribute("country", "US");
@@ -2532,88 +2476,61 @@ describe("Context", () => {
 		});
 
 		it("should fall back to normal assignment when rule variant is out of bounds", () => {
-			const oobResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "OOB Rule",
-										type: "assign",
-										conditions: null,
-										environments: [],
-										variant: 99,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const oobResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "OOB Rule",
+							type: "assign",
+							conditions: null,
+							environments: [],
+							variant: 99,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, oobResponse);
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
 		it("should fall back to normal assignment when rule variant is negative", () => {
-			const negResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "Negative Rule",
-										type: "assign",
-										conditions: null,
-										environments: [],
-										variant: -1,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const negResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Negative Rule",
+							type: "assign",
+							conditions: null,
+							environments: [],
+							variant: -1,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, negResponse);
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
 		it("should set ruleOverride flag when rule forces control variant (0)", (done) => {
-			const controlRuleResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "Force Control",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-										environments: [],
-										variant: 0,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const controlRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Force Control",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 0,
+						},
+					],
 				}),
-			};
+			});
 			const context = new Context(sdk, contextOptions, contextParams, controlRuleResponse);
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(0);
@@ -2635,55 +2552,37 @@ describe("Context", () => {
 		});
 
 		it("should fall back to normal assignment when assignmentRules is invalid JSON", () => {
-			const badJsonResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							assignmentRules: "not-valid-json{{{",
-						};
-					}
-					return x;
-				}),
-			};
+			const badJsonResponse = buildRulesResponse({
+				assignmentRules: "not-valid-json{{{",
+			});
 			const context = new Context(sdk, contextOptions, contextParams, badJsonResponse);
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
 		it("should not invalidate cache when out-of-range rule variant changes to a different out-of-range value", () => {
-			const oobRulesResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "OOB Rule US",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-										environments: [],
-										variant: 99,
-									},
-									{
-										name: "OOB Rule GB",
-										type: "assign",
-										conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
-										environments: [],
-										variant: 100,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const oobRulesResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "OOB Rule US",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 99,
+						},
+						{
+							name: "OOB Rule GB",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+							environments: [],
+							variant: 100,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, oobRulesResponse);
 
 			context.attribute("country", "US");
@@ -2696,31 +2595,22 @@ describe("Context", () => {
 		});
 
 		it("should normalise out-of-range ruleVariant to null in cached assignment", (done) => {
-			const oobResponse = {
-				...getContextResponse,
-				experiments: getContextResponse.experiments.map((x) => {
-					if (x.name === "exp_test_abc") {
-						return {
-							...x,
-							audience: JSON.stringify({
-								filter: [{ value: true }],
-							}),
-							assignmentRules: JSON.stringify({
-								rules: [
-									{
-										name: "OOB Rule",
-										type: "assign",
-										conditions: null,
-										environments: [],
-										variant: 99,
-									},
-								],
-							}),
-						};
-					}
-					return x;
+			const oobResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
 				}),
-			};
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "OOB Rule",
+							type: "assign",
+							conditions: null,
+							environments: [],
+							variant: 99,
+						},
+					],
+				}),
+			});
 			const context = new Context(sdk, contextOptions, contextParams, oobResponse);
 			context.treatment("exp_test_abc");
 
