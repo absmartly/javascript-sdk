@@ -85,6 +85,10 @@ export default class Client {
 		this._delay = 50;
 	}
 
+	getEnvironment(): string {
+		return this._opts.environment;
+	}
+
 	getContext(options?: Partial<ClientRequestOptions>) {
 		return this.getUnauthed({
 			...options,
@@ -296,10 +300,6 @@ export default class Client {
 
 	getApplication(): ApplicationObject {
 		return this._opts.application;
-	}
-
-	getEnvironment(): string {
-		return this._opts.environment;
 	}
 
 	getUnauthed(options: ClientRequestOptions) {

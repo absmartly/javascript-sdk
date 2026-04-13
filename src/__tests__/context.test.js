@@ -764,6 +764,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 							],
 						},
@@ -878,6 +879,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 							],
 							attributes: [
@@ -1411,6 +1413,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 2,
@@ -1424,6 +1427,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 3,
@@ -1437,6 +1441,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 4,
@@ -1450,6 +1455,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 5,
@@ -1463,6 +1469,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1531,6 +1538,7 @@ describe("Context", () => {
 					fullOn: experiment.name === "exp_test_fullon",
 					custom: false,
 					audienceMismatch: false,
+					ruleOverride: false,
 				});
 			}
 
@@ -1574,6 +1582,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1623,6 +1632,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1664,6 +1674,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1705,6 +1716,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1767,6 +1779,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 0,
@@ -1780,6 +1793,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -1906,6 +1920,7 @@ describe("Context", () => {
 								name: "exp_test_ab",
 								variant: 0,
 								audienceMismatch: true,
+								ruleOverride: false,
 								assigned: false,
 							}),
 						],
@@ -1931,6 +1946,7 @@ describe("Context", () => {
 									name: "exp_test_ab",
 									variant: 1,
 									audienceMismatch: false,
+									ruleOverride: false,
 									assigned: true,
 								}),
 							],
@@ -2038,6 +2054,577 @@ describe("Context", () => {
 		});
 	});
 
+	describe("rules evaluation", () => {
+		const buildRulesResponse = (overrides = {}, responseOverrides = {}) => ({
+			...getContextResponse,
+			...responseOverrides,
+			experiments: getContextResponse.experiments.map((x) => {
+				if (x.name === "exp_test_abc") {
+					return { ...x, ...overrides };
+				}
+				return x;
+			}),
+		});
+
+		const rulesContextResponse = buildRulesResponse({
+			audience: JSON.stringify({
+				filter: [{ value: true }],
+			}),
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						name: "US Internal Users",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+						environments: [],
+						variant: 1,
+					},
+				],
+			}),
+		});
+
+		const envScopedRulesContextResponse = buildRulesResponse({
+			audience: JSON.stringify({
+				filter: [{ value: true }],
+			}),
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						name: "Production Only",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+						environments: [10],
+						variant: 1,
+					},
+				],
+			}),
+		}, { environment_id: 10 });
+
+		const rulesStrictContextResponse = buildRulesResponse({
+			audienceStrict: true,
+			audience: JSON.stringify({
+				filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
+			}),
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						name: "US Users",
+						type: "assign",
+						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+						environments: [],
+						variant: 1,
+					},
+				],
+			}),
+		});
+
+		it("should return rule variant when rule matches", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			// Normal assignment would return 2, rules force variant 1
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should return normal assignment when no rules match", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "GB");
+			// No rule matches, should get normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should skip rule when environment id does not match", () => {
+			const stagingResponse = {
+				...envScopedRulesContextResponse,
+				environment_id: 20,
+			};
+			const context = new Context(sdk, contextOptions, contextParams, stagingResponse);
+			context.attribute("country", "US");
+			// Rule scoped to env 10, context has env 20 — should get normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should skip environment-scoped rules when API response has no environment_id", () => {
+			const noEnvIdResponse = { ...envScopedRulesContextResponse };
+			delete noEnvIdResponse.environment_id;
+			const context = new Context(sdk, contextOptions, contextParams, noEnvIdResponse);
+			context.attribute("country", "US");
+			// Rule requires env 10, but no environment_id in response — should get normal assignment
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule when environment id matches", () => {
+			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
+			context.attribute("country", "US");
+			// Rule scoped to env 10, context has env 10 — should get rule variant (1)
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("override should take priority over rules", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			context.override("exp_test_abc", 0);
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+		});
+
+		it("should set correct flags in exposure when rule matches", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					id: 2,
+					name: "exp_test_abc",
+					unit: "session_id",
+					variant: 1,
+					assigned: false,
+					eligible: true,
+					overridden: false,
+					fullOn: false,
+					custom: false,
+					ruleOverride: true,
+				});
+				done();
+			});
+		});
+
+		it("should set correct flags in exposure when no rule matches (normal assignment)", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					id: 2,
+					name: "exp_test_abc",
+					unit: "session_id",
+					variant: 2,
+					assigned: true,
+					eligible: true,
+					overridden: false,
+					fullOn: false,
+					custom: false,
+					ruleOverride: false,
+				});
+				done();
+			});
+		});
+
+		it("should set correct flags when rule matches with audienceMismatch", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 1,
+					assigned: false,
+					eligible: true,
+					overridden: false,
+					fullOn: false,
+					custom: false,
+					audienceMismatch: true,
+					ruleOverride: true,
+				});
+				done();
+			});
+		});
+
+		it("should set correct flags when override takes priority over rule", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			context.override("exp_test_abc", 0);
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 0,
+					assigned: false,
+					overridden: true,
+					fullOn: false,
+					custom: false,
+					ruleOverride: false,
+				});
+				done();
+			});
+		});
+
+		it("should set correct override flags even when override variant matches rule variant", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			context.override("exp_test_abc", 1);
+
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposures = publishCall.exposures.filter((e) => e.name === "exp_test_abc");
+				const lastExposure = exposures[exposures.length - 1];
+				expect(lastExposure).toMatchObject({
+					variant: 1,
+					assigned: false,
+					overridden: true,
+					ruleOverride: false,
+				});
+				done();
+			});
+		});
+
+		it("should invalidate cached assignment when rule result changes due to attribute change", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+
+			// First call: no country set, rule doesn't match → normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+
+			// Change attribute so rule now matches
+			context.attribute("country", "US");
+
+			// Second call: rule matches → should return rule variant (1), not cached (2)
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should invalidate cached assignment when rule stops matching due to attribute change", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+
+			// First call: country=US, rule matches → variant 1
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			// Change attribute so rule no longer matches
+			context.attribute("country", "GB");
+
+			// Second call: rule no longer matches → should return normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("rule should take priority over audienceStrict when rule matches", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "US");
+			// audienceStrict is on, user doesn't match audience filter (no age set),
+			// but rule matches — should still get rule variant (1)
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should fall back to audienceStrict behavior when no rule matches", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "GB");
+			// No rule matches, audienceStrict on, audience filter mismatch — variant 0
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+		});
+
+		it("should return correct variableValue when rule forces a different variant", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			// Rule forces variant 1 (B) which has config {"button.color":"blue"}
+			// Normal assignment would be variant 2 (C) with {"button.color":"red"}
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.variableValue("button.color", "default")).toEqual("blue");
+		});
+
+		it("should invalidate cache when rule switches to a different matching variant", () => {
+			const twoRulesContextResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "US Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 1,
+						},
+						{
+							name: "GB Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+							environments: [],
+							variant: 2,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, twoRulesContextResponse);
+
+			// First: US → rule variant 1
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			// Switch to GB → rule variant 2
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+		});
+
+		it("should match rule with multiple and conditions", () => {
+			const multiAndResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "US Internal",
+							type: "assign",
+							conditions: { and: [
+								{ eq: [{ var: "country" }, { value: "US" }] },
+								{ eq: [{ var: "user_type" }, { value: "internal" }] },
+							] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, multiAndResponse);
+
+			context.attribute("country", "US");
+			context.attribute("user_type", "internal");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			context.attribute("user_type", "external");
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule scoped to multiple environment ids", () => {
+			const multiEnvResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Prod and Staging",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [10, 20],
+							variant: 1,
+						},
+					],
+				}),
+			}, { environment_id: 20 });
+			const context = new Context(sdk, contextOptions, contextParams, multiEnvResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should evaluate multiple or rules and match the first", () => {
+			const multiOrResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "US Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 1,
+						},
+						{
+							name: "GB Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+							environments: [],
+							variant: 2,
+						},
+						{
+							name: "FR Users",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "FR" }] }] },
+							environments: [],
+							variant: 0,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, multiOrResponse);
+
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+
+			context.attribute("country", "FR");
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			context.attribute("country", "DE");
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should fall back to normal assignment when rule variant is out of bounds", () => {
+			const oobResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "OOB Rule",
+							type: "assign",
+							conditions: null,
+							environments: [],
+							variant: 99,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, oobResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should fall back to normal assignment when rule variant is negative", () => {
+			const negResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Negative Rule",
+							type: "assign",
+							conditions: null,
+							environments: [],
+							variant: -1,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, negResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should set ruleOverride flag when rule forces control variant (0)", (done) => {
+			const controlRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Force Control",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 0,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, controlRuleResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 0,
+					assigned: false,
+					eligible: true,
+					overridden: false,
+					ruleOverride: true,
+				});
+				done();
+			});
+		});
+
+		it("should fall back to normal assignment when assignmentRules is invalid JSON", () => {
+			const badJsonResponse = buildRulesResponse({
+				assignmentRules: "not-valid-json{{{",
+			});
+			const context = new Context(sdk, contextOptions, contextParams, badJsonResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should not invalidate cache when out-of-range rule variant changes to a different out-of-range value", () => {
+			const oobRulesResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "OOB Rule US",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+							environments: [],
+							variant: 99,
+						},
+						{
+							name: "OOB Rule GB",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+							environments: [],
+							variant: 100,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, oobRulesResponse);
+
+			context.attribute("country", "US");
+			const first = context.treatment("exp_test_abc");
+
+			context.attribute("country", "GB");
+			const second = context.treatment("exp_test_abc");
+
+			expect(first).toEqual(second);
+		});
+
+		it("should normalise out-of-range ruleVariant to null in cached assignment", (done) => {
+			const oobResponse = buildRulesResponse({
+				audience: JSON.stringify({
+					filter: [{ value: true }],
+				}),
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "OOB Rule",
+							type: "assign",
+							conditions: null,
+							environments: [],
+							variant: 99,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, oobResponse);
+			context.treatment("exp_test_abc");
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure.ruleOverride).toBe(false);
+				done();
+			});
+		});
+	});
+
 	describe("variableValue()", () => {
 		it("should not return variable values when unassigned", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
@@ -2119,6 +2706,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 2,
@@ -2132,6 +2720,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 3,
@@ -2145,6 +2734,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 4,
@@ -2158,6 +2748,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 5,
@@ -2171,6 +2762,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2284,6 +2876,7 @@ describe("Context", () => {
 							fullOn: experiment.name === "exp_test_fullon",
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						});
 					} else {
 						expect(SDK.defaultEventLogger).not.toHaveBeenCalled();
@@ -2350,6 +2943,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2391,6 +2985,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2432,6 +3027,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: true,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -2872,6 +3468,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 3,
@@ -2885,6 +3482,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 						goals: [
@@ -3109,6 +3707,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 								{
 									id: 0,
@@ -3122,6 +3721,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 								{
 									id: 2,
@@ -3135,6 +3735,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 							],
 							goals: [
@@ -3370,6 +3971,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -3421,6 +4023,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -3621,6 +4224,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 								{
 									id: 2,
@@ -3634,6 +4238,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: false,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 							],
 						},
@@ -3683,6 +4288,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: true,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -3731,6 +4337,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 4,
@@ -3744,6 +4351,7 @@ describe("Context", () => {
 								fullOn: true,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},
@@ -3801,6 +4409,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 								{
 									id: 2,
@@ -3814,6 +4423,7 @@ describe("Context", () => {
 									fullOn: false,
 									custom: true,
 									audienceMismatch: false,
+									ruleOverride: false,
 								},
 							],
 						},

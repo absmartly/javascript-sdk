@@ -31,6 +31,7 @@ export type ExperimentData = {
 	trafficSeedHi: number;
 	trafficSeedLo: number;
 	audience: string;
+	assignmentRules?: string;
 	audienceStrict: boolean;
 	split: number[];
 	seedHi: number;
@@ -61,6 +62,9 @@ type Assignment = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	ruleOverride: boolean;
+	ruleVariant?: number | null;
+	ruleKey?: string;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
@@ -88,6 +92,7 @@ export type Exposure = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	ruleOverride: boolean;
 };
 
 export type Attribute = {
@@ -121,6 +126,7 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
+	environment_id?: number;
 };
 
 export default class Context {
@@ -129,6 +135,7 @@ export default class Context {
 	private readonly _audienceMatcher: AudienceMatcher;
 	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
+	private _environmentId: number | null;
 	private readonly _eventLogger: EventLogger;
 	private readonly _opts: ContextOptions;
 	private readonly _publisher: ContextPublisher;
@@ -168,6 +175,7 @@ export default class Context {
 		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
+		this._environmentId = null;
 		this._attrsSeq = 0;
 
 		if (params.units) {
@@ -432,6 +440,13 @@ export default class Context {
 		}
 	}
 
+	private _computeRuleVariant(assignmentRules: string, variantCount: number, attrs: Record<string, unknown>): number | null {
+		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentId, attrs);
+		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount
+			? rawRuleVariant
+			: null;
+	}
+
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
 			throw new Error("ABSmartly Context is not yet ready.");
@@ -462,17 +477,43 @@ export default class Context {
 		};
 
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
-			if (experiment.audience && experiment.audience.length > 0) {
-				if (this._attrsSeq > (assignment.attrsSeq ?? 0)) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, this._getAttributesMap());
+			const ruleKey = experiment.assignmentRules
+				? `${experiment.assignmentRules}:${this._environmentId}`
+				: "";
+			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
+
+			if (ruleKeyChanged) {
+				if (!ruleKey && (assignment.ruleVariant != null || assignment.ruleOverride)) {
+					assignment.ruleVariant = undefined;
+					assignment.ruleOverride = false;
+					assignment.ruleKey = undefined;
+					return false;
+				}
+			}
+
+			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
+				const attrs = this._getAttributesMap();
+
+				if (experiment.audience && experiment.audience.length > 0) {
+					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
 					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
 					}
-
-					assignment.attrsSeq = this._attrsSeq;
 				}
+
+				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
+					const ruleVariant = this._computeRuleVariant(experiment.assignmentRules, experiment.variants.length, attrs);
+					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
+						return false;
+					}
+
+					assignment.ruleVariant = ruleVariant;
+				}
+
+				assignment.ruleKey = ruleKey;
+				assignment.attrsSeq = this._attrsSeq;
 			}
 			return true;
 		};
@@ -514,6 +555,7 @@ export default class Context {
 			fullOn: false,
 			custom: false,
 			audienceMismatch: false,
+			ruleOverride: false,
 		};
 
 		this._assignments[experimentName] = assignment;
@@ -530,15 +572,30 @@ export default class Context {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
 
+				let ruleVariant: number | null = null;
+				const attrs = this._getAttributesMap();
+
 				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.data.audience, this._getAttributesMap());
+					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
 					if (typeof result === "boolean") {
 						assignment.audienceMismatch = !result;
 					}
 				}
 
-				if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
+					ruleVariant = this._computeRuleVariant(experiment.data.assignmentRules, experiment.data.variants.length, attrs);
+				}
+
+				assignment.ruleVariant = ruleVariant;
+				assignment.ruleKey = experiment.data.assignmentRules
+					? `${experiment.data.assignmentRules}:${this._environmentId}`
+					: "";
+
+				if (ruleVariant !== null && ruleVariant >= 0 && ruleVariant < experiment.data.variants.length) {
+					assignment.variant = ruleVariant;
+					assignment.ruleOverride = true;
+				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 					assignment.variant = 0;
 				} else if (experiment.data.fullOnVariant === 0) {
 					if (unitType !== null) {
@@ -629,6 +686,7 @@ export default class Context {
 			fullOn: assignment.fullOn,
 			custom: assignment.custom,
 			audienceMismatch: assignment.audienceMismatch,
+			ruleOverride: assignment.ruleOverride,
 		};
 		this._logEvent("exposure", exposureEvent);
 
@@ -731,7 +789,7 @@ export default class Context {
 					this._queueExposure(experimentName, assignment);
 				}
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
 					return assignment.variables[key] as string;
 				}
 			}
@@ -745,7 +803,7 @@ export default class Context {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden)) {
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
 					return assignment.variables[key] as string;
 				}
 			}
@@ -856,6 +914,7 @@ export default class Context {
 							fullOn: x.fullOn,
 							custom: x.custom,
 							audienceMismatch: x.audienceMismatch,
+							ruleOverride: x.ruleOverride,
 						}));
 					}
 
@@ -954,6 +1013,7 @@ export default class Context {
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
 		this._data = data;
+		this._environmentId = data.environment_id ?? null;
 
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
