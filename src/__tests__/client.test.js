@@ -816,6 +816,7 @@ describe("Client", () => {
 
 	it("request() should still send headers when auth is explicitly true (deprecated)", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+		const warnSpy = jest.spyOn(console, "warn").mockImplementation();
 
 		const client = new Client(clientOptions);
 
@@ -842,8 +843,13 @@ describe("Client", () => {
 					signal: expect.any(Object),
 				});
 
+				expect(warnSpy).toHaveBeenCalledWith(
+					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
+				);
+
 				expect(response).toEqual(defaultMockResponse);
 
+				warnSpy.mockRestore();
 				done();
 			});
 	});
@@ -855,6 +861,69 @@ describe("Client", () => {
 
 		client
 			.get({
+				path: "/context",
+				query: { application: "test_app", environment: "test" },
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(
+					`${endpoint}/context?application=test_app&environment=test`,
+					{
+						method: "GET",
+						headers: {
+							"Content-Type": "application/json",
+							"X-API-Key": apiKey,
+							"X-Agent": "javascript-client",
+							"X-Environment": "test",
+							"X-Application": "test_app",
+							"X-Application-Version": 1000000,
+						},
+						keepalive: true,
+						signal: expect.any(Object),
+					}
+				);
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
+	it("get() should not send headers when auth is false", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(Object.assign({}, clientOptions, { application: "website" }));
+
+		client
+			.get({
+				auth: false,
+				path: "/context",
+				query: { application: "website", environment: "test" },
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(
+					`${endpoint}/context?application=website&environment=test`,
+					{
+						method: "GET",
+						keepalive: true,
+						signal: expect.any(Object),
+					}
+				);
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
+	it("getUnauthed() should forward to get()", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(clientOptions);
+
+		client
+			.getUnauthed({
 				path: "/context",
 				query: { application: "test_app", environment: "test" },
 			})
