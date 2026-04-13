@@ -2064,7 +2064,7 @@ describe("Context", () => {
 						audience: JSON.stringify({
 							filter: [{ value: true }],
 						}),
-						assignment_rules: JSON.stringify({
+						assignmentRules: JSON.stringify({
 							rules: [
 								{
 									name: "US Internal Users",
@@ -2091,7 +2091,7 @@ describe("Context", () => {
 						audience: JSON.stringify({
 							filter: [{ value: true }],
 						}),
-						assignment_rules: JSON.stringify({
+						assignmentRules: JSON.stringify({
 							rules: [
 								{
 									name: "Production Only",
@@ -2118,7 +2118,7 @@ describe("Context", () => {
 						audience: JSON.stringify({
 							filter: [{ gte: [{ var: "age" }, { value: 20 }] }],
 						}),
-						assignment_rules: JSON.stringify({
+						assignmentRules: JSON.stringify({
 							rules: [
 								{
 									name: "US Users",
@@ -2178,7 +2178,7 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
-		it("should override takes priority over rules", () => {
+		it("override should take priority over rules", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
 			context.override("exp_test_abc", 0);
@@ -2371,7 +2371,7 @@ describe("Context", () => {
 							audience: JSON.stringify({
 								filter: [{ value: true }],
 							}),
-							assignment_rules: JSON.stringify({
+							assignmentRules: JSON.stringify({
 								rules: [
 									{
 										name: "US Users",
@@ -2415,7 +2415,7 @@ describe("Context", () => {
 							audience: JSON.stringify({
 								filter: [{ value: true }],
 							}),
-							assignment_rules: JSON.stringify({
+							assignmentRules: JSON.stringify({
 								rules: [
 									{
 										name: "US Internal",
@@ -2455,7 +2455,7 @@ describe("Context", () => {
 							audience: JSON.stringify({
 								filter: [{ value: true }],
 							}),
-							assignment_rules: JSON.stringify({
+							assignmentRules: JSON.stringify({
 								rules: [
 									{
 										name: "Prod and Staging",
@@ -2486,7 +2486,7 @@ describe("Context", () => {
 							audience: JSON.stringify({
 								filter: [{ value: true }],
 							}),
-							assignment_rules: JSON.stringify({
+							assignmentRules: JSON.stringify({
 								rules: [
 									{
 										name: "US Users",
@@ -2528,6 +2528,126 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(0);
 
 			context.attribute("country", "DE");
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should fall back to normal assignment when rule variant is out of bounds", () => {
+			const oobResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+							}),
+							assignmentRules: JSON.stringify({
+								rules: [
+									{
+										name: "OOB Rule",
+										type: "assign",
+										conditions: null,
+										environments: [],
+										variant: 99,
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, oobResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should fall back to normal assignment when rule variant is negative", () => {
+			const negResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+							}),
+							assignmentRules: JSON.stringify({
+								rules: [
+									{
+										name: "Negative Rule",
+										type: "assign",
+										conditions: null,
+										environments: [],
+										variant: -1,
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, negResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should set ruleOverride flag when rule forces control variant (0)", (done) => {
+			const controlRuleResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							assignmentRules: JSON.stringify({
+								rules: [
+									{
+										name: "Force Control",
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+										environments: [],
+										variant: 0,
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, controlRuleResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 0,
+					assigned: false,
+					eligible: true,
+					overridden: false,
+					ruleOverride: true,
+				});
+				done();
+			});
+		});
+
+		it("should fall back to normal assignment when assignmentRules is invalid JSON", () => {
+			const badJsonResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							assignmentRules: "not-valid-json{{{",
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, badJsonResponse);
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 	});

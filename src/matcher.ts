@@ -33,13 +33,18 @@ export class AudienceMatcher {
 
 			if (rule.type !== "assign") continue;
 
-			if (Array.isArray(rule.environments) && rule.environments.length > 0) {
-				if (environmentId == null || !rule.environments.includes(environmentId)) {
-					continue;
+			if (rule.environments != null) {
+				if (!Array.isArray(rule.environments)) continue;
+
+				if (rule.environments.length > 0) {
+					if (environmentId == null || !rule.environments.includes(environmentId)) {
+						continue;
+					}
 				}
 			}
 
 			if (typeof rule.variant !== "number") continue;
+			if (rule.variant !== Math.floor(rule.variant)) continue;
 
 			const conditions = rule.conditions;
 

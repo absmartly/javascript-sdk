@@ -31,7 +31,7 @@ export type ExperimentData = {
 	trafficSeedHi: number;
 	trafficSeedLo: number;
 	audience: string;
-	assignment_rules: string;
+	assignmentRules: string;
 	audienceStrict: boolean;
 	split: number[];
 	seedHi: number;
@@ -481,8 +481,8 @@ export default class Context {
 					}
 				}
 
-				if (experiment.assignment_rules && experiment.assignment_rules.length > 0) {
-					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.assignment_rules, this._environmentId, attrs);
+				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
+					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.assignmentRules, this._environmentId, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
@@ -560,13 +560,13 @@ export default class Context {
 					}
 				}
 
-				if (experiment.data.assignment_rules && experiment.data.assignment_rules.length > 0) {
-					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.assignment_rules, this._environmentId, attrs);
+				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
+					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.assignmentRules, this._environmentId, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;
 
-				if (ruleVariant !== null) {
+				if (ruleVariant !== null && ruleVariant >= 0 && ruleVariant < experiment.data.variants.length) {
 					assignment.variant = ruleVariant;
 					assignment.ruleOverride = true;
 				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {

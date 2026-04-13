@@ -311,28 +311,6 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(2);
 		});
 
-		it("should skip to later rule when earlier rules do not match", () => {
-			const audience = JSON.stringify({
-				rules: [
-					{
-						name: "rule1",
-						type: "assign",
-						conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
-						environments: [],
-						variant: 1,
-					},
-					{
-						name: "rule2",
-						type: "assign",
-						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-						environments: [],
-						variant: 2,
-					},
-				],
-			});
-			expect(matcher.evaluateRules(audience, 1, { country: "US" })).toBe(2);
-		});
-
 		it("should support variant 0", () => {
 			const audience = JSON.stringify({
 				rules: [
@@ -346,6 +324,26 @@ describe("AudienceMatcher", () => {
 				],
 			});
 			expect(matcher.evaluateRules(audience, 1, {})).toBe(0);
+		});
+
+		it("should skip rule with fractional variant", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						environments: [],
+						variant: 1.5,
+					},
+					{
+						name: "rule2",
+						type: "assign",
+						environments: [],
+						variant: 2,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(2);
 		});
 
 		it("should skip rule with non-object conditions", () => {
@@ -367,6 +365,88 @@ describe("AudienceMatcher", () => {
 				],
 			});
 			expect(matcher.evaluateRules(audience, 1, {})).toBe(2);
+		});
+
+		it("should skip rule when environments is not an array", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: { value: true },
+						environments: "not-an-array",
+						variant: 1,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(null);
+		});
+
+		it("should not match when environments list contains fractional IDs", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: { value: true },
+						environments: [1.5],
+						variant: 1,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(null);
+			expect(matcher.evaluateRules(audience, 2, {})).toBe(null);
+		});
+
+		it("should skip environment-scoped rule when environmentId is 0 and not in list", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: { value: true },
+						environments: [1, 2],
+						variant: 1,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 0, {})).toBe(null);
+		});
+
+		it("should skip rule when conditions evaluation throws and continue to next rule", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "throws",
+						type: "assign",
+						conditions: { badOperator: [1, 2] },
+						environments: [],
+						variant: 1,
+					},
+					{
+						name: "fallback",
+						type: "assign",
+						environments: [],
+						variant: 2,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(2);
+		});
+
+		it("should return negative variant (bounds checking is caller responsibility)", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: null,
+						environments: [],
+						variant: -1,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, 1, {})).toBe(-1);
 		});
 	});
 });
