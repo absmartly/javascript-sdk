@@ -440,6 +440,13 @@ export default class Context {
 		}
 	}
 
+	private _computeRuleVariant(assignmentRules: string, variantCount: number, attrs: Record<string, unknown>): number | null {
+		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentId, attrs);
+		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount
+			? rawRuleVariant
+			: null;
+	}
+
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
 			throw new Error("ABSmartly Context is not yet ready.");
@@ -497,10 +504,7 @@ export default class Context {
 				}
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
-					const rawRuleVariant = this._audienceMatcher.evaluateRules(experiment.assignmentRules, this._environmentId, attrs);
-					const ruleVariant = rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < experiment.variants.length
-						? rawRuleVariant
-						: null;
+					const ruleVariant = this._computeRuleVariant(experiment.assignmentRules, experiment.variants.length, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
@@ -580,10 +584,7 @@ export default class Context {
 				}
 
 				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					const rawRuleVariant = this._audienceMatcher.evaluateRules(experiment.data.assignmentRules, this._environmentId, attrs);
-					ruleVariant = rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < experiment.data.variants.length
-						? rawRuleVariant
-						: null;
+					ruleVariant = this._computeRuleVariant(experiment.data.assignmentRules, experiment.data.variants.length, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;
