@@ -2650,6 +2650,89 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, badJsonResponse);
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
+
+		it("should not invalidate cache when out-of-range rule variant changes to a different out-of-range value", () => {
+			const oobRulesResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+							}),
+							assignmentRules: JSON.stringify({
+								rules: [
+									{
+										name: "OOB Rule US",
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+										environments: [],
+										variant: 99,
+									},
+									{
+										name: "OOB Rule GB",
+										type: "assign",
+										conditions: { and: [{ eq: [{ var: "country" }, { value: "GB" }] }] },
+										environments: [],
+										variant: 100,
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, oobRulesResponse);
+
+			context.attribute("country", "US");
+			const first = context.treatment("exp_test_abc");
+
+			context.attribute("country", "GB");
+			const second = context.treatment("exp_test_abc");
+
+			expect(first).toEqual(second);
+		});
+
+		it("should normalise out-of-range ruleVariant to null in cached assignment", (done) => {
+			const oobResponse = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							audience: JSON.stringify({
+								filter: [{ value: true }],
+							}),
+							assignmentRules: JSON.stringify({
+								rules: [
+									{
+										name: "OOB Rule",
+										type: "assign",
+										conditions: null,
+										environments: [],
+										variant: 99,
+									},
+								],
+							}),
+						};
+					}
+					return x;
+				}),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, oobResponse);
+			context.treatment("exp_test_abc");
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure.ruleOverride).toBe(false);
+				done();
+			});
+		});
 	});
 
 	describe("variableValue()", () => {

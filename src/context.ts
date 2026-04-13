@@ -497,7 +497,10 @@ export default class Context {
 				}
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
-					const ruleVariant = this._audienceMatcher.evaluateRules(experiment.assignmentRules, this._environmentId, attrs);
+					const rawRuleVariant = this._audienceMatcher.evaluateRules(experiment.assignmentRules, this._environmentId, attrs);
+					const ruleVariant = rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < experiment.variants.length
+						? rawRuleVariant
+						: null;
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
@@ -577,7 +580,10 @@ export default class Context {
 				}
 
 				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._audienceMatcher.evaluateRules(experiment.data.assignmentRules, this._environmentId, attrs);
+					const rawRuleVariant = this._audienceMatcher.evaluateRules(experiment.data.assignmentRules, this._environmentId, attrs);
+					ruleVariant = rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < experiment.data.variants.length
+						? rawRuleVariant
+						: null;
 				}
 
 				assignment.ruleVariant = ruleVariant;
