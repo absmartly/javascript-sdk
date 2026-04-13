@@ -21,7 +21,7 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
-	/** @deprecated The API key is now always sent. This option will be removed in a future version. */
+	/** @deprecated The API key is sent by default; set to false to suppress auth headers. */
 	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
