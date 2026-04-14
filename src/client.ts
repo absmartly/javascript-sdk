@@ -21,6 +21,7 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
+	/** @deprecated The API key is sent by default; set to false to suppress auth headers. */
 	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
@@ -90,7 +91,7 @@ export default class Client {
 	}
 
 	getContext(options?: Partial<ClientRequestOptions>) {
-		return this.getUnauthed({
+		return this.get({
 			...options,
 			path: "/context",
 			query: {
@@ -161,7 +162,13 @@ export default class Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			if (options.auth) {
+			if (options.auth === true) {
+				console.warn(
+					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
+				);
+			}
+
+			if (options.auth !== false) {
 				opts.headers = {
 					"Content-Type": "application/json",
 					"X-API-Key": this._opts.apiKey,
@@ -281,7 +288,6 @@ export default class Client {
 	post(options: ClientRequestOptions) {
 		return this.request({
 			...options,
-			auth: true,
 			method: "POST",
 		});
 	}
@@ -289,7 +295,6 @@ export default class Client {
 	put(options: ClientRequestOptions) {
 		return this.request({
 			...options,
-			auth: true,
 			method: "PUT",
 		});
 	}
@@ -302,10 +307,15 @@ export default class Client {
 		return this._opts.application;
 	}
 
-	getUnauthed(options: ClientRequestOptions) {
+	get(options: ClientRequestOptions) {
 		return this.request({
 			...options,
 			method: "GET",
 		});
+	}
+
+	/** @deprecated Use get() instead. */
+	getUnauthed(options: ClientRequestOptions) {
+		return this.get(options);
 	}
 }
