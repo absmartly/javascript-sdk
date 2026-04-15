@@ -126,7 +126,6 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
-	environment_id?: number;
 };
 
 export default class Context {
@@ -135,7 +134,7 @@ export default class Context {
 	private readonly _audienceMatcher: AudienceMatcher;
 	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
-	private _environmentId: number | null;
+	private _environmentName: string | null;
 	private readonly _eventLogger: EventLogger;
 	private readonly _opts: ContextOptions;
 	private readonly _publisher: ContextPublisher;
@@ -175,7 +174,7 @@ export default class Context {
 		this._units = {};
 		this._assigners = {};
 		this._audienceMatcher = new AudienceMatcher();
-		this._environmentId = null;
+		this._environmentName = null;
 		this._attrsSeq = 0;
 
 		if (params.units) {
@@ -441,7 +440,7 @@ export default class Context {
 	}
 
 	private _computeRuleVariant(assignmentRules: string, variantCount: number, attrs: Record<string, unknown>): number | null {
-		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentId, attrs);
+		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentName, attrs);
 		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount
 			? rawRuleVariant
 			: null;
@@ -459,6 +458,15 @@ export default class Context {
 
 	private _getAttributesMap(): Record<string, unknown> {
 		const attrs: Record<string, unknown> = {};
+		if (this._opts.includeSystemAttributes === true) {
+			const client = this._sdk.getClient();
+			const app = client.getApplication();
+			attrs["application"] = app.name;
+			attrs["environment"] = client.getEnvironment();
+			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
+				attrs["app_version"] = app.version;
+			}
+		}
 		this._attrs.forEach((attr) => {
 			attrs[attr.name] = attr.value;
 		});
@@ -478,7 +486,7 @@ export default class Context {
 
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			const ruleKey = experiment.assignmentRules
-				? `${experiment.assignmentRules}:${this._environmentId}`
+				? `${experiment.assignmentRules}:${this._environmentName}`
 				: "";
 			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
 
@@ -494,15 +502,6 @@ export default class Context {
 			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
 				const attrs = this._getAttributesMap();
 
-				if (experiment.audience && experiment.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
-					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
-
-					if (newAudienceMismatch !== assignment.audienceMismatch) {
-						return false;
-					}
-				}
-
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
 					const ruleVariant = this._computeRuleVariant(experiment.assignmentRules, experiment.variants.length, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
@@ -510,6 +509,15 @@ export default class Context {
 					}
 
 					assignment.ruleVariant = ruleVariant;
+				}
+
+				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
+					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
+					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
+
+					if (newAudienceMismatch !== assignment.audienceMismatch) {
+						return false;
+					}
 				}
 
 				assignment.ruleKey = ruleKey;
@@ -575,69 +583,71 @@ export default class Context {
 				let ruleVariant: number | null = null;
 				const attrs = this._getAttributesMap();
 
-				if (experiment.data.audience && experiment.data.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
-
-					if (typeof result === "boolean") {
-						assignment.audienceMismatch = !result;
-					}
-				}
-
 				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
 					ruleVariant = this._computeRuleVariant(experiment.data.assignmentRules, experiment.data.variants.length, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;
 				assignment.ruleKey = experiment.data.assignmentRules
-					? `${experiment.data.assignmentRules}:${this._environmentId}`
+					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
 				if (ruleVariant !== null && ruleVariant >= 0 && ruleVariant < experiment.data.variants.length) {
 					assignment.variant = ruleVariant;
 					assignment.ruleOverride = true;
-				} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
-					assignment.variant = 0;
-				} else if (experiment.data.fullOnVariant === 0) {
-					if (unitType !== null) {
-						if (unitType in this._units) {
-							const unit = this._unitHash(unitType);
-							if (unit !== null) {
-								const assigner =
-									unitType in this._assigners
-										? this._assigners[unitType]
-										: (this._assigners[unitType] = new VariantAssigner(unit));
-								const eligible =
-									assigner.assign(
-										experiment.data.trafficSplit,
-										experiment.data.trafficSeedHi,
-										experiment.data.trafficSeedLo
-									) === 1;
+				} else {
+					if (experiment.data.audience && experiment.data.audience.length > 0) {
+						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
-								assignment.assigned = true;
-								assignment.eligible = eligible;
+						if (typeof result === "boolean") {
+							assignment.audienceMismatch = !result;
+						}
+					}
 
-								if (eligible) {
-									if (hasCustom) {
-										assignment.variant = this._cassignments[experimentName];
-										assignment.custom = true;
+					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+						assignment.variant = 0;
+					} else if (experiment.data.fullOnVariant === 0) {
+						if (unitType !== null) {
+							if (unitType in this._units) {
+								const unit = this._unitHash(unitType);
+								if (unit !== null) {
+									const assigner =
+										unitType in this._assigners
+											? this._assigners[unitType]
+											: (this._assigners[unitType] = new VariantAssigner(unit));
+									const eligible =
+										assigner.assign(
+											experiment.data.trafficSplit,
+											experiment.data.trafficSeedHi,
+											experiment.data.trafficSeedLo
+										) === 1;
+
+									assignment.assigned = true;
+									assignment.eligible = eligible;
+
+									if (eligible) {
+										if (hasCustom) {
+											assignment.variant = this._cassignments[experimentName];
+											assignment.custom = true;
+										} else {
+											assignment.variant = assigner.assign(
+												experiment.data.split,
+												experiment.data.seedHi,
+												experiment.data.seedLo
+											);
+										}
 									} else {
-										assignment.variant = assigner.assign(
-											experiment.data.split,
-											experiment.data.seedHi,
-											experiment.data.seedLo
-										);
+										assignment.variant = 0;
 									}
-								} else {
-									assignment.variant = 0;
 								}
 							}
 						}
+					} else {
+						assignment.assigned = true;
+						assignment.eligible = true;
+						assignment.variant = experiment.data.fullOnVariant;
+						assignment.fullOn = true;
 					}
-				} else {
-					assignment.assigned = true;
-					assignment.eligible = true;
-					assignment.variant = experiment.data.fullOnVariant;
-					assignment.fullOn = true;
 				}
 
 				// store these so we can detect changes to running experiment
@@ -1013,7 +1023,7 @@ export default class Context {
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
 		this._data = data;
-		this._environmentId = data.environment_id ?? null;
+		this._environmentName = this._sdk.getClient().getEnvironment() ?? null;
 
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};

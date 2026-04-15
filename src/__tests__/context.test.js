@@ -2093,12 +2093,12 @@ describe("Context", () => {
 						name: "Production Only",
 						type: "assign",
 						conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-						environments: [10],
+						environments: ["production"],
 						variant: 1,
 					},
 				],
 			}),
-		}, { environment_id: 10 });
+		});
 
 		const rulesStrictContextResponse = buildRulesResponse({
 			audienceStrict: true,
@@ -2132,30 +2132,19 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
-		it("should skip rule when environment id does not match", () => {
-			const stagingResponse = {
-				...envScopedRulesContextResponse,
-				environment_id: 20,
-			};
-			const context = new Context(sdk, contextOptions, contextParams, stagingResponse);
-			context.attribute("country", "US");
-			// Rule scoped to env 10, context has env 20 — should get normal assignment (2)
-			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
-		});
-
-		it("should skip environment-scoped rules when API response has no environment_id", () => {
-			const noEnvIdResponse = { ...envScopedRulesContextResponse };
-			delete noEnvIdResponse.environment_id;
-			const context = new Context(sdk, contextOptions, contextParams, noEnvIdResponse);
-			context.attribute("country", "US");
-			// Rule requires env 10, but no environment_id in response — should get normal assignment
-			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
-		});
-
-		it("should match rule when environment id matches", () => {
+		it("should skip rule when environment name does not match", () => {
+			client.getEnvironment.mockReturnValue("staging");
 			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
 			context.attribute("country", "US");
-			// Rule scoped to env 10, context has env 10 — should get rule variant (1)
+			// Rule scoped to "production", client has "staging" — should get normal assignment (2)
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			client.getEnvironment.mockReturnValue("production");
+		});
+
+		it("should match rule when environment name matches", () => {
+			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
+			context.attribute("country", "US");
+			// Rule scoped to "production", client has "production" — should get rule variant (1)
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
@@ -2218,7 +2207,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should set correct flags when rule matches with audienceMismatch", (done) => {
+		it("should not evaluate audience when rule matches (audienceMismatch stays false)", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
@@ -2235,7 +2224,7 @@ describe("Context", () => {
 					overridden: false,
 					fullOn: false,
 					custom: false,
-					audienceMismatch: true,
+					audienceMismatch: false,
 					ruleOverride: true,
 				});
 				done();
@@ -2407,7 +2396,7 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
-		it("should match rule scoped to multiple environment ids", () => {
+		it("should match rule scoped to multiple environment names", () => {
 			const multiEnvResponse = buildRulesResponse({
 				audience: JSON.stringify({
 					filter: [{ value: true }],
@@ -2418,12 +2407,12 @@ describe("Context", () => {
 							name: "Prod and Staging",
 							type: "assign",
 							conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
-							environments: [10, 20],
+							environments: ["production", "staging"],
 							variant: 1,
 						},
 					],
 				}),
-			}, { environment_id: 20 });
+			});
 			const context = new Context(sdk, contextOptions, contextParams, multiEnvResponse);
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
@@ -2557,6 +2546,70 @@ describe("Context", () => {
 			});
 			const context = new Context(sdk, contextOptions, contextParams, badJsonResponse);
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule on application attribute when includeSystemAttributes is true", () => {
+			const appRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Website Only",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "application" }, { value: "website" }] }] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, appRuleResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should not match rule on application attribute when includeSystemAttributes is not set", () => {
+			const appRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Website Only",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "application" }, { value: "website" }] }] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, appRuleResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule on environment attribute when includeSystemAttributes is true", () => {
+			const envRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Production Only",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "environment" }, { value: "production" }] }] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, envRuleResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
 		it("should not invalidate cache when out-of-range rule variant changes to a different out-of-range value", () => {
@@ -4658,7 +4711,7 @@ describe("Context", () => {
 		});
 
 		it("should include app_version when application version is set", (done) => {
-			client.getApplication.mockReturnValueOnce({ name: "website", version: 3 });
+			client.getApplication.mockReturnValue({ name: "website", version: 3 });
 
 			const optionsWithSystemAttrs = {
 				publishDelay: -1,
@@ -4679,6 +4732,7 @@ describe("Context", () => {
 				expect(appVersionAttr).toBeDefined();
 				expect(appVersionAttr.value).toEqual(3);
 
+				client.getApplication.mockReturnValue({ name: "website", version: 0 });
 				done();
 			});
 		});
@@ -4707,7 +4761,7 @@ describe("Context", () => {
 		});
 
 		it("should include app_version when application version is a semver string", (done) => {
-			client.getApplication.mockReturnValueOnce({ name: "website", version: "1.2.3" });
+			client.getApplication.mockReturnValue({ name: "website", version: "1.2.3" });
 
 			const optionsWithSystemAttrs = {
 				publishDelay: -1,
@@ -4728,6 +4782,7 @@ describe("Context", () => {
 				expect(appVersionAttr).toBeDefined();
 				expect(appVersionAttr.value).toEqual("1.2.3");
 
+				client.getApplication.mockReturnValue({ name: "website", version: 0 });
 				done();
 			});
 		});
