@@ -592,7 +592,7 @@ export default class Context {
 					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
-				if (ruleVariant !== null && ruleVariant >= 0 && ruleVariant < experiment.data.variants.length) {
+				if (ruleVariant !== null) {
 					assignment.variant = ruleVariant;
 					assignment.ruleOverride = true;
 				} else {

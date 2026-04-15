@@ -2055,9 +2055,8 @@ describe("Context", () => {
 	});
 
 	describe("rules evaluation", () => {
-		const buildRulesResponse = (overrides = {}, responseOverrides = {}) => ({
+		const buildRulesResponse = (overrides = {}) => ({
 			...getContextResponse,
-			...responseOverrides,
 			experiments: getContextResponse.experiments.map((x) => {
 				if (x.name === "exp_test_abc") {
 					return { ...x, ...overrides };
@@ -2133,12 +2132,18 @@ describe("Context", () => {
 		});
 
 		it("should skip rule when environment name does not match", () => {
-			client.getEnvironment.mockReturnValue("staging");
+			client.getEnvironment.mockReturnValueOnce("staging");
 			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
 			context.attribute("country", "US");
 			// Rule scoped to "production", client has "staging" — should get normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
-			client.getEnvironment.mockReturnValue("production");
+		});
+
+		it("should skip environment-scoped rules when getEnvironment returns undefined", () => {
+			client.getEnvironment.mockReturnValueOnce(undefined);
+			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
 		it("should match rule when environment name matches", () => {
@@ -2320,6 +2325,25 @@ describe("Context", () => {
 			context.attribute("country", "GB");
 			// No rule matches, audienceStrict on, audience filter mismatch — variant 0
 			expect(context.treatment("exp_test_abc")).toEqual(0);
+		});
+
+		it("should set audienceMismatch true when no rule matches and audience mismatches in strict mode", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				const publishCall = publisher.publish.mock.calls[0][0];
+				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
+				expect(exposure).toMatchObject({
+					variant: 0,
+					ruleOverride: false,
+					audienceMismatch: true,
+				});
+				done();
+			});
 		});
 
 		it("should return correct variableValue when rule forces a different variant", () => {

@@ -382,6 +382,21 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
 		});
 
+		it("should be case-sensitive when matching environment names", () => {
+			const audience = JSON.stringify({
+				rules: [
+					{
+						name: "rule1",
+						type: "assign",
+						conditions: { value: true },
+						environments: ["Production"],
+						variant: 1,
+					},
+				],
+			});
+			expect(matcher.evaluateRules(audience, "production", {})).toBe(null);
+		});
+
 		it("should skip rule when conditions evaluation throws and continue to next rule", () => {
 			const audience = JSON.stringify({
 				rules: [
