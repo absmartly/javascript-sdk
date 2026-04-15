@@ -4641,6 +4641,10 @@ describe("Context", () => {
 	});
 
 	describe("includeSystemAttributes", () => {
+		afterEach(() => {
+			client.getApplication.mockReturnValue({ name: "website", version: 0 });
+		});
+
 		it("should not include system attributes by default", (done) => {
 			const defaultOptions = {
 				publishDelay: -1,
@@ -4756,7 +4760,6 @@ describe("Context", () => {
 				expect(appVersionAttr).toBeDefined();
 				expect(appVersionAttr.value).toEqual(3);
 
-				client.getApplication.mockReturnValue({ name: "website", version: 0 });
 				done();
 			});
 		});
@@ -4806,7 +4809,6 @@ describe("Context", () => {
 				expect(appVersionAttr).toBeDefined();
 				expect(appVersionAttr.value).toEqual("1.2.3");
 
-				client.getApplication.mockReturnValue({ name: "website", version: 0 });
 				done();
 			});
 		});
