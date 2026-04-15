@@ -462,7 +462,7 @@ export default class Context {
 			const client = this._sdk.getClient();
 			const app = client.getApplication();
 			attrs["application"] = app.name;
-			attrs["environment"] = client.getEnvironment();
+			attrs["environment"] = client.getEnvironment() ?? null;
 			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
 				attrs["app_version"] = app.version;
 			}
@@ -866,7 +866,7 @@ export default class Context {
 				{ name: "sdk_name", value: client.getAgent(), setAt: now },
 				{ name: "sdk_version", value: SDK_VERSION, setAt: now },
 				{ name: "application", value: app.name, setAt: now },
-				{ name: "environment", value: client.getEnvironment(), setAt: now }
+				{ name: "environment", value: client.getEnvironment() ?? null, setAt: now }
 			);
 			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
 				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
