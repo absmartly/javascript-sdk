@@ -17,7 +17,7 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	evaluateRules(assignmentRulesString: string, environmentId: number | null, vars: Record<string, unknown>): number | null {
+	evaluateRules(assignmentRulesString: string, environmentName: string | null, vars: Record<string, unknown>): number | null {
 		let assignmentRules;
 		try {
 			assignmentRules = JSON.parse(assignmentRulesString);
@@ -37,7 +37,7 @@ export class AudienceMatcher {
 				if (!Array.isArray(rule.environments)) continue;
 
 				if (rule.environments.length > 0) {
-					if (environmentId == null || !rule.environments.includes(environmentId)) {
+					if (environmentName == null || !rule.environments.includes(environmentName)) {
 						continue;
 					}
 				}
