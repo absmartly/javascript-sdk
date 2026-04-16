@@ -28,7 +28,7 @@
 		"build-browser": "TARGET=browser webpack --progress --config webpack.config.js && TARGET=browser NODE_ENV=production webpack --progress --config webpack.config.js",
 		"build-cjs": "TARGET=cjs babel js --delete-dir-on-start --ignore 'browser.js' -d lib",
 		"build-es": "TARGET=es babel js --delete-dir-on-start --ignore 'browser.js' -d es",
-		"build": "npm run -s format && npm run -s lint && npm run -s generate-version && npm run -s compile && npm run -s test && npm run -s build-es && npm run -s build-cjs && npm run -s build-browser",
+		"build": "npm run -s format:check && npm run -s lint && npm run -s generate-version && npm run -s compile && npm run -s test && npm run -s build-es && npm run -s build-cjs && npm run -s build-browser",
 		"lint": "eslint -f stylish 'src/**/*.{js,mjs,jsx,ts,mts,tsx}'",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
 		"format:check": "prettier --check '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
