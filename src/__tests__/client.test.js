@@ -866,22 +866,19 @@ describe("Client", () => {
 			})
 			.then((response) => {
 				expect(fetch).toHaveBeenCalledTimes(1);
-				expect(fetch).toHaveBeenLastCalledWith(
-					`${endpoint}/context?application=test_app&environment=test`,
-					{
-						method: "GET",
-						headers: {
-							"Content-Type": "application/json",
-							"X-API-Key": apiKey,
-							"X-Agent": "javascript-client",
-							"X-Environment": "test",
-							"X-Application": "test_app",
-							"X-Application-Version": 1000000,
-						},
-						keepalive: true,
-						signal: expect.any(Object),
-					}
-				);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
+					method: "GET",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					keepalive: true,
+					signal: expect.any(Object),
+				});
 
 				expect(response).toEqual(defaultMockResponse);
 
@@ -902,14 +899,11 @@ describe("Client", () => {
 			})
 			.then((response) => {
 				expect(fetch).toHaveBeenCalledTimes(1);
-				expect(fetch).toHaveBeenLastCalledWith(
-					`${endpoint}/context?application=website&environment=test`,
-					{
-						method: "GET",
-						keepalive: true,
-						signal: expect.any(Object),
-					}
-				);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=website&environment=test`, {
+					method: "GET",
+					keepalive: true,
+					signal: expect.any(Object),
+				});
 
 				expect(response).toEqual(defaultMockResponse);
 
@@ -929,22 +923,19 @@ describe("Client", () => {
 			})
 			.then((response) => {
 				expect(fetch).toHaveBeenCalledTimes(1);
-				expect(fetch).toHaveBeenLastCalledWith(
-					`${endpoint}/context?application=test_app&environment=test`,
-					{
-						method: "GET",
-						headers: {
-							"Content-Type": "application/json",
-							"X-API-Key": apiKey,
-							"X-Agent": "javascript-client",
-							"X-Environment": "test",
-							"X-Application": "test_app",
-							"X-Application-Version": 1000000,
-						},
-						keepalive: true,
-						signal: expect.any(Object),
-					}
-				);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
+					method: "GET",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
+					keepalive: true,
+					signal: expect.any(Object),
+				});
 
 				expect(response).toEqual(defaultMockResponse);
 

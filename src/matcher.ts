@@ -17,7 +17,11 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	evaluateRules(assignmentRulesString: string, environmentName: string | null, vars: Record<string, unknown>): number | null {
+	evaluateRules(
+		assignmentRulesString: string,
+		environmentName: string | null,
+		vars: Record<string, unknown>
+	): number | null {
 		let assignmentRules;
 		try {
 			assignmentRules = JSON.parse(assignmentRulesString);
