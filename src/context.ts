@@ -439,11 +439,13 @@ export default class Context {
 		}
 	}
 
-	private _computeRuleVariant(assignmentRules: string, variantCount: number, attrs: Record<string, unknown>): number | null {
+	private _computeRuleVariant(
+		assignmentRules: string,
+		variantCount: number,
+		attrs: Record<string, unknown>
+	): number | null {
 		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentName, attrs);
-		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount
-			? rawRuleVariant
-			: null;
+		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount ? rawRuleVariant : null;
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
@@ -463,7 +465,10 @@ export default class Context {
 			const app = client.getApplication();
 			attrs["application"] = app.name;
 			attrs["environment"] = client.getEnvironment() ?? null;
-			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
+			if (
+				(typeof app.version === "string" && app.version.length > 0) ||
+				(typeof app.version === "number" && app.version > 0)
+			) {
 				attrs["app_version"] = app.version;
 			}
 		}
@@ -485,9 +490,7 @@ export default class Context {
 		};
 
 		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
-			const ruleKey = experiment.assignmentRules
-				? `${experiment.assignmentRules}:${this._environmentName}`
-				: "";
+			const ruleKey = experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "";
 			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
 
 			if (ruleKeyChanged) {
@@ -584,7 +587,11 @@ export default class Context {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._computeRuleVariant(experiment.data.assignmentRules, experiment.data.variants.length, attrs);
+					ruleVariant = this._computeRuleVariant(
+						experiment.data.assignmentRules,
+						experiment.data.variants.length,
+						attrs
+					);
 				}
 
 				assignment.ruleVariant = ruleVariant;
@@ -868,7 +875,10 @@ export default class Context {
 				{ name: "application", value: app.name, setAt: now },
 				{ name: "environment", value: client.getEnvironment() ?? null, setAt: now }
 			);
-			if ((typeof app.version === "string" && app.version.length > 0) || (typeof app.version === "number" && app.version > 0)) {
+			if (
+				(typeof app.version === "string" && app.version.length > 0) ||
+				(typeof app.version === "number" && app.version > 0)
+			) {
 				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
 			}
 		}

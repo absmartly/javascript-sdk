@@ -2400,10 +2400,12 @@ describe("Context", () => {
 						{
 							name: "US Internal",
 							type: "assign",
-							conditions: { and: [
-								{ eq: [{ var: "country" }, { value: "US" }] },
-								{ eq: [{ var: "user_type" }, { value: "internal" }] },
-							] },
+							conditions: {
+								and: [
+									{ eq: [{ var: "country" }, { value: "US" }] },
+									{ eq: [{ var: "user_type" }, { value: "internal" }] },
+								],
+							},
 							environments: [],
 							variant: 1,
 						},
