@@ -1,6 +1,6 @@
 # A/B Smartly SDK [![npm version](https://badge.fury.io/js/%40absmartly%2Fjavascript-sdk.svg)](https://badge.fury.io/js/%40absmartly%2Fjavascript-sdk)
 
-A/B Smartly - JavaScript SDK
+A/B Smartly - JavaScript/TypeScript SDK
 
 ## Compatibility
 
@@ -30,7 +30,7 @@ const sdk = new SDK({
 ### Legacy Browsers
 A pre-built legacy bundle transpiled to ES2015 is available at `dist/index.legacy.js`.
 
-**Important:** This is an ES2015 build, not an ES5 build. It can help with older browsers that support ES2015, but it does **not** restore IE11 or IE10 compatibility on its own.
+**Important:** This is an ES2015 build, not an ES5 build. It does **not** support IE10/IE11.
 
 If you need legacy browser support, you must provide polyfills for missing APIs:
 
@@ -132,6 +132,10 @@ const sdk = new SDK({
 | `keepalive` | `boolean` | No | Enable keep-alive (default: `true`) |
 | `fetchImpl` | `typeof fetch` | No | Custom fetch implementation for legacy environments |
 | `AbortControllerImpl` | `typeof AbortController` | No | Custom AbortController for legacy environments |
+| `client` | `Client` | No | Custom HTTP client implementing the `Client` interface |
+| `eventLogger` | `EventLogger` | No | Custom event logger callback |
+| `publisher` | `ContextPublisher` | No | Custom context publisher |
+| `provider` | `ContextDataProvider` | No | Custom context data provider |
 
 #### Creating a new Context with promises
 ```typescript
@@ -142,9 +146,11 @@ const context = sdk.createContext({
 });
 
 context.ready().then(() => {
+    if (context.isFailed()) {
+        console.error("Context failed to initialize:", context.readyError());
+        // Context is still usable — all treatments return control (variant 0)
+    }
     console.log("ABSmartly Context ready!");
-}).catch((error) => {
-    console.log(error);
 });
 ```
 
@@ -156,13 +162,15 @@ const context = sdk.createContext({
     },
 });
 
-try {
-    await context.ready();
-    console.log("ABSmartly Context ready!");
-} catch (error) {
-    console.log(error);
+await context.ready();
+
+if (context.isFailed()) {
+    console.error("Context failed to initialize:", context.readyError());
+    // Context is still usable — all treatments return control (variant 0)
 }
 ```
+
+> **Note:** `ready()` always resolves to `true`, even when initialization fails. A failed context is still "ready" — it simply has no experiment data, so all `treatment()` calls return `0` (control). Use `isFailed()` to check if initialization failed and `readyError()` to inspect the error.
 
 #### Creating a new Context with pre-fetched data
 When doing full-stack experimentation with A/B Smartly, we recommend creating a context only once on the server-side.
@@ -237,6 +245,18 @@ if (context.treatment("exp_test_experiment") === 0) {
 }
 ```
 
+#### Accessing experiment variables
+Experiment variables allow you to configure per-variant values directly from the A/B Smartly web console.
+
+```typescript
+const buttonColor = context.variableValue("button.color", "grey"); // "grey" is the default
+```
+
+Use `peekVariableValue()` to access a variable without triggering an exposure:
+```typescript
+const buttonColor = context.peekVariableValue("button.color", "grey");
+```
+
 #### Tracking a goal achievement
 Goals are created in the A/B Smartly web console.
 ```typescript
@@ -262,12 +282,12 @@ window.location = "https://www.absmartly.com";
 #### Refreshing the context with fresh experiment data
 For long-running single-page-applications (SPA), the context is usually created once when the application is first reached.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can use the `refreshInterval` option when creating the context.
+To mitigate this, we can use the `refreshPeriod` option when creating the context.
 
 ```typescript
 const context = sdk.createContext(
     { units: { session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8" } },
-    { refreshInterval: 5 * 60 * 1000 },
+    { refreshPeriod: 5 * 60 * 1000 },
 );
 ```
 
@@ -314,6 +334,7 @@ Currently, the SDK logs the following events:
 | `"goal"` | `Context.track()` method succeeds | goal data enqueued for publishing |
 | `"finalize"` | `Context.finalize()` method succeeds the first time | undefined |
 
+> **Note:** The event logger is wrapped in a try/catch by the SDK. A broken logger will not crash SDK operations.
 
 #### Peek at treatment variants
 Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure.
@@ -338,6 +359,59 @@ context.overrides({
 });
 ```
 
+#### Custom fields
+Experiments can have custom field values configured in the A/B Smartly web console.
+```typescript
+const keys = context.customFieldKeys();
+const value = context.customFieldValue("exp_test_experiment", "country");
+const type = context.customFieldValueType("exp_test_experiment", "country");
+```
+
+#### Error handling
+The SDK provides typed error classes for programmatic error handling:
+
+```typescript
+import {
+    ABSmartlyError,
+    ContextNotReadyError,
+    ContextFinalizedError,
+    TimeoutError,
+    RetryError,
+} from "@absmartly/javascript-sdk";
+
+try {
+    context.treatment("exp_test");
+} catch (error) {
+    if (error instanceof ContextNotReadyError) {
+        // Context not ready yet — await context.ready() first
+    } else if (error instanceof ContextFinalizedError) {
+        // Context has been finalized — create a new one
+    }
+}
+```
+
+#### Custom Client (Dependency Injection)
+You can provide your own HTTP client implementation by implementing the `Client` interface:
+
+```typescript
+import type { Client } from "@absmartly/javascript-sdk";
+
+class MyCustomClient implements Client {
+    async getContext(options?) { /* ... */ }
+    async publish(params, options?) { /* ... */ }
+    getAgent() { return "my-custom-client"; }
+    getApplication() { return { name: "my-app", version: "1.0.0" }; }
+    getEnvironment() { return "production"; }
+}
+
+const sdk = new SDK({
+    client: new MyCustomClient(),
+    // No need for endpoint, apiKey, etc. when providing your own client
+});
+```
+
+Similarly, `ContextDataProvider` and `ContextPublisher` interfaces can be implemented for custom data fetching and publishing strategies.
+
 #### HTTP request timeout
 It is possible to set a timeout per individual HTTP request, overriding the global timeout set for all request when instantiating the SDK object.
 
@@ -345,7 +419,7 @@ Here is an example of setting a timeout only for the createContext request.
 
 ```typescript
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000,
+    refreshPeriod: 5 * 60 * 1000,
 }, {
     timeout: 1500,
 });
@@ -357,7 +431,7 @@ Sometimes it is useful to cancel an inflight HTTP request, for example, when the
 ```typescript
 const controller = new AbortController();
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000,
+    refreshPeriod: 5 * 60 * 1000,
 }, {
     signal: controller.signal,
 });
@@ -374,6 +448,8 @@ clearTimeout(timeoutId);
 
 ### Breaking changes
 - **Named exports** instead of default export: `import { SDK } from "@absmartly/javascript-sdk"` instead of `import absmartly from "@absmartly/javascript-sdk"`
+- **Provider/Publisher classes renamed**: `ContextDataProvider` → `DefaultContextDataProvider`, `ContextPublisher` → `DefaultContextPublisher`. The old names are now interfaces.
+- **`Goal` type renamed** to `GoalAchievement` for clarity
 - **Node.js 14+** minimum (was Node.js 6+)
 - **IE10 and IE11 are not supported by the shipped bundles** - `index.legacy.js` is ES2015, not ES5. Supporting IE10/IE11 would require an additional ES5 build plus polyfills.
 - **No bundled polyfills** - `core-js`, `node-fetch`, and `rfdc` are no longer bundled. Legacy environments must provide polyfills explicitly.
@@ -385,11 +461,16 @@ clearTimeout(timeoutId);
 - Optional polyfill injection (`fetchImpl`, `AbortControllerImpl`)
 - ESM, CJS, and IIFE builds from a single source
 - Smaller bundle size
+- Interface-based dependency injection (`Client`, `ContextDataProvider`, `ContextPublisher`)
+- Domain error classes (`ABSmartlyError`, `ContextNotReadyError`, `ContextFinalizedError`)
+- `readyError()` method to inspect initialization failures
+- Input validation on all public methods
 
 ### Removed exports
 - `AbortController` is no longer exported by the SDK package.
 - Use the platform/global `AbortController` instead.
 - In legacy environments, provide your own polyfill and pass it via `AbortControllerImpl`.
+- `NormalizedClientOptions` is no longer exported (internal type).
 
 ## About A/B Smartly
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them.
