@@ -205,7 +205,7 @@ await context.finalize().then(() => {
 #### Refreshing the context with fresh experiment data
 For long-running single-page-applications (SPA), the context is usually created once when the application is first reached.
 However, any experiments being tracked in your production code, but started after the context was created, will not be triggered.
-To mitigate this, we can use the `refreshInterval` option when creating the context.
+To mitigate this, we can use the `refreshPeriod` option when creating the context.
 
 ```javascript
 const request = {
@@ -215,7 +215,7 @@ const request = {
 };
 
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000
+    refreshPeriod: 5 * 60 * 1000
 });
 ```
 
@@ -293,7 +293,7 @@ Here is an example of setting a timeout only for the createContext request.
 
 ```javascript
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000
+    refreshPeriod: 5 * 60 * 1000
 }, {
     timeout: 1500
 });
@@ -307,7 +307,7 @@ Here is an example of a cancellation scenario.
 ```javascript
 const controller = new absmartly.AbortController();
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000
+    refreshPeriod: 5 * 60 * 1000
 }, {
     signal: controller.signal
 });
