@@ -9,3 +9,4 @@ src/js/*
 types
 js
 .claude/worktrees
+src/version.ts
