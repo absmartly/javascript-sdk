@@ -1,15 +1,11 @@
+import safeRegex from "safe-regex2";
+
 import { Evaluator } from "../evaluator";
 import { BinaryOperator } from "./binary";
 
 const MAX_PATTERN_LENGTH = 1000;
 const MAX_TEXT_LENGTH = 10000;
 const MAX_REGEX_CACHE_SIZE = 100;
-
-const REDOS_PATTERN = /(\+|\*|\{)\)(\+|\*|\{)/;
-
-function hasNestedQuantifiers(pattern: string): boolean {
-	return REDOS_PATTERN.test(pattern);
-}
 
 const regexCache = new Map<string, RegExp>();
 
@@ -41,7 +37,9 @@ export class MatchOperator extends BinaryOperator {
 				if (text.length > MAX_TEXT_LENGTH) {
 					return null;
 				}
-				if (hasNestedQuantifiers(pattern)) {
+				// Reject patterns vulnerable to catastrophic backtracking (ReDoS).
+				// Length caps alone do not prevent attacks like (a+)+ or (a|a)+.
+				if (!safeRegex(pattern)) {
 					return null;
 				}
 				try {

@@ -573,7 +573,7 @@ export default class Context {
 				}
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
+					const result = this._evaluateAudience(experiment.audience);
 					const newAudienceMismatch = result !== true;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
@@ -662,7 +662,7 @@ export default class Context {
 					assignment.ruleOverride = true;
 				} else {
 					if (experiment.data.audience && experiment.data.audience.length > 0) {
-						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+						const result = this._evaluateAudience(experiment.data.audience);
 
 						assignment.audienceMismatch = result !== true;
 					}
@@ -809,9 +809,13 @@ export default class Context {
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
 						} catch (e) {
-							this._logError(new Error(
-								`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${(e as Error).message}`
-							));
+							this._logError(
+								new Error(
+									`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${
+										(e as Error).message
+									}`
+								)
+							);
 							return null;
 						}
 					case "boolean":
@@ -928,7 +932,9 @@ export default class Context {
 								else resolve();
 							});
 						});
-					} catch {}
+					} catch {
+						// _flush already logs publish errors via the callback.
+					}
 				}, this._opts.publishDelay);
 			}
 		}
@@ -1056,9 +1062,11 @@ export default class Context {
 					}
 				}
 			} else {
-				this._logError(new Error(
-					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
-				));
+				this._logError(
+					new Error(
+						`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+					)
+				);
 
 				this._pending = 0;
 				this._exposures = [];
@@ -1152,9 +1160,11 @@ export default class Context {
 							parsed = value;
 						}
 					} catch (error) {
-						this._logError(new Error(
-							`Failed to parse config for experiment '${experiment.name}' variant ${i}: ${(error as Error).message}`
-						));
+						this._logError(
+							new Error(
+								`Failed to parse config for experiment '${experiment.name}' variant ${i}: ${(error as Error).message}`
+							)
+						);
 					}
 				}
 
@@ -1186,7 +1196,9 @@ export default class Context {
 							else resolve();
 						});
 					});
-				} catch {}
+				} catch {
+					// _refresh already logs refresh errors via the callback.
+				}
 			}, this._opts.refreshPeriod);
 		}
 	}

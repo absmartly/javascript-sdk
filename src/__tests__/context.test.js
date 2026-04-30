@@ -4538,6 +4538,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
+						sdkVersion: SDK_VERSION,
 						exposures: [
 							{
 								id: 1,
@@ -4551,6 +4552,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 							{
 								id: 1,
@@ -4564,6 +4566,7 @@ describe("Context", () => {
 								fullOn: false,
 								custom: false,
 								audienceMismatch: false,
+								ruleOverride: false,
 							},
 						],
 					},

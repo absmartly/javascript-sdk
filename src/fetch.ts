@@ -16,16 +16,11 @@ function getFetchImplementation() {
 		return fetchShim;
 	}
 
-	const globalObj =
-		typeof globalThis !== "undefined"
-			? globalThis
-			: typeof global !== "undefined"
-				? global
-				: undefined;
+	const globalObj = typeof globalThis !== "undefined" ? globalThis : typeof global !== "undefined" ? global : undefined;
 
 	if (globalObj !== undefined) {
 		if ((globalObj as Record<string, unknown>).fetch) {
-			return ((globalObj as Record<string, unknown>).fetch as Function).bind(globalObj);
+			return ((globalObj as Record<string, unknown>).fetch as (...args: unknown[]) => unknown).bind(globalObj);
 		}
 		return function (url: string, opts: Record<string, unknown>) {
 			return new Promise((resolve, reject) => {

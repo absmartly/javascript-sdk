@@ -279,19 +279,9 @@ describe("Fix #5: _finalizing type cleanup", () => {
 	});
 });
 
-describe("Fix #11: SDK._extractClientOptions uses includes", () => {
-	it("should extract client options correctly", () => {
-		const sdk = new SDK({
-			agent: "test-agent",
-			apiKey: "key",
-			application: "app",
-			endpoint: "http://localhost",
-			environment: "test",
-			timeout: 5000,
-		});
-		expect(sdk).toBeInstanceOf(SDK);
-	});
-});
+// Fix #11, #33, #34: real-constructor tests live in fixes-constructors.test.js
+// (file-scope jest.mock("../client") and jest.mock("../sdk") in this file
+// would otherwise make those tests vacuous against Jest doubles).
 
 describe("Fix #12: SDK.defaultEventLogger logs error message", () => {
 	let ActualSDK;
@@ -424,35 +414,6 @@ describe("Fix #32: AbortSignal dispatchEvent uses explicit onabort", () => {
 		signal.onabort = handler;
 		signal.dispatchEvent({ type: "other" });
 		expect(handler).not.toHaveBeenCalled();
-	});
-});
-
-describe("Fix #33: Client constructor uses spread", () => {
-	it("should merge defaults with provided options", () => {
-		const client = new Client({
-			endpoint: "http://test",
-			agent: "custom-agent",
-			environment: "prod",
-			apiKey: "key123",
-			application: "myapp",
-			timeout: 10000,
-		});
-
-		expect(client).toBeInstanceOf(Client);
-	});
-});
-
-describe("Fix #34: SDK._contextOptions uses spread", () => {
-	it("should merge custom options with defaults", () => {
-		const sdk = new SDK({
-			agent: "test",
-			apiKey: "key",
-			application: "app",
-			endpoint: "http://localhost",
-			environment: "test",
-		});
-
-		expect(sdk).toBeInstanceOf(SDK);
 	});
 });
 
