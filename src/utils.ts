@@ -149,24 +149,31 @@ export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
 }
 
 export function stringToUint8Array(value: string) {
-	const n = value.length;
-	const array = new Array(value.length);
+	if (typeof TextEncoder !== "undefined") {
+		return new TextEncoder().encode(value);
+	}
 
-	let k = 0;
-	for (let i = 0; i < n; ++i) {
-		const c = value.charCodeAt(i);
+	const utf8: number[] = [];
+	for (let i = 0; i < value.length; i++) {
+		let c = value.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff && i + 1 < value.length) {
+			const next = value.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
+				i++;
+			}
+		}
 		if (c < 0x80) {
-			array[k++] = c;
+			utf8.push(c);
 		} else if (c < 0x800) {
-			array[k++] = (c >> 6) | 192;
-			array[k++] = (c & 63) | 128;
+			utf8.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+		} else if (c < 0x10000) {
+			utf8.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
 		} else {
-			array[k++] = (c >> 12) | 224;
-			array[k++] = ((c >> 6) & 63) | 128;
-			array[k++] = (c & 63) | 128;
+			utf8.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
 		}
 	}
-	return Uint8Array.from(array);
+	return new Uint8Array(utf8);
 }
 
 const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

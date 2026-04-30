@@ -1,6 +1,6 @@
-import Context, { Attribute, Exposure, Goal, Unit } from "./context";
+import Context, { type Attribute, type Exposure, type Goal, type Unit } from "./context";
 import SDK from "./sdk";
-import { ClientRequestOptions } from "./client";
+import { type ClientRequestOptions } from "./client";
 
 export type PublishParams = {
 	units: Unit[];

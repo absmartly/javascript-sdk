@@ -1,6 +1,12 @@
-import Client, { ClientOptions, ClientRequestOptions } from "./client";
-import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
-import { ContextPublisher, PublishParams } from "./publisher";
+import Client, { type ClientOptions, type ClientRequestOptions } from "./client";
+import Context, {
+	type ContextData,
+	type ContextOptions,
+	type ContextParams,
+	type Exposure,
+	type Goal,
+} from "./context";
+import { ContextPublisher, type PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isLongLivedApp } from "./utils";
 
@@ -29,26 +35,37 @@ export default class SDK {
 	private readonly _client: Client;
 
 	constructor(options: ClientOptions & SDKOptions) {
-		const clientOptions = Object.assign(
-			{
-				agent: "absmartly-javascript-sdk",
-			},
-			...Object.entries(options || {})
-				.filter(
-					(x) =>
-						["application", "agent", "apiKey", "endpoint", "keepalive", "environment", "retries", "timeout"].indexOf(
-							x[0]
-						) !== -1
-				)
-				.map((x) => ({ [x[0]]: x[1] }))
-		);
-
+		const clientOptions = SDK._extractClientOptions(options);
 		options = Object.assign({}, options);
 
 		this._client = options.client || new Client(clientOptions);
 		this._eventLogger = options.eventLogger || SDK.defaultEventLogger;
 		this._publisher = options.publisher || new ContextPublisher();
 		this._provider = options.provider || new ContextDataProvider();
+	}
+
+	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
+		const clientOptionKeys = [
+			"application",
+			"agent",
+			"apiKey",
+			"endpoint",
+			"keepalive",
+			"environment",
+			"retries",
+			"timeout",
+		];
+		const extracted: Partial<ClientOptions> = {
+			agent: "absmartly-javascript-sdk",
+		};
+
+		for (const [key, value] of Object.entries(options || {})) {
+			if (clientOptionKeys.includes(key)) {
+				(extracted as Record<string, unknown>)[key] = value;
+			}
+		}
+
+		return extracted as ClientOptions;
 	}
 
 	getContextData(requestOptions: ClientRequestOptions) {
@@ -108,29 +125,31 @@ export default class SDK {
 	}
 
 	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
-		return Object.assign(
-			{
-				publishDelay: isLongLivedApp() ? 100 : -1,
-				refreshPeriod: 0,
-			},
-			options || {}
-		);
+		const DEFAULT_PUBLISH_DELAY_MS = 100;
+		const NO_PUBLISH_DELAY = -1;
+		const NO_REFRESH = 0;
+
+		return {
+			publishDelay: isLongLivedApp() ? DEFAULT_PUBLISH_DELAY_MS : NO_PUBLISH_DELAY,
+			refreshPeriod: NO_REFRESH,
+			...options,
+		};
 	}
 
 	private static _validateParams(params: ContextParams) {
-		Object.entries(params.units).forEach((entry) => {
-			const type = typeof entry[1];
+		for (const [unitType, uid] of Object.entries(params.units)) {
+			const type = typeof uid;
 			if (type !== "string" && type !== "number") {
 				throw new Error(
-					`Unit '${entry[0]}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
+					`Unit '${unitType}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`
 				);
 			}
 
-			if (typeof entry[1] === "string") {
-				if (entry[1].length === 0) {
-					throw new Error(`Unit '${entry[0]}' UID length must be >= 1`);
+			if (typeof uid === "string") {
+				if (uid.length === 0) {
+					throw new Error(`Unit '${unitType}' UID length must be >= 1`);
 				}
 			}
-		});
+		}
 	}
 }
