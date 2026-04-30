@@ -924,17 +924,9 @@ export default class Context {
 	private _setTimeout() {
 		if (this.isReady()) {
 			if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
-				this._publishTimeout = setTimeout(async () => {
-					try {
-						await new Promise<void>((resolve, reject) => {
-							this._flush((error?: Error) => {
-								if (error) reject(error);
-								else resolve();
-							});
-						});
-					} catch {
-						// _flush already logs publish errors via the callback.
-					}
+				this._publishTimeout = setTimeout(() => {
+					// _flush already logs publish errors via the callback.
+					this._flush();
 				}, this._opts.publishDelay);
 			}
 		}
@@ -1188,17 +1180,9 @@ export default class Context {
 		this._assignments = assignments;
 
 		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {
-			this._refreshInterval = setInterval(async () => {
-				try {
-					await new Promise<void>((resolve, reject) => {
-						this._refresh((error?: Error) => {
-							if (error) reject(error);
-							else resolve();
-						});
-					});
-				} catch {
-					// _refresh already logs refresh errors via the callback.
-				}
+			this._refreshInterval = setInterval(() => {
+				// _refresh already logs refresh errors via the callback.
+				this._refresh();
 			}, this._opts.refreshPeriod);
 		}
 	}

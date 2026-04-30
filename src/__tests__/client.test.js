@@ -1121,7 +1121,8 @@ describe("Client", () => {
 	});
 
 	it("getAgent() should return default agent when not specified", () => {
-		const { agent: _, ...optionsWithoutAgent } = clientOptions;
+		const optionsWithoutAgent = { ...clientOptions };
+		delete optionsWithoutAgent.agent;
 		const client = new Client(optionsWithoutAgent);
 		expect(client.getAgent()).toEqual("javascript-client");
 	});
