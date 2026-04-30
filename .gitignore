@@ -8,5 +8,6 @@ src/js/*
 !src/js/__tests__
 types
 js
-.claude/worktrees
+.claude/
+.DS_Store
 src/version.ts

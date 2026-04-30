@@ -5,6 +5,8 @@ export type AbortControllerEvents = {
 // eslint-disable-next-line no-shadow
 export class AbortSignal {
 	aborted = false;
+	reason: unknown = undefined;
+	onabort?: ((evt: { type: string }) => void) | null;
 	private readonly _events: AbortControllerEvents;
 
 	constructor() {
@@ -34,9 +36,9 @@ export class AbortSignal {
 	}
 
 	dispatchEvent(evt: { type: string }) {
-		// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-		// @ts-ignore
-		this[`on${evt.type}`] && this[`on${evt.type}`](evt);
+		if (evt.type === "abort" && this.onabort) {
+			this.onabort(evt);
+		}
 		const listeners = this._events[evt.type];
 		if (listeners) {
 			for (const listener of listeners) {
@@ -54,11 +56,11 @@ export class AbortSignal {
 export class AbortController {
 	signal = new AbortSignal();
 
-	abort() {
+	abort(reason?: unknown) {
 		let evt: Event | { type: string; bubbles: boolean; cancelable: boolean };
 		try {
 			evt = new Event("abort");
-		} catch (e) {
+		} catch (error) {
 			evt = {
 				type: "abort",
 				bubbles: false,
@@ -67,6 +69,7 @@ export class AbortController {
 		}
 
 		this.signal.aborted = true;
+		this.signal.reason = reason ?? new Error("The operation was aborted.");
 		this.signal.dispatchEvent(evt);
 	}
 
