@@ -30,11 +30,13 @@ Today, publishing is manual: bump the version in a PR, merge, then run `npm publ
 
 ## Version check
 
-Before building, the workflow reads `version` from `package.json` and queries `npm view @absmartly/javascript-sdk@<version> version`. Cases:
+Before building, the workflow reads `version` from `package.json` and queries `npm view @absmartly/javascript-sdk versions --json` to get the list of all published versions of the package. It then checks for the local version in that list:
 
-- Exit 0, empty stdout → version not on npm → publish.
-- Exit 0, non-empty stdout → version already published → skip publish, exit green.
-- Non-zero exit → real error (network, auth, etc.) → fail the workflow. Humans investigate rather than the workflow guessing.
+- Local version is in the list → version already published → skip publish, exit green.
+- Local version is not in the list → publish.
+- `npm view` exits non-zero (network error, package missing, etc.) → fail the workflow. Humans investigate rather than the workflow guessing.
+
+Querying the `versions` array (which is always populated when the package exists) avoids the trap that `npm view <pkg>@<missing-version>` exits non-zero on npm 11+, which would otherwise make any new version look like a real error to `set -euo pipefail`.
 
 This makes the workflow safe to re-run and safe to leave in place for commits that don't bump the version.
 
