@@ -2,5 +2,8 @@ node_modules
 coverage
 dist
 es
+js
 lib
+types
 package-lock.json
+.claude
