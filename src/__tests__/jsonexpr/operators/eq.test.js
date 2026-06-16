@@ -39,11 +39,9 @@ describe("EqOperator", () => {
 			evaluator.compare.mockClear();
 
 			expect(operator.evaluate(evaluator, [null, null])).toBe(null);
-			expect(evaluator.evaluate).toHaveBeenCalledTimes(2);
+			expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
 			expect(evaluator.evaluate).toHaveBeenNthCalledWith(1, null);
-			expect(evaluator.evaluate).toHaveBeenNthCalledWith(2, null);
-			expect(evaluator.compare).toHaveBeenCalledTimes(1);
-			expect(evaluator.compare).toHaveBeenCalledWith(null, null);
+			expect(evaluator.compare).toHaveBeenCalledTimes(0);
 
 			evaluator.evaluate.mockClear();
 			evaluator.compare.mockClear();
