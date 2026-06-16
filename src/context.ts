@@ -439,7 +439,8 @@ export default class Context {
 		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
 			throw new Error("Variant must be a non-negative integer");
 		}
-		this._checkNotFinalized();
+		// override() is allowed after finalize() (parity with the production SDK,
+		// which sets overrides unconditionally).
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
@@ -574,7 +575,10 @@ export default class Context {
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
 					const result = this._evaluateAudience(experiment.audience);
-					const newAudienceMismatch = result !== true;
+					// Mirror the assignment-time logic: a null result leaves the
+					// mismatch flag unchanged (false), so the cached assignment
+					// stays valid rather than being needlessly invalidated.
+					const newAudienceMismatch = result !== null ? !result : assignment.audienceMismatch;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
@@ -664,7 +668,13 @@ export default class Context {
 					if (experiment.data.audience && experiment.data.audience.length > 0) {
 						const result = this._evaluateAudience(experiment.data.audience);
 
-						assignment.audienceMismatch = result !== true;
+						// Only flag a mismatch when the audience actually evaluated
+						// to a boolean. A null result (e.g. an audience with no
+						// usable filter like `{}`) leaves audienceMismatch false,
+						// matching the collector (ContextAPI: `if (result != null)`).
+						if (result !== null) {
+							assignment.audienceMismatch = !result;
+						}
 					}
 
 					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
