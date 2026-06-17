@@ -235,6 +235,17 @@ describe("hashUnit()", () => {
 
 		done();
 	});
+
+	it("should hash astral/multibyte characters correctly", (done) => {
+		// Characters outside the BMP are stored as UTF-16 surrogate pairs and must
+		// encode to 4-byte UTF-8; these canonical hashes are shared across all SDKs.
+		expect(hashUnit("😀")).toBe("KgLqw51xanDs83V5GFkntg");
+		expect(hashUnit("😀😁")).toBe("ZJuDalvUWRJnVtkspj-2bQ");
+		expect(hashUnit("世界你好")).toBe("v2CJG7YcjjWncKOSCzF2GA");
+		expect(hashUnit("user_世界_123")).toBe("SCgk4OzXlFMvo1UMsP88fA");
+
+		done();
+	});
 });
 
 describe("chooseVariant()", () => {
