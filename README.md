@@ -507,9 +507,9 @@ document.getElementById("checkout-btn").addEventListener("click", () => {
 });
 ```
 
-## Migration Guide
+## Migration Guide (v1 → v2)
 
-This version includes minor breaking changes made for cross-SDK consistency and correctness. These align the JavaScript SDK with the Python, Swift, Java, and other A/B Smartly SDKs.
+Version 2.0.0 contains breaking changes made for cross-SDK consistency and correctness. These align the JavaScript SDK with the Python, Swift, Java, and other A/B Smartly SDKs. Most applications will not need code changes, but review the items below.
 
 ### `ready()` no longer resolves with the Error object on failure
 
@@ -527,9 +527,17 @@ const variant = context.treatment("exp_test"); // returns 0 (control) on failure
 
 **When this might be a problem:** If your code used the return value as the Error object (e.g., `const err = await context.ready(); logError(err)`), it will now receive `true` instead. Use `context.readyError()` to access the error instead.
 
-### `override()` now throws after finalization
+### Unit IDs containing astral characters now hash to canonical UTF-8
 
-`override()` now calls `_checkNotFinalized()`, consistent with `customAssignment()`, `track()`, and `attribute()`. Previously, overrides could be set on a finalized context silently with no effect.
+**Before:** `stringToUint8Array` (used to hash unit IDs for variant assignment) encoded each UTF-16 code unit independently. A character outside the Basic Multilingual Plane (≥ U+10000, e.g. an emoji) was encoded as an invalid CESU-8 byte sequence rather than canonical UTF-8.
+
+**After:** Unit IDs are encoded as canonical 4-byte UTF-8, matching the A/B Smartly collector (which hashes with `UTF_8`) and the SDKs already using native UTF-8 (Go, Python, Ruby, etc.).
+
+**When this might be a problem:** A unit ID that contains an astral character (emoji, rare CJK, etc.) may now be assigned a **different variant** than it was under v1. **Unit IDs composed entirely of BMP characters (≤ U+FFFF) — which covers essentially all typical session IDs, UUIDs, and user IDs — are unaffected.** This only changes assignment for units whose IDs contain astral characters.
+
+### `audienceMismatch` cache invalidation on indeterminate audiences
+
+When an audience cannot be evaluated to a boolean (a malformed or non-boolean filter), the cached assignment's `audienceMismatch` flag is now left unchanged instead of being reset to `false`. This keeps a previously valid cached assignment from being needlessly invalidated. Assignment results for well-formed audiences are unchanged.
 
 ## About A/B Smartly
 

@@ -331,17 +331,13 @@ export default class Context {
 	}
 
 	getAttribute(attrName: string) {
-		let result;
-		for (const attr of this._attrs) {
-			if (attr.name === attrName) result = attr.value;
+		for (let i = this._attrs.length - 1; i >= 0; i--) {
+			if (this._attrs[i].name === attrName) return this._attrs[i].value;
 		}
-		return result;
+		return undefined;
 	}
 
 	attribute(attrName: string, value: unknown) {
-		if (typeof attrName !== "string" || attrName.trim().length === 0) {
-			throw new Error("Attribute name must be a non-empty string");
-		}
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
@@ -363,30 +359,21 @@ export default class Context {
 	}
 
 	peek(experimentName: string) {
-		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
-			throw new Error("Experiment name must be a non-empty string");
-		}
 		this._checkReady(true);
 
 		return this._peek(experimentName).variant;
 	}
 
 	treatment(experimentName: string) {
-		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
-			throw new Error("Experiment name must be a non-empty string");
-		}
 		this._checkReady(true);
 
 		return this._treatment(experimentName).variant;
 	}
 
-	track(goalName: string, properties?: Record<string, unknown> | null) {
-		if (typeof goalName !== "string" || goalName.trim().length === 0) {
-			throw new Error("Goal name must be a non-empty string");
-		}
+	track(goalName: string, properties?: Record<string, unknown>) {
 		this._checkNotFinalized();
 
-		return this._track(goalName, properties ?? undefined);
+		return this._track(goalName, properties);
 	}
 
 	finalize(requestOptions?: ClientRequestOptions) {
@@ -396,22 +383,16 @@ export default class Context {
 	experiments() {
 		this._checkReady();
 
-		return this._data.experiments?.map((x) => x.name) ?? [];
+		return this._data.experiments?.map((x) => x.name);
 	}
 
 	variableValue(key: string, defaultValue: string): string {
-		if (typeof key !== "string" || key.trim().length === 0) {
-			throw new Error("Variable key must be a non-empty string");
-		}
 		this._checkReady(true);
 
 		return this._variableValue(key, defaultValue);
 	}
 
 	peekVariableValue(key: string, defaultValue: string): string {
-		if (typeof key !== "string" || key.trim().length === 0) {
-			throw new Error("Variable key must be a non-empty string");
-		}
 		this._checkReady(true);
 
 		return this._peekVariable(key, defaultValue);
@@ -433,12 +414,6 @@ export default class Context {
 	}
 
 	override(experimentName: string, variant: number) {
-		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
-			throw new Error("Experiment name must be a non-empty string");
-		}
-		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
-			throw new Error("Variant must be a non-negative integer");
-		}
 		// override() is allowed after finalize() (parity with the production SDK,
 		// which sets overrides unconditionally).
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
@@ -451,12 +426,6 @@ export default class Context {
 	}
 
 	customAssignment(experimentName: string, variant: number) {
-		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
-			throw new Error("Experiment name must be a non-empty string");
-		}
-		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
-			throw new Error("Variant must be a non-negative integer");
-		}
 		this._checkNotFinalized();
 
 		this._cassignments[experimentName] = variant;
@@ -845,12 +814,6 @@ export default class Context {
 	}
 
 	customFieldValue(experimentName: string, key: string) {
-		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
-			throw new Error("Experiment name must be a non-empty string");
-		}
-		if (typeof key !== "string" || key.trim().length === 0) {
-			throw new Error("Field key must be a non-empty string");
-		}
 		this._checkReady(true);
 
 		return this._customFieldValue(experimentName, key);
@@ -870,12 +833,6 @@ export default class Context {
 	}
 
 	customFieldValueType(experimentName: string, key: string) {
-		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
-			throw new Error("Experiment name must be a non-empty string");
-		}
-		if (typeof key !== "string" || key.trim().length === 0) {
-			throw new Error("Field key must be a non-empty string");
-		}
 		this._checkReady(true);
 
 		return this._customFieldValueType(experimentName, key);
@@ -1190,10 +1147,8 @@ export default class Context {
 		this._assignments = assignments;
 
 		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {
-			this._refreshInterval = setInterval(() => {
-				// _refresh already logs refresh errors via the callback.
-				this._refresh();
-			}, this._opts.refreshPeriod);
+			// _refresh already logs refresh errors via the callback.
+			this._refreshInterval = setInterval(() => this._refresh(), this._opts.refreshPeriod);
 		}
 	}
 

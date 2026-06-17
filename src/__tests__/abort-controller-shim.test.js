@@ -88,4 +88,45 @@ describe("AbortController", () => {
 
 		expect(aborter[Symbol.toStringTag]).toEqual("AbortController");
 	});
+
+	describe("signal.reason", () => {
+		it("should set default reason on abort()", () => {
+			const controller = new AbortController();
+			controller.abort();
+			expect(controller.signal.aborted).toBe(true);
+			expect(controller.signal.reason).toBeInstanceOf(Error);
+			expect(controller.signal.reason.message).toBe("The operation was aborted.");
+		});
+
+		it("should set custom reason on abort(reason)", () => {
+			const controller = new AbortController();
+			const customReason = new Error("custom abort");
+			controller.abort(customReason);
+			expect(controller.signal.reason).toBe(customReason);
+		});
+
+		it("should have undefined reason before abort", () => {
+			const controller = new AbortController();
+			expect(controller.signal.reason).toBeUndefined();
+		});
+	});
+
+	describe("dispatchEvent onabort handling", () => {
+		it("should call onabort handler on abort dispatch", () => {
+			const signal = new AbortSignal();
+			const handler = jest.fn();
+			signal.onabort = handler;
+			signal.dispatchEvent({ type: "abort" });
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler).toHaveBeenCalledWith({ type: "abort" });
+		});
+
+		it("should not call onabort for non-abort events", () => {
+			const signal = new AbortSignal();
+			const handler = jest.fn();
+			signal.onabort = handler;
+			signal.dispatchEvent({ type: "other" });
+			expect(handler).not.toHaveBeenCalled();
+		});
+	});
 });

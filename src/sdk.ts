@@ -12,6 +12,10 @@ import { isLongLivedApp } from "./utils";
 
 export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
 
+const DEFAULT_PUBLISH_DELAY_MS = 100;
+const NO_PUBLISH_DELAY = -1;
+const NO_REFRESH = 0;
+
 export type EventName = "error" | "ready" | "refresh" | "publish" | "exposure" | "goal" | "finalize";
 
 export type EventLogger = (context: Context, eventName: EventName, data?: EventLoggerData) => void;
@@ -45,7 +49,7 @@ export default class SDK {
 	}
 
 	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
-		const clientOptionKeys = [
+		const clientOptionKeys: (keyof ClientOptions)[] = [
 			"application",
 			"agent",
 			"apiKey",
@@ -59,9 +63,9 @@ export default class SDK {
 			agent: "absmartly-javascript-sdk",
 		};
 
-		for (const [key, value] of Object.entries(options || {})) {
-			if (clientOptionKeys.includes(key)) {
-				(extracted as Record<string, unknown>)[key] = value;
+		for (const key of clientOptionKeys) {
+			if (options?.[key] !== undefined) {
+				extracted[key] = options[key] as never;
 			}
 		}
 
@@ -125,10 +129,6 @@ export default class SDK {
 	}
 
 	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
-		const DEFAULT_PUBLISH_DELAY_MS = 100;
-		const NO_PUBLISH_DELAY = -1;
-		const NO_REFRESH = 0;
-
 		return {
 			publishDelay: isLongLivedApp() ? DEFAULT_PUBLISH_DELAY_MS : NO_PUBLISH_DELAY,
 			refreshPeriod: NO_REFRESH,

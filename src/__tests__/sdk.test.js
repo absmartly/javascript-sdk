@@ -476,4 +476,21 @@ describe("SDK", () => {
 			done();
 		});
 	});
+
+	describe("defaultEventLogger", () => {
+		it("should log full Error object to preserve stack traces", () => {
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			const error = new Error("something failed");
+			SDK.defaultEventLogger(null, "error", error);
+			expect(errorSpy).toHaveBeenCalledWith(error);
+			errorSpy.mockRestore();
+		});
+
+		it("should log raw data for non-Error values", () => {
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			SDK.defaultEventLogger(null, "error", "plain text error");
+			expect(errorSpy).toHaveBeenCalledWith("plain text error");
+			errorSpy.mockRestore();
+		});
+	});
 });

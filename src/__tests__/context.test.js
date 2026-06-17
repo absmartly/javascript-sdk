@@ -5132,3 +5132,235 @@ describe("Context", () => {
 		});
 	});
 });
+
+describe("Context input handling and lifecycle regressions", () => {
+	const contextOptions = {
+		publishDelay: -1,
+		refreshPeriod: 0,
+	};
+
+	const contextParams = {
+		units: {
+			session_id: "test-session",
+		},
+	};
+
+	function newMockSDK() {
+		const sdk = new SDK();
+		const publisher = new ContextPublisher();
+		const provider = new ContextDataProvider();
+
+		sdk.getContextDataProvider.mockReturnValue(provider);
+		sdk.getContextPublisher.mockReturnValue(publisher);
+		sdk.getClient.mockReturnValue(new Client());
+		sdk.getEventLogger.mockReturnValue(SDK.defaultEventLogger);
+
+		return sdk;
+	}
+
+	describe("ready() error handling and readyError()", () => {
+		it("should store error via readyError() when context fetch fails", async () => {
+			const error = new Error("fetch failed");
+			const context = new Context(newMockSDK(), contextOptions, contextParams, Promise.reject(error));
+			await context.ready();
+
+			expect(context.isFailed()).toBe(true);
+			expect(context.readyError()).toBe(error);
+		});
+
+		it("should return null for readyError() when no failure", () => {
+			const context = new Context(newMockSDK(), contextOptions, contextParams, { experiments: [] });
+			expect(context.readyError()).toBe(null);
+		});
+
+		it("should allow treatment/peek/track calls after failed init without throwing", async () => {
+			const error = new Error("fetch failed");
+			const context = new Context(newMockSDK(), contextOptions, contextParams, Promise.reject(error));
+			const result = await context.ready();
+
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(true);
+			expect(context.isReady()).toBe(true);
+
+			expect(context.treatment("any_experiment")).toBe(0);
+			expect(context.peek("any_experiment")).toBe(0);
+			expect(context.variableValue("any_key", "fallback")).toBe("fallback");
+			expect(context.peekVariableValue("any_key", "fallback")).toBe("fallback");
+			expect(context.experiments()).toBeUndefined();
+			expect(context.variableKeys()).toEqual({});
+
+			expect(() => context.track("goal_name")).not.toThrow();
+			expect(() => context.attribute("attr", "value")).not.toThrow();
+		});
+	});
+
+	describe("variable resolution over experiment arrays", () => {
+		it("should handle unknown variable keys without error", () => {
+			const context = new Context(
+				newMockSDK(),
+				contextOptions,
+				{
+					units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" },
+				},
+				{
+					experiments: [
+						{
+							id: 1,
+							name: "exp_test",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 3603515,
+							seedLo: 233373850,
+							split: [0.5, 0.5],
+							trafficSeedHi: 449867249,
+							trafficSeedLo: 455443629,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							audience: null,
+							audienceStrict: false,
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: '{"color":"red"}' },
+							],
+							customFieldValues: null,
+						},
+					],
+				}
+			);
+
+			expect(context.variableValue("nonexistent_key", "default")).toBe("default");
+		});
+	});
+
+	describe("error logging routed through eventLogger", () => {
+		it("should not call console.error directly for custom field parse errors", () => {
+			const eventLogger = jest.fn();
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(eventLogger);
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0, eventLogger },
+				{ units: { session_id: "test" } },
+				{
+					experiments: [
+						{
+							id: 1,
+							name: "exp",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 1,
+							split: [1],
+							trafficSeedHi: 1,
+							trafficSeedLo: 1,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							audience: null,
+							audienceStrict: false,
+							variants: [{ name: "A", config: null }],
+							customFieldValues: [{ name: "bad_json", value: "{invalid", type: "json" }],
+						},
+					],
+				}
+			);
+
+			context.customFieldValue("exp", "bad_json");
+			expect(errorSpy).not.toHaveBeenCalled();
+			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			errorSpy.mockRestore();
+		});
+
+		it("should route variant config parse errors through eventLogger", () => {
+			const eventLogger = jest.fn();
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(eventLogger);
+
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0, eventLogger },
+				{ units: { session_id: "test" } },
+				{
+					experiments: [
+						{
+							id: 1,
+							name: "exp_bad_config",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 1,
+							split: [1],
+							trafficSeedHi: 1,
+							trafficSeedLo: 1,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							audience: null,
+							audienceStrict: false,
+							variants: [{ name: "A", config: "{invalid json}" }],
+							customFieldValues: null,
+						},
+					],
+				}
+			);
+
+			expect(errorSpy).not.toHaveBeenCalled();
+			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			errorSpy.mockRestore();
+		});
+	});
+
+	describe("finalizing state", () => {
+		it("should expose isFinalizing/isFinalized as false before finalize", () => {
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(jest.fn());
+
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0 },
+				{ units: { session_id: "test" } },
+				{ experiments: [] }
+			);
+
+			expect(context.isFinalizing()).toBe(false);
+			expect(context.isFinalized()).toBe(false);
+		});
+	});
+
+	describe("attribute map caching", () => {
+		it("should return correct attributes after multiple attribute() calls", () => {
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(jest.fn());
+
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0 },
+				{ units: { session_id: "test" } },
+				{ experiments: [] }
+			);
+
+			context.attribute("age", 25);
+			context.attribute("country", "US");
+
+			const attrs = context.getAttributes();
+			expect(attrs).toEqual({ age: 25, country: "US" });
+		});
+	});
+
+	describe("getOptions() returns a shallow copy", () => {
+		it("should not allow mutation of internal options", () => {
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(jest.fn());
+
+			const originalOptions = { publishDelay: 100, refreshPeriod: 0 };
+			const context = new Context(sdk, originalOptions, { units: { session_id: "test" } }, { experiments: [] });
+
+			const opts = context.getOptions();
+			opts.publishDelay = 9999;
+
+			expect(context.getOptions().publishDelay).toBe(100);
+		});
+	});
+});

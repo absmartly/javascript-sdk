@@ -19,8 +19,8 @@ function getFetchImplementation() {
 	const globalObj = typeof globalThis !== "undefined" ? globalThis : typeof global !== "undefined" ? global : undefined;
 
 	if (globalObj !== undefined) {
-		if ((globalObj as Record<string, unknown>).fetch) {
-			return ((globalObj as Record<string, unknown>).fetch as (...args: unknown[]) => unknown).bind(globalObj);
+		if ((globalObj as { fetch?: typeof fetch }).fetch) {
+			return (globalObj as { fetch: typeof fetch }).fetch.bind(globalObj);
 		}
 		return function (url: string, opts: Record<string, unknown>) {
 			return new Promise((resolve, reject) => {

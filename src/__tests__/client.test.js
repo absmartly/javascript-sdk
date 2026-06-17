@@ -1189,4 +1189,19 @@ describe("Client", () => {
 				done();
 			});
 	});
+
+	describe("timeout option", () => {
+		it("should accept an explicit timeout of 0 (nullish coalescing, not falsy)", () => {
+			const client = new Client({
+				endpoint,
+				agent,
+				environment,
+				apiKey,
+				application,
+				timeout: 0,
+			});
+
+			expect(client).toBeInstanceOf(Client);
+		});
+	});
 });
