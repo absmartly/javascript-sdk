@@ -38,23 +38,6 @@ Simply add the following code to your `head` section to include the latest publi
 <script src="https://unpkg.com/@absmartly/javascript-sdk/dist/absmartly.min.js"></script>
 ```
 
-### Security Warning: Client-Side Usage
-
-**IMPORTANT:** This SDK exposes your API key when used directly in browser environments. API keys should never be embedded in client-side code as they can be extracted from browser bundles or network requests.
-
-**Recommended Architecture:**
-- **DO NOT** use this SDK directly in the browser with your API key
-- **DO** use this SDK in Node.js server-side applications
-- **DO** create a server-side proxy endpoint that fetches context data on behalf of your frontend
-- **DO** use short-lived, per-session tokens instead of API keys for client-side requests
-
-```text
-Browser --> Your Server (with API key) --> ABsmartly API
-            session token only
-```
-
-For production browser applications, contact A/B Smartly support for client-side SDK recommendations.
-
 ## Getting Started
 
 Please follow the [installation](#installation) instructions before trying the following code.
@@ -306,6 +289,15 @@ context.track("payment", { item_count: 1, total_amount: 1999.99 });
 
 ### Publishing Pending Data
 
+Sometimes it is necessary to ensure all events have been published to the A/B Smartly collector, before proceeding.
+One such case is when the user is about to navigate away right before being exposed to a treatment.
+You can explicitly call the `publish()` method, which returns a promise, before navigating away.
+```javascript
+await context.publish().then(() => {
+    window.location = "https://www.absmartly.com"
+})
+```
+
 #### Finalizing
 The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method that could generate an event is called.
 ```javascript
@@ -329,15 +321,6 @@ const request = {
 const context = sdk.createContext(request, {
     refreshPeriod: 5 * 60 * 1000
 });
-```
-
-### Finalizing
-
-The `finalize()` method will ensure all events have been published to the A/B Smartly collector, like `publish()`, and will also "seal" the context, throwing an error if any method is called after finalization.
-
-```javascript
-await context.finalize();
-window.location = "https://www.absmartly.com";
 ```
 
 ### Using a Custom Event Logger
