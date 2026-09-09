@@ -4410,6 +4410,46 @@ describe("Context", () => {
 			});
 		});
 
+		it("should still settle finalize() when a custom eventLogger throws while discarding events after failed initialization", (done) => {
+			// The constructor's own ready-rejection handler also calls the
+			// eventLogger with "error" — only start throwing after that call, so
+			// this isolates the discard path inside _flush()/_finalize().
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "error" && throwingEventLogger.mock.calls.length > 1) {
+					throw new Error("eventLogger boom on error");
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				Promise.reject("bad request error text")
+			);
+
+			context.ready().then(() => {
+				context.treatment("exp_test_ab");
+				expect(context.pending()).toEqual(1);
+
+				const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+				// Discarding queued events after a failed init must still settle
+				// finalize() (and clear the queue) even when the eventLogger throws —
+				// otherwise `_finalizing` is left referencing a promise that never
+				// resolves or rejects.
+				context.finalize().then(() => {
+					expect(publisher.publish).not.toHaveBeenCalled();
+					expect(context.pending()).toEqual(0);
+					expect(context.isFinalizing()).toEqual(false);
+					expect(context.isFinalized()).toEqual(true);
+					expect(consoleErrorSpy).toHaveBeenCalled();
+
+					consoleErrorSpy.mockRestore();
+					done();
+				});
+			});
+		});
+
 		it("should return current promise when called twice", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 

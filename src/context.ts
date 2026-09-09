@@ -957,18 +957,31 @@ export default class Context {
 		}
 
 		if (this._failed) {
-			this._logError(
-				new Error(
-					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
-				)
-			);
+			// Guarded the same way as the transport-failure path below: a throwing
+			// custom eventLogger here must not propagate synchronously out of
+			// `_flush` — that would skip clearing `_pending`/`_exposures`/`_goals`
+			// and (via `_finalize`'s callback never running) permanently strand
+			// `_finalizing` with no settlement.
+			try {
+				this._logError(
+					new Error(
+						`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+					)
+				);
+			} catch (observerError) {
+				console.error(observerError);
+			}
 
 			this._pending = 0;
 			this._exposures = [];
 			this._goals = [];
 
 			if (typeof callback === "function") {
-				callback();
+				try {
+					callback();
+				} catch (observerError) {
+					console.error(observerError);
+				}
 			}
 			return Promise.resolve(undefined);
 		}
