@@ -156,6 +156,7 @@ export default class Context {
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
 	private _holdoutsById: Record<number, ExperimentData>;
+	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
@@ -180,6 +181,7 @@ export default class Context {
 		this._cassignments = {};
 		this._units = {};
 		this._assigners = {};
+		this._holdoutAssignments = {};
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
 		this._attrsSeq = 0;
@@ -1036,6 +1038,56 @@ export default class Context {
 		}
 
 		return this._hashes[unitType];
+	}
+
+	// Resolves the arm a unit falls into within a holdout itself (as opposed to resolving an
+	// ordinary experiment's assignment, which is `_assign()`). Ported from java-sdk's
+	// getHoldoutAssignment (Context.java:1412-1468), minus the read/write-lock dance: js is
+	// single-threaded, so this simplifies to a plain memoized-by-(id, unitType) cache.
+	//
+	// `holdout` may be a stale reference (e.g. captured before a data refresh) so it is always
+	// re-resolved against the live `_holdoutsById` index first (falling back to the caller-supplied
+	// reference only if the id is no longer present, e.g. the holdout was removed by the latest
+	// refresh) — this mirrors java-sdk's resolveLiveHoldout and ensures the cache is keyed and
+	// validated against the currently-installed definition rather than a possibly-dead one.
+	private _getHoldoutAssignment(holdout: Experiment, unitType: string): Assignment | null {
+		const liveHoldoutData = this._holdoutsById[holdout.data.id] ?? holdout.data;
+
+		const cacheKey = `${liveHoldoutData.id}:${unitType}`;
+		const cached = this._holdoutAssignments[cacheKey];
+		if (cached && cached.id === liveHoldoutData.id && cached.iteration === liveHoldoutData.iteration) {
+			return cached;
+		}
+
+		const unit = this._unitHash(unitType);
+		if (unit === null) {
+			// No unit set for this unitType yet — mirrors java-sdk's `uid == null -> return null`.
+			// Do not cache: a later call, once the unit is set, must recompute.
+			return null;
+		}
+
+		const assigner =
+			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+
+		const assignment: Assignment = {
+			id: liveHoldoutData.id,
+			iteration: liveHoldoutData.iteration,
+			fullOnVariant: 0,
+			unitType,
+			variant: assigner.assign(liveHoldoutData.split, liveHoldoutData.seedHi, liveHoldoutData.seedLo),
+			overridden: false,
+			assigned: true,
+			exposed: false,
+			eligible: true,
+			fullOn: false,
+			custom: false,
+			audienceMismatch: false,
+			ruleOverride: false,
+		};
+
+		this._holdoutAssignments[cacheKey] = assignment;
+
+		return assignment;
 	}
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
