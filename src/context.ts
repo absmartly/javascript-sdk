@@ -134,6 +134,14 @@ export type ContextData = {
 	holdouts?: ExperimentData[];
 };
 
+// Ported verbatim from java-sdk's Context.isHeldOutBy (Context.java:1319-1330). Decides whether
+// a single holdout's resolved arm suppresses the covered experiment it applies to.
+function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVariant: number): boolean {
+	if (holdoutVariant === 0) return true;
+	if (holdoutArmCount === 3 && holdoutVariant === 1) return fullOnVariant === 0;
+	return false;
+}
+
 export default class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _attrs: Attribute[];
@@ -580,6 +588,33 @@ export default class Context {
 
 		this._assignments[experimentName] = assignment;
 
+		// Resolve applicable holdouts and compute suppression unconditionally — this must run
+		// regardless of override/custom-assignment/rule-variant handling below, because a
+		// holdout's own exposure (fired later, using assignment.holdoutAssignments) must fire
+		// whether or not the covered experiment itself ends up overridden or suppressed.
+		if (experiment != null && experiment.holdouts != null && experiment.holdouts.length > 0) {
+			const holdouts = experiment.holdouts;
+			const holdoutUnitType = experiment.data.unitType;
+
+			const holdoutAssignments: (Assignment | null)[] = holdouts.map((holdout) =>
+				holdoutUnitType !== null ? this._getHoldoutAssignment(holdout, holdoutUnitType) : null
+			);
+
+			assignment.holdouts = holdouts;
+			assignment.holdoutAssignments = holdoutAssignments;
+
+			let suppressed = false;
+			holdoutAssignments.forEach((holdoutAssignment, i) => {
+				if (holdoutAssignment != null) {
+					if (isHeldOutBy(holdoutAssignment.variant, holdouts[i].data.split.length, experiment.data.fullOnVariant)) {
+						suppressed = true;
+					}
+				}
+			});
+
+			assignment.suppressed = suppressed;
+		}
+
 		if (hasOverride) {
 			if (experiment != null) {
 				assignment.id = experiment.data.id;
@@ -620,7 +655,10 @@ export default class Context {
 						}
 					}
 
-					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+					if (assignment.suppressed) {
+						assignment.assigned = false;
+						assignment.variant = 0;
+					} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
 						assignment.variant = 0;
 					} else if (experiment.data.fullOnVariant === 0) {
 						if (unitType !== null) {
