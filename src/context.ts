@@ -77,6 +77,7 @@ type Assignment = {
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
+	holdouts?: Experiment[] | null;
 };
 
 export type Unit = {
@@ -154,6 +155,7 @@ export default class Context {
 	private _goals: Goal[];
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
+	private _holdoutsById: Record<number, ExperimentData>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
@@ -1043,11 +1045,74 @@ export default class Context {
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
 
+		// Live index of holdout definitions by id, skipping holdouts with no/empty
+		// split (they can never be assigned to, so they are treated as non-existent).
+		// Kept as raw ExperimentData (not a resolved Experiment/Assignment) so later
+		// lookups (e.g. resolving a holdout's own assignment) always read against the
+		// currently-installed data rather than a possibly-stale cached reference.
+		const holdoutsById: Record<number, ExperimentData> = {};
+
+		(data.holdouts || []).forEach((holdout) => {
+			if (holdout.split && holdout.split.length > 0) {
+				holdoutsById[holdout.id] = holdout;
+			}
+		});
+
+		this._holdoutsById = holdoutsById;
+
+		// Experiment wrappers (data + parsed variables) for holdouts, built lazily and
+		// memoized per _init() call so a holdout referenced by multiple experiments is
+		// only parsed once.
+		const holdoutExperiments: Record<number, Experiment> = {};
+
+		const resolveHoldoutExperiment = (holdoutId: number): Experiment | undefined => {
+			if (holdoutExperiments[holdoutId]) {
+				return holdoutExperiments[holdoutId];
+			}
+
+			// Read via the live field (not the local `holdoutsById` closure) so this
+			// always resolves against the currently-installed data.
+			const holdoutData = this._holdoutsById[holdoutId];
+			if (!holdoutData) {
+				return undefined;
+			}
+
+			const holdoutVariables: Record<string, unknown>[] = [];
+			holdoutData.variants.forEach((variant, i) => {
+				const config = variant.config;
+				holdoutVariables[i] = config != null && config.length > 0 ? JSON.parse(config) : {};
+			});
+
+			const holdoutEntry: Experiment = {
+				data: holdoutData,
+				variables: holdoutVariables,
+			};
+
+			holdoutExperiments[holdoutId] = holdoutEntry;
+			return holdoutEntry;
+		};
+
 		(data.experiments || []).forEach((experiment) => {
 			const variables: Record<string, unknown>[] = [];
-			const entry = {
+
+			let holdouts: Experiment[] | null = null;
+			if (experiment.holdoutIds && experiment.holdoutIds.length > 0) {
+				const resolved: Experiment[] = [];
+
+				experiment.holdoutIds.forEach((holdoutId) => {
+					const holdoutExperiment = resolveHoldoutExperiment(holdoutId);
+					if (holdoutExperiment) {
+						insertUniqueSorted(resolved, holdoutExperiment, (a, b) => a.data.id < b.data.id);
+					}
+				});
+
+				holdouts = resolved.length > 0 ? resolved : null;
+			}
+
+			const entry: Experiment = {
 				data: experiment,
 				variables,
+				holdouts,
 			};
 
 			index[experiment.name] = entry;
