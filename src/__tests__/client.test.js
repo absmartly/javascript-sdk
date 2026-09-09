@@ -687,7 +687,7 @@ describe("Client", () => {
 			});
 	});
 
-	it("request() should not throw on unmatched surrogates in query parameters", (done) => {
+	it("request() should not throw on unmatched surrogates in query parameters", () => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
 		const client = new Client(clientOptions);
@@ -696,7 +696,7 @@ describe("Client", () => {
 		// valid UTF-8; unlike URLSearchParams (which substitutes U+FFFD),
 		// encodeURIComponent() throws URIError on it directly, so it must be
 		// normalized to well-formed UTF-16 first.
-		client
+		return client
 			.request({
 				method: "GET",
 				path: "/context",
@@ -707,8 +707,6 @@ describe("Client", () => {
 				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=%EF%BF%BD`, expect.any(Object));
 
 				expect(response).toEqual(defaultMockResponse);
-
-				done();
 			});
 	});
 

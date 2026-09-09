@@ -1048,14 +1048,29 @@ export default class Context {
 			this._exposures.push(...pendingExposures);
 			this._goals.push(...pendingGoals);
 
-			this._logError(e);
+			try {
+				this._logError(e);
+			} catch (observerError) {
+				console.error(observerError);
+			}
 
 			// Reschedule automatic delivery for the restored batch; this is a no-op
 			// unless publishDelay >= 0 and no timer is already pending.
 			this._setTimeout();
 
+			// `callback` is internal glue (from `publish()`/`finalize()`), but it can
+			// itself invoke a user-supplied eventLogger (see `_finalize`'s callback,
+			// which calls `_logEvent("finalize")`). A throw there must not propagate
+			// into this promise chain: `_flushPromise` is cleared unconditionally
+			// below regardless of whether `onFailure`/`onSuccess` throw, but an
+			// unguarded throw here would still skip the `callback(e)` call's own
+			// completion and any code after it in the caller.
 			if (typeof callback === "function") {
-				callback(e);
+				try {
+					callback(e);
+				} catch (observerError) {
+					console.error(observerError);
+				}
 			}
 
 			return e;
@@ -1074,7 +1089,11 @@ export default class Context {
 			}
 
 			if (typeof callback === "function") {
-				callback();
+				try {
+					callback();
+				} catch (observerError) {
+					console.error(observerError);
+				}
 			}
 
 			return undefined;
@@ -1089,14 +1108,22 @@ export default class Context {
 			return Promise.resolve(result);
 		}
 
-		// Neither `onSuccess` nor `onFailure` throws, so `.then(onSuccess,
-		// onFailure)` never rejects and clearing `_flushPromise` only needs a
-		// fulfillment handler. `.finally()` is avoided (not part of the ES6
-		// Promise contract the documented IE 10 target relies on a polyfill for).
-		this._flushPromise = publishResult.then(onSuccess, onFailure).then((result) => {
-			this._flushPromise = undefined;
-			return result;
-		});
+		// Neither `onSuccess` nor `onFailure` throws (both isolate observer
+		// exceptions internally), so `.then(onSuccess, onFailure)` never rejects.
+		// The `_flushPromise` cleanup below still uses the two-argument `.then()`
+		// form defensively, so a flush can never get stuck referencing a settled
+		// promise. `.finally()` is avoided (not part of the ES6 Promise contract
+		// the documented IE 10 target relies on a polyfill for).
+		this._flushPromise = publishResult.then(onSuccess, onFailure).then(
+			(result) => {
+				this._flushPromise = undefined;
+				return result;
+			},
+			(e) => {
+				this._flushPromise = undefined;
+				throw e;
+			}
+		);
 
 		return this._flushPromise;
 	}
@@ -1236,7 +1263,12 @@ export default class Context {
 		// fall through to `_flush`, which itself waits for any in-flight attempt.
 		if (this._pending === 0 && !this._flushPromise) {
 			this._finalized = true;
-			this._logEvent("finalize");
+
+			try {
+				this._logEvent("finalize");
+			} catch (observerError) {
+				console.error(observerError);
+			}
 
 			return Promise.resolve();
 		}
@@ -1272,9 +1304,18 @@ export default class Context {
 				rejectFinalizing(error);
 			} else {
 				this._finalized = true;
-				this._logEvent("finalize");
 
+				// Settle the finalize promise before logging the event: a throwing
+				// custom eventLogger must not prevent `finalizing` from resolving
+				// (which would strand `isFinalizing()`/`isFinalized()` and any
+				// awaiters forever).
 				resolveFinalizing();
+
+				try {
+					this._logEvent("finalize");
+				} catch (observerError) {
+					console.error(observerError);
+				}
 			}
 		}, requestOptions);
 

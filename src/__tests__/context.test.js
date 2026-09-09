@@ -4605,6 +4605,79 @@ describe("Context", () => {
 			});
 		});
 
+		it("should settle the finalize() promise even when a custom eventLogger throws on the finalize event", (done) => {
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "finalize") {
+					throw new Error("eventLogger boom on finalize");
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0, eventLogger: throwingEventLogger },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			// A throwing eventLogger on the "finalize" event must not prevent
+			// finalize() from resolving, or leave isFinalizing()/isFinalized() stuck.
+			context.finalize().then(() => {
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
+				expect(consoleErrorSpy).toHaveBeenCalled();
+
+				consoleErrorSpy.mockRestore();
+				done();
+			});
+		});
+
+		it("should not get stuck when a custom eventLogger throws on the error event during finalize()", (done) => {
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "error") {
+					throw new Error("eventLogger boom on error");
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0, eventLogger: throwingEventLogger },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.reject(new Error("transport failed")));
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			context.finalize().catch((e) => {
+				expect(e.message).toEqual("transport failed");
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(false);
+				expect(context.pending()).toEqual(1);
+				expect(consoleErrorSpy).toHaveBeenCalled();
+
+				// Retry must still work — the flush must not be left permanently stuck.
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.finalize().then(() => {
+					expect(context.isFinalized()).toEqual(true);
+
+					consoleErrorSpy.mockRestore();
+					done();
+				});
+			});
+		});
+
 		it("should reschedule the automatic publish timer after a scheduled flush fails", (done) => {
 			jest.useFakeTimers("legacy");
 			jest.spyOn(global, "setTimeout");
