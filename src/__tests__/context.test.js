@@ -2704,6 +2704,1777 @@ describe("Context", () => {
 		});
 	});
 
+	describe("holdouts", () => {
+		// All fixtures below are ported verbatim (field-for-field) from the real cross-sdk-tests
+		// scenario battery at ~/git_tree/sdks/cross-sdk-tests/test_scenarios_complete.json, indices
+		// 202-221 (scenarios 203-222). Each it() names the real scenario number it ports. Two
+		// scenarios in that range are deliberately not ported 1:1 as separate it() blocks:
+		//   - 209 ("Old-Payload Tolerance For Uncovered Experiment") is an inertness baseline that
+		//     must pass identically on a holdout-unaware SDK; it exercises no holdout-specific code
+		//     path beyond what scenario 206 (opt-in coverage) already covers here.
+		//   - 212 ("Independent Holdouts Across Experiments") exercises the same
+		//     held-out/not-held-out-with-independent-seeds shape already covered by the combination
+		//     of scenarios 203 and 204 below, just spread across two experiments instead of one.
+		const buildHoldoutResponse = (experiments, holdouts) => ({ experiments, holdouts });
+
+		// Scenario 203 (index 202): a unit landing in a holdout's variant 0 gets control for the
+		// experiment it covers (no exposure of its own) and exactly one exposure for the holdout.
+		it("suppresses the covered experiment and fires only the holdout's exposure when held out (scenario 203)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_held_out",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_a",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_holdout_held_out")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 11,
+						name: "holdout_a",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 204 (index 203): a unit outside the holdout's suppressed arm assigns to the
+		// covered experiment exactly as it would without holdouts, plus one exposure for the
+		// holdout carrying its nonzero (not-held-out) variant — holdouts always fire on first
+		// evaluation, not only when they actually suppress.
+		it("assigns normally and still fires the holdout's own exposure when not held out (scenario 204)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_not_held_out",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_a",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const notHeldOutParams = { units: { session_id: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3" } };
+			const context = new Context(sdk, contextOptions, notHeldOutParams, response);
+			expect(context.treatment("exp_holdout_not_held_out")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 1,
+						name: "exp_holdout_not_held_out",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+					{
+						id: 11,
+						name: "holdout_a",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 205 (index 204): an experiment covered by two holdouts is suppressed if the unit
+		// is held out by EITHER one (union semantics). Pinned so the low-id holdout does NOT hold the
+		// unit out and the high-id holdout does, ruling out an implementation that only ever consults
+		// holdouts[0]. Both holdouts still emit their own independent exposure.
+		it("suppresses via union when the higher-id holdout holds the unit out (scenario 205)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_union",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [11, 12],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_low_id",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 1,
+						seedLo: 222,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+					{
+						id: 12,
+						name: "holdout_high_id",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_holdout_union")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 11,
+						name: "holdout_low_id",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+					{
+						id: 12,
+						name: "holdout_high_id",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 206 (index 205): holdout coverage never leaks to a sibling experiment lacking
+		// holdoutIds, even when that sibling shares the same unit and context as an experiment the
+		// same holdout suppresses.
+		it("does not leak suppression to a sibling experiment with no holdoutIds (scenario 206)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_covered",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+					{
+						id: 2,
+						name: "exp_holdout_uncovered_sibling",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_a",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_holdout_covered")).toEqual(0);
+			expect(context.treatment("exp_holdout_uncovered_sibling")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 11,
+						name: "holdout_a",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+					{
+						id: 2,
+						name: "exp_holdout_uncovered_sibling",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 207 (index 206): a holdoutIds entry with no matching holdouts[] element is
+		// silently ignored - wire inconsistency tolerance, not an error - while a second, valid id in
+		// the same list still applies normally.
+		it("tolerates a dangling holdoutId while a valid one in the same list still applies (scenario 207)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_dangling_plus_valid",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [999, 11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_a",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			expect(() => {
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				expect(context.treatment("exp_holdout_dangling_plus_valid")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 11,
+							name: "holdout_a",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 0,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			}).not.toThrow();
+		});
+
+		// Scenario 208 (index 207): a holdout suppresses a full-on experiment (fullOnVariant != 0)
+		// exactly as it does a traffic-eligible one - explicit holdoutIds coverage, not full-on
+		// status, decides suppression.
+		it("suppresses a full-on experiment regardless of its fullOnVariant (scenario 208)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_fullon",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 2,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+							{ name: "C", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_a",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_holdout_fullon")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 11,
+						name: "holdout_a",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 210 (index 209): an explicit override wins over holdout membership for the
+		// experiment's own assignment; the override path still evaluates coverage, so the holdout's
+		// own exposure fires alongside it.
+		it("lets override win the variant while the holdout still fires its own exposure (scenario 210)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_override",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 3603515,
+						seedLo: 233373850,
+						split: [0.5, 0.5],
+						trafficSeedHi: 449867249,
+						trafficSeedLo: 455443629,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [1],
+					},
+				],
+				[
+					{
+						id: 1,
+						name: "holdout_override_precedence",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			context.override("exp_holdout_override", 1);
+			expect(context.treatment("exp_holdout_override")).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 1,
+						name: "exp_holdout_override",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: false,
+						eligible: true,
+						overridden: true,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+					{
+						id: 1,
+						name: "holdout_override_precedence",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 211 (index 210): holdout membership forces control and suppresses the
+		// experiment's own exposure even with a custom assignment on file; only the holdout's own
+		// exposure fires.
+		it("lets holdout suppression beat a custom assignment (scenario 211)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_custom",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 3603515,
+						seedLo: 233373850,
+						split: [0.5, 0.5],
+						trafficSeedHi: 449867249,
+						trafficSeedLo: 455443629,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [1],
+					},
+				],
+				[
+					{
+						id: 1,
+						name: "holdout_custom_precedence",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			context.customAssignment("exp_holdout_custom", 1);
+			expect(context.treatment("exp_holdout_custom")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 1,
+						name: "holdout_custom_precedence",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 213 (index 212): the same unit and shared holdout definition produce consistent
+		// holdout membership across two different covered experiments; the shared holdout's own
+		// exposure fires once on first evaluation and neither covered experiment fires its own
+		// exposure — the second call must fire nothing at all, not even a duplicate holdout exposure.
+		it("fires a shared holdout's exposure once across two covered experiments (scenario 213)", () => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_shared_a",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 3603515,
+						seedLo: 233373850,
+						split: [0.5, 0.5],
+						trafficSeedHi: 449867249,
+						trafficSeedLo: 455443629,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [1],
+					},
+					{
+						id: 2,
+						name: "exp_shared_b",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 3603515,
+						seedLo: 233373850,
+						split: [0.5, 0.5],
+						trafficSeedHi: 449867249,
+						trafficSeedLo: 455443629,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [1],
+					},
+				],
+				[
+					{
+						id: 1,
+						name: "holdout_shared",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+
+			expect(context.treatment("exp_shared_a")).toEqual(0);
+			expect(publisher.publish.mock.calls.length).toEqual(0); // nothing published yet; check pending directly
+			expect(context.pending()).toEqual(1);
+
+			expect(context.treatment("exp_shared_b")).toEqual(0);
+			// exp_shared_b is also suppressed, and the shared holdout already fired for exp_shared_a —
+			// no further exposures of any kind should be queued.
+			expect(context.pending()).toEqual(1);
+		});
+
+		// Scenarios 214-220 (indices 213-219): the three-arm holdout battery. Same shared unit
+		// (e791e240fcd3df7d238cfc285f475e8152fcc0ec) throughout; each scenario pins a distinct arm
+		// semantic.
+		describe("holdout arms battery", () => {
+			// Scenario 214 (index 213): a 3-arm holdout's variant 0 forces control for every covered
+			// experiment, full-on or not, identically to a 2-arm holdout's variant 0; the holdout's
+			// own exposure fires once at variant 0 and neither covered experiment emits its own
+			// exposure.
+			it("3-arm variant 0 holds out both full-on and non-full-on covered experiments (scenario 214)", () => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_three_arm_0_non_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [21],
+						},
+						{
+							id: 2,
+							name: "exp_three_arm_0_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 2,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+								{ name: "C", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [21],
+						},
+					],
+					[
+						{
+							id: 21,
+							name: "holdout_three_arm_v0",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 1,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.treatment("exp_three_arm_0_non_fullon")).toEqual(0);
+				expect(context.pending()).toEqual(1);
+
+				expect(context.treatment("exp_three_arm_0_fullon")).toEqual(0);
+				expect(context.pending()).toEqual(1);
+			});
+
+			// Scenario 215 (index 214): a 3-arm holdout's variant 1 forces control only for a covered
+			// experiment with fullOnVariant==0; a covered full-on experiment (fullOnVariant!=0) takes
+			// its normal assignment path and is assigned its own fullOnVariant with fullOn=true, not
+			// suppressed.
+			it("3-arm variant 1 holds out only the non-full-on experiment (scenario 215)", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_three_arm_1_non_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [22],
+						},
+						{
+							id: 2,
+							name: "exp_three_arm_1_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 2,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+								{ name: "C", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [22],
+						},
+					],
+					[
+						{
+							id: 22,
+							name: "holdout_three_arm_v1",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 3,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				expect(context.treatment("exp_three_arm_1_non_fullon")).toEqual(0);
+				expect(context.treatment("exp_three_arm_1_fullon")).toEqual(2);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 22,
+							name: "holdout_three_arm_v1",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 2,
+							name: "exp_three_arm_1_fullon",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 2,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: true,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+
+			// Scenario 216 (index 215): a 3-arm holdout's variant 2 (normal traffic) evaluates every
+			// covered experiment exactly as if uncovered, full-on or not; the holdout's own exposure
+			// fires once at variant 2.
+			it("3-arm variant 2 defers to the normal path for every covered experiment (scenario 216)", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_three_arm_2_non_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [23],
+						},
+						{
+							id: 2,
+							name: "exp_three_arm_2_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 2,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+								{ name: "C", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [23],
+						},
+					],
+					[
+						{
+							id: 23,
+							name: "holdout_three_arm_v2",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 0,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				expect(context.treatment("exp_three_arm_2_non_fullon")).toEqual(1);
+				expect(context.treatment("exp_three_arm_2_fullon")).toEqual(2);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 1,
+							name: "exp_three_arm_2_non_fullon",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 23,
+							name: "holdout_three_arm_v2",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 2,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 2,
+							name: "exp_three_arm_2_fullon",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 2,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: true,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+
+			// Scenario 217 (index 216): a full-on experiment covered by a 3-arm holdout's variant 1 is
+			// not short-circuited to its fullOnVariant: audienceStrict is evaluated first, so an
+			// audience mismatch still forces control (not suppression) with assigned=false and
+			// audienceMismatch=true; the experiment's own exposure fires because it was evaluated and
+			// rejected by audience, not held out.
+			it("3-arm variant 1 defers to the normal path for an audience mismatch (scenario 217)", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_three_arm_1_audience_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 2,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+								{ name: "C", config: null },
+							],
+							audience: JSON.stringify({ filter: [{ gte: [{ var: "age" }, { value: 20 }] }] }),
+							audienceStrict: true,
+							customFieldValues: null,
+							holdoutIds: [24],
+						},
+					],
+					[
+						{
+							id: 24,
+							name: "holdout_three_arm_v1",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 3,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				context.attribute("age", 5);
+				expect(context.treatment("exp_three_arm_1_audience_fullon")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 1,
+							name: "exp_three_arm_1_audience_fullon",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 0,
+							assigned: false,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: true,
+							ruleOverride: false,
+						},
+						{
+							id: 24,
+							name: "holdout_three_arm_v1",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+
+			// Scenario 218 (index 217): the same full-on/audience-mismatch experiment, covered
+			// instead by the 3-arm holdout's variant 2 (normal traffic), yields the identical verdict
+			// as scenario 217's variant 1: control, assigned=false, audienceMismatch=true. Pins that
+			// arm 1 defers to the normal assignment path instead of short-circuiting to the full-on
+			// variant.
+			it("3-arm variant 2 reaches the identical audience-mismatch verdict as variant 1 (scenario 218)", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_three_arm_2_audience_fullon",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 2,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+								{ name: "C", config: null },
+							],
+							audience: JSON.stringify({ filter: [{ gte: [{ var: "age" }, { value: 20 }] }] }),
+							audienceStrict: true,
+							customFieldValues: null,
+							holdoutIds: [25],
+						},
+					],
+					[
+						{
+							id: 25,
+							name: "holdout_three_arm_v2",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 0,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				context.attribute("age", 5);
+				expect(context.treatment("exp_three_arm_2_audience_fullon")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 1,
+							name: "exp_three_arm_2_audience_fullon",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 0,
+							assigned: false,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: true,
+							ruleOverride: false,
+						},
+						{
+							id: 25,
+							name: "holdout_three_arm_v2",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 2,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+
+			// Scenario 219 (index 218): a covered experiment is suppressed if EITHER applicable
+			// holdout holds it out, even when a 3-arm holdout's own arm (variant 2, normal traffic)
+			// would not have held it out on its own; both holdouts still emit their own independent
+			// exposure with their own variant. A second experiment covered only by the
+			// non-suppressing 3-arm holdout takes its normal assignment path and emits its own
+			// exposure, proving that holdout 22's arm is not itself suppressing.
+			it("union: a 2-arm holdout holds out while the applicable 3-arm holdout does not (scenario 219)", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_union_two_arm_wins",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [11, 22],
+						},
+						{
+							id: 2,
+							name: "exp_only_three_arm_normal_path",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [22],
+						},
+					],
+					[
+						{
+							id: 11,
+							name: "holdout_union_two_arm",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 13,
+							seedLo: 111,
+							split: [0.1, 0.9],
+						},
+						{
+							id: 22,
+							name: "holdout_union_three_arm",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 0,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				expect(context.treatment("exp_union_two_arm_wins")).toEqual(0);
+				expect(context.treatment("exp_only_three_arm_normal_path")).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 11,
+							name: "holdout_union_two_arm",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 0,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 22,
+							name: "holdout_union_three_arm",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 2,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 2,
+							name: "exp_only_three_arm_normal_path",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+
+			// Scenario 220 (index 219): union, the other direction: a 3-arm holdout's variant 1 holds
+			// a non-full-on covered experiment out even when an applicable 2-arm holdout alone would
+			// not have; both holdouts still emit their own independent exposure with their own
+			// variant. A second experiment covered only by the non-suppressing 2-arm holdout takes its
+			// normal assignment path and emits its own exposure, proving that holdout 11's arm is not
+			// itself suppressing.
+			it("union: a 3-arm holdout holds out while the applicable 2-arm holdout does not (scenario 220)", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_union_three_arm_wins",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [11, 22],
+						},
+						{
+							id: 2,
+							name: "exp_only_two_arm_normal_path",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [11],
+						},
+					],
+					[
+						{
+							id: 11,
+							name: "holdout_union_two_arm",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 222,
+							split: [0.1, 0.9],
+						},
+						{
+							id: 22,
+							name: "holdout_union_three_arm",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 0,
+							seedLo: 3,
+							split: [0.3, 0.3, 0.4],
+							holdoutType: "all_full_on",
+						},
+					]
+				);
+
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				expect(context.treatment("exp_union_three_arm_wins")).toEqual(0);
+				expect(context.treatment("exp_only_two_arm_normal_path")).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 11,
+							name: "holdout_union_two_arm",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 22,
+							name: "holdout_union_three_arm",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+						{
+							id: 2,
+							name: "exp_only_two_arm_normal_path",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 1,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+		});
+
+		// Scenario 221 (index 220): a covered full-on experiment can resolve before its unit type is
+		// installed; after unit() supplies that unit, resolving it again publishes the holdout
+		// exposure that was unavailable during the first evaluation. This is a regression test for
+		// the Task 6 fix round (C-1): a real bug existed here (the holdout exposure was permanently
+		// lost) and was fixed via _invalidateAssignmentsPinnedWithMissingUnit plus a change to
+		// _unitHash's negative-result caching.
+		it("publishes the previously-unavailable holdout exposure once its late unit is set (scenario 221)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_late_unit_fullon",
+						iteration: 1,
+						unitType: "user_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5, 0.0],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 2,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+							{ name: "C", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_late_user_id",
+						iteration: 1,
+						unitType: "user_id",
+						seedHi: 1,
+						seedLo: 222,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const lateUnitParams = { units: { session_id: "context-created-without-user-id" } };
+			const context = new Context(sdk, contextOptions, lateUnitParams, response);
+
+			// Before the covered unit type is installed: resolves via the full-on path (no unit
+			// needed for that), the holdout can't be resolved yet, and peek() fires no exposures.
+			expect(context.peek("exp_holdout_late_unit_fullon")).toEqual(2);
+			expect(context.pending()).toEqual(0);
+
+			context.unit("user_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec");
+
+			expect(context.treatment("exp_holdout_late_unit_fullon")).toEqual(2);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 1,
+						name: "exp_holdout_late_unit_fullon",
+						unit: "user_id",
+						exposedAt: timeOrigin,
+						variant: 2,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: true,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+					{
+						id: 11,
+						name: "holdout_late_user_id",
+						unit: "user_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Scenario 222 (index 221): identical to scenario 214 (three-arm variant 0), but the holdout
+		// definition omits the holdoutType field entirely. An SDK must derive the holdout's arm count
+		// from its split length alone, so suppression of both the full-on and non-full-on covered
+		// experiments is unchanged. Pins that holdoutType is not required on the wire and arm count
+		// is never read from it.
+		it("derives 3-arm arity from split length alone, with no holdoutType field on the wire (scenario 222)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_three_arm_0_non_fullon",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0.0, 1.0],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [21],
+					},
+					{
+						id: 2,
+						name: "exp_three_arm_0_fullon",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0.0, 1.0],
+						fullOnVariant: 2,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+							{ name: "C", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutIds: [21],
+					},
+				],
+				[
+					{
+						id: 21,
+						name: "holdout_arity_from_split",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 0,
+						seedLo: 1,
+						split: [0.3, 0.3, 0.4],
+						// deliberately no holdoutType field
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_three_arm_0_non_fullon")).toEqual(0);
+			expect(context.treatment("exp_three_arm_0_fullon")).toEqual(0);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 21,
+						name: "holdout_arity_from_split",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+	});
+
 	describe("variableValue()", () => {
 		it("should not return variable values when unassigned", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
