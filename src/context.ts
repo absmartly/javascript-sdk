@@ -797,10 +797,60 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			this._queueExposure(experimentName, assignment);
+			// An override always fires its own exposure, even when the covered experiment is also
+			// suppressed by a holdout: overriding replaces the resolved variant outright (the override's
+			// value wins, not the holdout's), so its own exposure must still be observable. This mirrors
+			// java-sdk's outcome for the override path (Context.java:1184-1244, triggerExposure at
+			// Context.java:481-503) — java's override write path never sets `assignment.suppressed` at
+			// all, so its own `!assignment.suppressed` exposure gate trivially always passes there. Our
+			// JS port pins `suppressed` eagerly for the override path too (Task 4's deliberate
+			// divergence, see Assignment.suppressed doc comment), so the exposure gate here must
+			// special-case `overridden` explicitly to reproduce the same firing outcome.
+			if (!assignment.suppressed || assignment.overridden) {
+				this._queueExposure(experimentName, assignment);
+			}
+
+			this._triggerApplicableHoldoutExposures(assignment);
 		}
 
 		return assignment;
+	}
+
+	// Ported from java-sdk's triggerApplicableHoldoutExposures/triggerHoldoutExposure
+	// (Context.java:481-546). Fires each applicable holdout's own exposure exactly once,
+	// using the pinned `assignment.holdoutAssignments` snapshot (not a live re-resolution),
+	// so a data refresh landing between the suppression decision and the exposure trigger
+	// can't publish a holdout exposure from a different epoch (Context.java:505-514).
+	// A throwing eventLogger for one holdout must not prevent siblings from firing: collect
+	// the first error and rethrow it only after every holdout has had a chance to fire.
+	private _triggerApplicableHoldoutExposures(assignment: Assignment): void {
+		const holdouts = assignment.holdouts;
+		const holdoutAssignments = assignment.holdoutAssignments;
+		if (!holdouts || !holdoutAssignments) return;
+
+		let firstError: unknown;
+		let hasError = false;
+
+		holdoutAssignments.forEach((holdoutAssignment, i) => {
+			if (holdoutAssignment == null) return;
+
+			if (!holdoutAssignment.exposed) {
+				holdoutAssignment.exposed = true;
+
+				try {
+					this._queueExposure(holdouts[i].data.name, holdoutAssignment);
+				} catch (error) {
+					if (!hasError) {
+						hasError = true;
+						firstError = error;
+					}
+				}
+			}
+		});
+
+		if (hasError) {
+			throw firstError;
+		}
 	}
 
 	private _queueExposure(experimentName: string, assignment: Assignment) {
@@ -916,7 +966,13 @@ export default class Context {
 				if (!assignment.exposed) {
 					assignment.exposed = true;
 
-					this._queueExposure(experimentName, assignment);
+					// See _treatment's matching comment: an override always fires its own exposure,
+					// even when also suppressed by a holdout.
+					if (!assignment.suppressed || assignment.overridden) {
+						this._queueExposure(experimentName, assignment);
+					}
+
+					this._triggerApplicableHoldoutExposures(assignment);
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
