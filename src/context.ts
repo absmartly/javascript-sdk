@@ -546,6 +546,32 @@ export default class Context {
 			return true;
 		};
 
+		// Ported from java-sdk's Context.holdoutSetMatches (Context.java:991-1005). Compares the
+		// pinned holdout set the cached assignment was built against with the freshly-resolved
+		// applicable-holdout set by (id, iteration) per entry — not full deep-equality, since
+		// cosmetic holdout edits (e.g. seed/split changes) on an unrelated field shouldn't force a
+		// duplicate exposure. Only membership/identity changes (added/removed holdout, or an
+		// existing one's id/iteration changing) invalidate the cached assignment.
+		const holdoutSetMatches = (experiment: Experiment, assignment: Assignment) => {
+			const freshHoldouts = experiment.holdouts ?? [];
+			const pinnedHoldouts = assignment.holdouts ?? [];
+
+			if (freshHoldouts.length !== pinnedHoldouts.length) {
+				return false;
+			}
+
+			for (let i = 0; i < freshHoldouts.length; i++) {
+				if (freshHoldouts[i].data.id !== pinnedHoldouts[i].data.id) {
+					return false;
+				}
+				if (freshHoldouts[i].data.iteration !== pinnedHoldouts[i].data.iteration) {
+					return false;
+				}
+			}
+
+			return true;
+		};
+
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
@@ -562,8 +588,18 @@ export default class Context {
 					// previously not-running experiment
 					return assignment;
 				}
-			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
-				if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
+			} else if (assignment.suppressed || !hasCustom || this._cassignments[experimentName] === assignment.variant) {
+				// When the assignment is currently suppressed, a custom-assignment variant
+				// mismatch is expected (the holdout forces variant 0 regardless of the custom
+				// assignment on file per scenario 211) and must not be treated as staleness on
+				// its own — experimentMatches/audienceMatches/holdoutSetMatches below still gate
+				// the return, so a real change (unit type, holdout set, etc.) still falls through
+				// to a rebuild.
+				if (
+					experimentMatches(experiment.data, assignment) &&
+					audienceMatches(experiment.data, assignment) &&
+					holdoutSetMatches(experiment, assignment)
+				) {
 					// assignment up-to-date
 					return assignment;
 				}
