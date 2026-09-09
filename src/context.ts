@@ -148,6 +148,12 @@ function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVari
 	return false;
 }
 
+// Wraps a caught error so "no error occurred" (undefined) can be distinguished from "an error of
+// value `undefined` was thrown" when collecting the first error across multiple try/catch sites
+// (the covered experiment's own exposure attempt and the holdout-firing loop) that must share one
+// "first error wins" outcome, mirroring java-sdk's triggerExposure (Context.java:481-503).
+type CaughtError = { value: unknown } | undefined;
+
 export default class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _attrs: Attribute[];
@@ -332,6 +338,40 @@ export default class Context {
 		}
 
 		this._units[unitType] = uid;
+
+		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
+	}
+
+	// Ported from java-sdk's invalidateAssignmentsPinnedWithMissingUnit (Context.java:325-381,
+	// called from setUnit at line 344). A cached assignment's `holdoutAssignments` snapshot pins a
+	// null entry when the covered experiment's unit was unavailable at the time it was resolved
+	// (see `_getHoldoutAssignment`'s `unit === null` early return) — holdouts in that snapshot are
+	// resolved using the covered experiment's own `unitType`, not each holdout's declared
+	// unitType, so only installing THAT unit type can repair the null entry. Resolving the holdout
+	// live later (rather than evicting and letting `_assign()` rebuild both the decision and its
+	// exposures together) could publish a holdout verdict inconsistent with the cached experiment
+	// decision, so we evict instead.
+	//
+	// Only unexposed assignments are evicted: eviction lets a later `_assign()`/`_treatment()` call
+	// recompute (and re-fire) exposure from scratch, so evicting an already-exposed assignment
+	// could publish a duplicate or contradictory experiment exposure. This is not protecting a
+	// pristine record — an exposure queued before this call may already carry the late unit, since
+	// publish() reads units from the live `_units` map — but the decision behind it was made
+	// without that unit, and recomputation cannot repair a record already queued, only add a
+	// second, conflicting one. The guard avoids compounding a degraded record.
+	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
+		for (const experimentName in this._assignments) {
+			const assignment = this._assignments[experimentName];
+			const holdoutAssignments = assignment.holdoutAssignments;
+
+			if (holdoutAssignments && assignment.unitType === unitType && !assignment.exposed) {
+				const hasMissingEntry = holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null);
+
+				if (hasMissingEntry) {
+					delete this._assignments[experimentName];
+				}
+			}
+		}
 	}
 
 	getUnits() {
@@ -797,6 +837,13 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
+			// Ported from java-sdk's triggerExposure (Context.java:481-503): the own-exposure attempt
+			// and the holdout-firing loop share one "first error wins" outcome — a throwing eventLogger
+			// on the OWN exposure must not prevent the holdout loop from running (and vice versa), and
+			// whichever throws first is what ultimately propagates to the caller, only after both have
+			// had a chance to fire.
+			let firstError: CaughtError;
+
 			// An override always fires its own exposure, even when the covered experiment is also
 			// suppressed by a holdout: overriding replaces the resolved variant outright (the override's
 			// value wins, not the holdout's), so its own exposure must still be observable. This mirrors
@@ -807,10 +854,21 @@ export default class Context {
 			// divergence, see Assignment.suppressed doc comment), so the exposure gate here must
 			// special-case `overridden` explicitly to reproduce the same firing outcome.
 			if (!assignment.suppressed || assignment.overridden) {
-				this._queueExposure(experimentName, assignment);
+				try {
+					this._queueExposure(experimentName, assignment);
+				} catch (error) {
+					firstError = { value: error };
+				}
 			}
 
-			this._triggerApplicableHoldoutExposures(assignment);
+			const holdoutError = this._triggerApplicableHoldoutExposures(assignment);
+			if (!firstError) {
+				firstError = holdoutError;
+			}
+
+			if (firstError) {
+				throw firstError.value;
+			}
 		}
 
 		return assignment;
@@ -822,14 +880,14 @@ export default class Context {
 	// so a data refresh landing between the suppression decision and the exposure trigger
 	// can't publish a holdout exposure from a different epoch (Context.java:505-514).
 	// A throwing eventLogger for one holdout must not prevent siblings from firing: collect
-	// the first error and rethrow it only after every holdout has had a chance to fire.
-	private _triggerApplicableHoldoutExposures(assignment: Assignment): void {
+	// the first error and return it (rather than throwing here) so the caller can combine it
+	// with its own try/catch's outcome and issue a single final throw after everything has fired.
+	private _triggerApplicableHoldoutExposures(assignment: Assignment): CaughtError {
 		const holdouts = assignment.holdouts;
 		const holdoutAssignments = assignment.holdoutAssignments;
-		if (!holdouts || !holdoutAssignments) return;
+		if (!holdouts || !holdoutAssignments) return undefined;
 
-		let firstError: unknown;
-		let hasError = false;
+		let firstError: CaughtError;
 
 		holdoutAssignments.forEach((holdoutAssignment, i) => {
 			if (holdoutAssignment == null) return;
@@ -840,17 +898,14 @@ export default class Context {
 				try {
 					this._queueExposure(holdouts[i].data.name, holdoutAssignment);
 				} catch (error) {
-					if (!hasError) {
-						hasError = true;
-						firstError = error;
+					if (!firstError) {
+						firstError = { value: error };
 					}
 				}
 			}
 		});
 
-		if (hasError) {
-			throw firstError;
-		}
+		return firstError;
 	}
 
 	private _queueExposure(experimentName: string, assignment: Assignment) {
@@ -966,13 +1021,27 @@ export default class Context {
 				if (!assignment.exposed) {
 					assignment.exposed = true;
 
-					// See _treatment's matching comment: an override always fires its own exposure,
-					// even when also suppressed by a holdout.
+					// See _treatment's matching comment: the own-exposure attempt and the holdout-firing
+					// loop share one "first error wins" outcome, and an override always fires its own
+					// exposure, even when also suppressed by a holdout.
+					let firstError: CaughtError;
+
 					if (!assignment.suppressed || assignment.overridden) {
-						this._queueExposure(experimentName, assignment);
+						try {
+							this._queueExposure(experimentName, assignment);
+						} catch (error) {
+							firstError = { value: error };
+						}
 					}
 
-					this._triggerApplicableHoldoutExposures(assignment);
+					const holdoutError = this._triggerApplicableHoldoutExposures(assignment);
+					if (!firstError) {
+						firstError = holdoutError;
+					}
+
+					if (firstError) {
+						throw firstError.value;
+					}
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
@@ -1192,7 +1261,20 @@ export default class Context {
 		}
 
 		if (!(unitType in this._hashes)) {
-			const hash = unitType in this._units ? hashUnit(this._units[unitType]) : null;
+			// Only cache when the unit is actually available. A `null` result here means the unit
+			// hasn't been set yet — that can change later (via `unit()`/`setUnit`), whereas a
+			// resolved hash is stable for the unit's lifetime (the same unit type can only ever be
+			// set once, enforced by `unit()`). Caching `null` would permanently poison this cache
+			// for a unit type queried before it was set — e.g. `_getHoldoutAssignment` (unlike the
+			// ordinary experiment-assignment path, which only calls `_unitHash` after already
+			// checking `unitType in this._units`) calls this unconditionally, so a holdout resolved
+			// via `peek()`/`_assign()` before its unit type is installed must be able to resolve
+			// correctly once that unit later arrives, without a stale cached `null` blocking it.
+			if (!(unitType in this._units)) {
+				return null;
+			}
+
+			const hash = hashUnit(this._units[unitType]);
 			this._hashes[unitType] = hash;
 			return hash;
 		}
@@ -1291,7 +1373,7 @@ export default class Context {
 			}
 
 			const holdoutVariables: Record<string, unknown>[] = [];
-			holdoutData.variants.forEach((variant, i) => {
+			(holdoutData.variants || []).forEach((variant, i) => {
 				const config = variant.config;
 				holdoutVariables[i] = config != null && config.length > 0 ? JSON.parse(config) : {};
 			});
