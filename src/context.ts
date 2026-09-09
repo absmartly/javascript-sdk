@@ -47,6 +47,7 @@ export type ExperimentData = {
 	custom: boolean;
 	audienceMismatch: boolean;
 	customFieldValues: CustomFieldValue[] | null;
+	holdoutIds?: number[];
 };
 
 type Assignment = {
@@ -68,6 +69,9 @@ type Assignment = {
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
+	suppressed?: boolean;
+	holdouts?: Experiment[];
+	holdoutAssignments?: (Assignment | null)[];
 };
 
 export type Experiment = {
@@ -126,6 +130,7 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
+	holdouts?: ExperimentData[];
 };
 
 export default class Context {
