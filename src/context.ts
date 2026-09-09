@@ -72,6 +72,12 @@ type Assignment = {
 	suppressed?: boolean;
 	holdouts?: Experiment[];
 	holdoutAssignments?: (Assignment | null)[];
+	// Only set on a holdout's own resolved Assignment (as returned by _getHoldoutAssignment): the
+	// arm count (`split.length`) the holdout's definition had at the moment `variant` was
+	// resolved. Pinned alongside `variant` rather than re-read from the live holdout definition,
+	// so a same-iteration refresh that changes `split.length` can't desync the resolved arm from
+	// the arm count used to interpret it (mirrors java-sdk's HoldoutAssignment, Context.java:1218-1222).
+	holdoutArmCount?: number;
 };
 
 export type Experiment = {
@@ -579,7 +585,18 @@ export default class Context {
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
 			if (hasOverride) {
-				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
+				// The holdout set must be revalidated here too, mirroring the non-override
+				// branch below — otherwise a holdout that becomes (or stops being) applicable
+				// to an already-overridden experiment after a refresh is never picked up, and
+				// assignment.holdouts/holdoutAssignments/suppressed stay frozen forever (Task 6
+				// relies on holdoutAssignments to decide which holdouts' own exposures to fire).
+				// `experiment == null` means there's no live experiment to check against, so
+				// treat that as trivially matching (nothing to invalidate against).
+				if (
+					assignment.overridden &&
+					assignment.variant === this._overrides[experimentName] &&
+					(experiment == null || holdoutSetMatches(experiment, assignment))
+				) {
 					// override up-to-date
 					return assignment;
 				}
@@ -640,9 +657,22 @@ export default class Context {
 			assignment.holdoutAssignments = holdoutAssignments;
 
 			let suppressed = false;
-			holdoutAssignments.forEach((holdoutAssignment, i) => {
+			holdoutAssignments.forEach((holdoutAssignment) => {
 				if (holdoutAssignment != null) {
-					if (isHeldOutBy(holdoutAssignment.variant, holdouts[i].data.split.length, experiment.data.fullOnVariant)) {
+					// Read the arm count from the holdout's own pinned Assignment
+					// (holdoutArmCount), not the live holdout definition (holdouts[i].data.split.length)
+					// — the pinned Assignment's `variant` was resolved against whatever split
+					// length was live at that time, and a same-iteration refresh can change
+					// split.length without invalidating _getHoldoutAssignment's cache, so reading
+					// the live value here could desync the resolved arm from the arm count used
+					// to interpret it. See holdoutArmCount's doc comment on the Assignment type.
+					if (
+						isHeldOutBy(
+							holdoutAssignment.variant,
+							holdoutAssignment.holdoutArmCount ?? 0,
+							experiment.data.fullOnVariant
+						)
+					) {
 						suppressed = true;
 					}
 				}
@@ -1157,6 +1187,7 @@ export default class Context {
 			custom: false,
 			audienceMismatch: false,
 			ruleOverride: false,
+			holdoutArmCount: liveHoldoutData.split.length,
 		};
 
 		this._holdoutAssignments[cacheKey] = assignment;
