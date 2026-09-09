@@ -1057,6 +1057,25 @@ export default class Context {
 			return e;
 		};
 
+		// The batch has already been delivered by this point, so an exception from
+		// observing that success (e.g. a throwing custom eventLogger) must not be
+		// treated as a publish failure — that would incorrectly restore and resend
+		// an already-delivered batch. `callback()` still runs unconditionally
+		// afterward so `publish()`/`finalize()`'s own promise settles either way.
+		const onSuccess = (): undefined => {
+			try {
+				this._logEvent("publish", request);
+			} catch (observerError) {
+				console.error(observerError);
+			}
+
+			if (typeof callback === "function") {
+				callback();
+			}
+
+			return undefined;
+		};
+
 		let publishResult: Promise<void>;
 		try {
 			publishResult = this._publisher.publish(request, this._sdk, this, requestOptions);
@@ -1066,20 +1085,14 @@ export default class Context {
 			return Promise.resolve(result);
 		}
 
-		this._flushPromise = publishResult
-			.then(() => {
-				this._logEvent("publish", request);
-
-				if (typeof callback === "function") {
-					callback();
-				}
-
-				return undefined;
-			})
-			.catch((e: Error) => onFailure(e))
-			.finally(() => {
-				this._flushPromise = undefined;
-			});
+		// Neither `onSuccess` nor `onFailure` throws, so `.then(onSuccess,
+		// onFailure)` never rejects and clearing `_flushPromise` only needs a
+		// fulfillment handler. `.finally()` is avoided (not part of the ES6
+		// Promise contract the documented IE 10 target relies on a polyfill for).
+		this._flushPromise = publishResult.then(onSuccess, onFailure).then((result) => {
+			this._flushPromise = undefined;
+			return result;
+		});
 
 		return this._flushPromise;
 	}
@@ -1224,21 +1237,43 @@ export default class Context {
 			return Promise.resolve();
 		}
 
-		this._finalizing = new Promise<void>((resolve, reject) => {
-			this._flush((error) => {
-				this._finalizing = null;
-
-				if (error) {
-					reject(error);
-				} else {
-					this._finalized = true;
-					this._logEvent("finalize");
-
-					resolve();
-				}
-			}, requestOptions);
+		// Assign `this._finalizing` BEFORE calling `_flush`, using a manually
+		// created deferred rather than passing a callback into a `new
+		// Promise(executor)`. `_flush`'s callback can fire synchronously (e.g.
+		// from a synchronously throwing custom publisher, or the already-failed
+		// fast path), and if it ran inside a `new Promise((resolve, reject) => {
+		// this._flush(callback...) })` executor, it would run — and clear
+		// `this._finalizing` — before that `new Promise(...)` expression itself
+		// finished evaluating; the outer `this._finalizing = ...` assignment
+		// would then immediately clobber the clear back to a non-null value,
+		// leaving `isFinalizing()` stuck `true` forever. Setting `_finalizing`
+		// up front, before `_flush` is even called, avoids that ordering
+		// entirely: whether the callback fires synchronously or asynchronously,
+		// `this._finalizing` is already the promise being resolved below.
+		let resolveFinalizing!: () => void;
+		let rejectFinalizing!: (error: Error) => void;
+		const finalizing = new Promise<void>((resolve, reject) => {
+			resolveFinalizing = resolve;
+			rejectFinalizing = reject;
 		});
 
-		return this._finalizing;
+		this._finalizing = finalizing;
+
+		this._flush((error) => {
+			if (this._finalizing === finalizing) {
+				this._finalizing = null;
+			}
+
+			if (error) {
+				rejectFinalizing(error);
+			} else {
+				this._finalized = true;
+				this._logEvent("finalize");
+
+				resolveFinalizing();
+			}
+		}, requestOptions);
+
+		return finalizing;
 	}
 }

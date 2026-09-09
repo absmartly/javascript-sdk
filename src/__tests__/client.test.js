@@ -687,6 +687,31 @@ describe("Client", () => {
 			});
 	});
 
+	it("request() should not throw on unmatched surrogates in query parameters", (done) => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(clientOptions);
+
+		// A lone UTF-16 surrogate is accepted JavaScript string content but is not
+		// valid UTF-8; unlike URLSearchParams (which substitutes U+FFFD),
+		// encodeURIComponent() throws URIError on it directly, so it must be
+		// normalized to well-formed UTF-16 first.
+		client
+			.request({
+				method: "GET",
+				path: "/context",
+				query: { application: "\uD800" },
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=%EF%BF%BD`, expect.any(Object));
+
+				expect(response).toEqual(defaultMockResponse);
+
+				done();
+			});
+	});
+
 	it("request() should omit query parameters if dict empty", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 

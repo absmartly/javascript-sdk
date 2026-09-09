@@ -148,6 +148,33 @@ export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
 	return a === b || (a?.length === b?.length && !a?.some((va, vi) => b && va !== b[vi]));
 }
 
+// Replaces unmatched UTF-16 surrogates with U+FFFD, matching
+// `String.prototype.toWellFormed()` (ES2024, not assumed available under the
+// declared Node 6 / IE 10 targets) so `encodeURIComponent` — which throws
+// `URIError: URI malformed` on a lone surrogate — never sees one.
+export function toWellFormedString(value: string): string {
+	let result = "";
+
+	for (let i = 0; i < value.length; i++) {
+		const c = value.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff) {
+			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				result += value[i] + value[i + 1];
+				i++;
+			} else {
+				result += "�";
+			}
+		} else if (c >= 0xdc00 && c <= 0xdfff) {
+			result += "�";
+		} else {
+			result += value[i];
+		}
+	}
+
+	return result;
+}
+
 export function stringToUint8Array(value: string) {
 	if (typeof TextEncoder !== "undefined") {
 		return new TextEncoder().encode(value);

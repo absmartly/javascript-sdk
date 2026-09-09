@@ -47,6 +47,7 @@ describe("Local server integration (real HTTP)", () => {
 
 	afterAll((done) => {
 		server.close(done);
+		server.closeIdleConnections?.();
 	});
 
 	it("performs a real GET /context and PUT /context against a local server", async () => {

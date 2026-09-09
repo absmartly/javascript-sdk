@@ -7,6 +7,7 @@ import { AbortError, RetryError, TimeoutError } from "./errors";
 import { type AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
 import { type ContextOptions, type ContextParams } from "./context";
 import { type PublishParams } from "./publisher";
+import { toWellFormedString } from "./utils";
 
 export type FetchResponse = {
 	status: number;
@@ -149,9 +150,14 @@ export default class Client {
 		if (options.query) {
 			// Built manually (not with URLSearchParams) because the declared IE 10
 			// browser target excludes the `web.*` core-js polyfills that would
-			// otherwise provide it (see babel.config.js).
+			// otherwise provide it (see babel.config.js). Values are normalized to
+			// well-formed UTF-16 first: unlike `URLSearchParams`, `encodeURIComponent`
+			// throws `URIError: URI malformed` on an unpaired surrogate.
 			const queryString = Object.entries(options.query)
-				.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+				.map(
+					([key, value]) =>
+						`${encodeURIComponent(toWellFormedString(key))}=${encodeURIComponent(toWellFormedString(String(value)))}`
+				)
 				.join("&");
 			if (queryString) {
 				url = `${url}?${queryString}`;

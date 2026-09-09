@@ -4159,6 +4159,46 @@ describe("Context", () => {
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.publish()).toThrow();
 		});
+
+		it("should not restore or resend an already-delivered batch when a custom eventLogger throws on the publish success event", (done) => {
+			const observerError = new Error("eventLogger failure");
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "publish") {
+					throw observerError;
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				getContextResponse
+			);
+
+			context.track("goal1", { amount: 125 });
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			context.publish().then(() => {
+				// The batch was already delivered successfully; the observer's throw
+				// must not be treated as a publish failure that restores the queue
+				// and resends the batch on the next flush.
+				expect(context.pending()).toEqual(0);
+				expect(consoleErrorSpy).toHaveBeenCalledWith(observerError);
+
+				publisher.publish.mockClear();
+
+				context.publish().then(() => {
+					expect(publisher.publish).not.toHaveBeenCalled();
+
+					consoleErrorSpy.mockRestore();
+					done();
+				});
+			});
+		});
 	});
 
 	describe("finalize()", () => {
@@ -4519,6 +4559,45 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(1);
 
 				done();
+			});
+		});
+
+		it("should clear isFinalizing() and allow a retry after a synchronously throwing publisher", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			const syncError = new Error("synchronous publisher failure");
+			publisher.publish.mockImplementationOnce(() => {
+				throw syncError;
+			});
+
+			context.finalize().catch((e) => {
+				expect(e).toBe(syncError);
+				// A `finalize()` callback that fires synchronously (as it does here,
+				// since the publisher throws before any microtask boundary) must not
+				// leave isFinalizing() stuck true — otherwise the context can never
+				// finalize or retry.
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(false);
+				expect(context.pending()).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.finalize().then(() => {
+					expect(context.isFinalizing()).toEqual(false);
+					expect(context.isFinalized()).toEqual(true);
+					expect(context.pending()).toEqual(0);
+					expect(publisher.publish).toHaveBeenCalledTimes(2);
+
+					done();
+				});
 			});
 		});
 

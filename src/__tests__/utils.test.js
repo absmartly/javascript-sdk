@@ -8,6 +8,7 @@ import {
 	isObject,
 	isPromise,
 	stringToUint8Array,
+	toWellFormedString,
 } from "../utils";
 
 class SomeClass {}
@@ -416,6 +417,39 @@ describe("base64UrlNoPadding()", () => {
 			const bytes = stringToUint8Array(testCase[0]);
 			expect(base64UrlNoPadding(bytes)).toEqual(testCase[1]);
 		});
+
+		done();
+	});
+});
+
+describe("toWellFormedString()", () => {
+	it("should leave well-formed strings unchanged", (done) => {
+		expect(toWellFormedString("")).toBe("");
+		expect(toWellFormedString("normal string")).toBe("normal string");
+		expect(toWellFormedString("açb↓c")).toBe("açb↓c");
+		expect(toWellFormedString("😀")).toBe("😀");
+		expect(toWellFormedString("a😀b")).toBe("a😀b");
+
+		done();
+	});
+
+	it("should replace unmatched surrogates with U+FFFD", (done) => {
+		expect(toWellFormedString("\uD800")).toBe("�");
+		expect(toWellFormedString("\uDC00")).toBe("�");
+		expect(toWellFormedString("\uD800X")).toBe("�X");
+		expect(toWellFormedString("a\uD800b")).toBe("a�b");
+		expect(toWellFormedString("\uD800\uD800")).toBe("��");
+		expect(toWellFormedString("\uDC00\uD800")).toBe("��");
+
+		done();
+	});
+
+	it("should always be safe to pass to encodeURIComponent()", (done) => {
+		const inputs = ["\uD800", "\uDC00", "\uD800X", "a\uD800b", "\uD800\uD800", "\uDC00\uD800", "normal", "😀"];
+
+		for (const input of inputs) {
+			expect(() => encodeURIComponent(toWellFormedString(input))).not.toThrow();
+		}
 
 		done();
 	});
