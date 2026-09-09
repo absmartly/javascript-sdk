@@ -415,8 +415,10 @@ export default class Context {
 	}
 
 	override(experimentName: string, variant: number) {
-		// override() is allowed after finalize() (parity with the production SDK,
-		// which sets overrides unconditionally).
+		// Deliberately allowed after finalize() — not guarded by
+		// _checkNotFinalized(), unlike track()/treatment()/etc. This is the
+		// canonical cross-SDK behavior for this SDK: see cross-sdk-tests
+		// scenario "190 - Post-Finalize - override() Allowed (Verified Finalized)".
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
@@ -545,9 +547,11 @@ export default class Context {
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
 					const result = this._evaluateAudience(experiment.audience);
-					// Mirror the assignment-time logic: a null result leaves the
-					// mismatch flag unchanged (false), so the cached assignment
-					// stays valid rather than being needlessly invalidated.
+					// An indeterminate (null) audience result leaves the cached
+					// `audienceMismatch` flag as-is rather than forcing it to `false`,
+					// so a cached mismatch=true assignment isn't wrongly treated as
+					// stale — this only affects the cache-validity check below, not
+					// the flag's value.
 					const newAudienceMismatch = result !== null ? !result : assignment.audienceMismatch;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {

@@ -1,9 +1,3 @@
-// Constructor option-merging tests for SDK and Client.
-//
-// These deliberately use the real SDK and Client constructors (no jest.mock),
-// so they exercise the actual _extractClientOptions / option-merge logic
-// rather than Jest doubles, which would make the assertions vacuous.
-
 import SDK from "../sdk";
 import Client from "../client";
 

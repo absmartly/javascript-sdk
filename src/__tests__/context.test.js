@@ -1136,8 +1136,12 @@ describe("Context", () => {
 							id: 11,
 							trafficSeedHi: 54870830,
 							trafficSeedLo: 398724581,
-							seedHi: 77498863,
-							seedLo: 34737352,
+							// Chosen so the resulting variant (1) differs from
+							// expectedVariants["exp_test_abc"] (2): proves the cache was
+							// actually recomputed with the new seed, not just re-serving a
+							// stale cached assignment that happens to still be valid.
+							seedHi: 1,
+							seedLo: 3,
 						};
 					}
 					return x;
@@ -1147,7 +1151,7 @@ describe("Context", () => {
 			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithChangedId));
 
 			context.refresh().then(() => {
-				expect(context.treatment("exp_test_abc")).toEqual(2);
+				expect(context.treatment("exp_test_abc")).toEqual(1);
 				expect(context.treatment("not_found")).toEqual(0);
 
 				expect(context.pending()).toEqual(3);
