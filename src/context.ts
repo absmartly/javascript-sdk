@@ -159,6 +159,7 @@ export default class Context {
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
 	private _refreshInterval?: ReturnType<typeof setInterval>;
+	private _flushPromise?: Promise<Error | undefined>;
 
 	constructor(sdk: SDK, options: ContextOptions, params: ContextParams, promise: ContextData | Promise<ContextData>) {
 		this._sdk = sdk;
@@ -927,115 +928,160 @@ export default class Context {
 		return allAttributes;
 	}
 
-	private _flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
+	private _flush(
+		callback?: (error?: Error) => void,
+		requestOptions?: ClientRequestOptions
+	): Promise<Error | undefined> {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
+		}
+
+		// A flush is already in flight (it already reset `_pending` synchronously,
+		// so a concurrent caller can't see it via `pending()`). Wait for it to settle
+		// before re-evaluating, so callers like `finalize()` don't act on a queue that
+		// only *looks* empty because the snapshot hasn't been restored/published yet.
+		if (this._flushPromise) {
+			return this._flushPromise.then(() => this._flush(callback, requestOptions));
 		}
 
 		if (this._pending === 0) {
 			if (typeof callback === "function") {
 				callback();
 			}
-		} else {
-			if (!this._failed) {
-				try {
-					const request: PublishParams = {
-						publishedAt: Date.now(),
-						units: Object.entries(this._units).map((entry) => ({
-							type: entry[0],
-							uid: this._unitHash(entry[0]),
-						})),
-						hashed: true,
-						sdkVersion: SDK_VERSION,
-					};
+			return Promise.resolve(undefined);
+		}
 
-					if (this._goals.length > 0) {
-						request.goals = this._goals.map((x) => ({
-							name: x.name,
-							achievedAt: x.achievedAt,
-							properties: x.properties,
-						}));
-					}
+		if (this._failed) {
+			this._logError(
+				new Error(
+					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+				)
+			);
 
-					if (this._exposures.length > 0) {
-						request.exposures = this._exposures.map((x) => ({
-							id: x.id,
-							name: x.name,
-							unit: x.unit,
-							exposedAt: x.exposedAt,
-							variant: x.variant,
-							assigned: x.assigned,
-							eligible: x.eligible,
-							overridden: x.overridden,
-							fullOn: x.fullOn,
-							custom: x.custom,
-							audienceMismatch: x.audienceMismatch,
-							ruleOverride: x.ruleOverride,
-						}));
-					}
+			this._pending = 0;
+			this._exposures = [];
+			this._goals = [];
 
-					const allAttributes = this._buildAttributes();
-					if (allAttributes.length > 0) {
-						request.attributes = allAttributes;
-					}
+			if (typeof callback === "function") {
+				callback();
+			}
+			return Promise.resolve(undefined);
+		}
 
-					// Snapshot and reset synchronously before the async publish.
-					// The data is already copied into `request` via .map(), so clearing
-					// immediately is safe and allows new events to accumulate during the
-					// in-flight publish. On failure, we restore the snapshot so the events
-					// are retried on the next flush cycle.
-					const pendingCount = this._pending;
-					const pendingExposures = this._exposures;
-					const pendingGoals = this._goals;
+		let request: PublishParams;
+		try {
+			request = {
+				publishedAt: Date.now(),
+				units: Object.entries(this._units).map((entry) => ({
+					type: entry[0],
+					uid: this._unitHash(entry[0]),
+				})),
+				hashed: true,
+				sdkVersion: SDK_VERSION,
+			};
 
-					this._pending = 0;
-					this._exposures = [];
-					this._goals = [];
+			if (this._goals.length > 0) {
+				request.goals = this._goals.map((x) => ({
+					name: x.name,
+					achievedAt: x.achievedAt,
+					properties: x.properties,
+				}));
+			}
 
-					this._publisher
-						.publish(request, this._sdk, this, requestOptions)
-						.then(() => {
-							this._logEvent("publish", request);
+			if (this._exposures.length > 0) {
+				request.exposures = this._exposures.map((x) => ({
+					id: x.id,
+					name: x.name,
+					unit: x.unit,
+					exposedAt: x.exposedAt,
+					variant: x.variant,
+					assigned: x.assigned,
+					eligible: x.eligible,
+					overridden: x.overridden,
+					fullOn: x.fullOn,
+					custom: x.custom,
+					audienceMismatch: x.audienceMismatch,
+					ruleOverride: x.ruleOverride,
+				}));
+			}
 
-							if (typeof callback === "function") {
-								callback();
-							}
-						})
-						.catch((e: Error) => {
-							this._pending += pendingCount;
-							this._exposures.push(...pendingExposures);
-							this._goals.push(...pendingGoals);
+			const allAttributes = this._buildAttributes();
+			if (allAttributes.length > 0) {
+				request.attributes = allAttributes;
+			}
+		} catch (e) {
+			this._logError(e as Error);
 
-							this._logError(e);
+			if (typeof callback === "function") {
+				callback(e as Error);
+			}
+			return Promise.resolve(e as Error);
+		}
 
-							if (typeof callback === "function") {
-								callback(e);
-							}
-						});
-				} catch (e) {
-					this._logError(e as Error);
+		// Snapshot and reset synchronously before the async publish.
+		// The data is already copied into `request` via .map(), so clearing
+		// immediately is safe and allows new events to accumulate during the
+		// in-flight publish. On failure, we restore the snapshot so the events
+		// are retried on the next flush cycle. `_flushPromise` tracks this in-flight
+		// attempt so concurrent callers (e.g. `finalize()`) can wait on it instead of
+		// racing the synchronous reset above.
+		const pendingCount = this._pending;
+		const pendingExposures = this._exposures;
+		const pendingGoals = this._goals;
 
-					if (typeof callback === "function") {
-						callback(e as Error);
-					}
-				}
-			} else {
-				this._logError(
-					new Error(
-						`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
-					)
-				);
+		this._pending = 0;
+		this._exposures = [];
+		this._goals = [];
 
-				this._pending = 0;
-				this._exposures = [];
-				this._goals = [];
+		// Routing the publisher call through a shared handler normalizes a
+		// synchronously throwing custom publisher into the same restore/reject path
+		// as an async rejection, so the snapshot is restored either way. The call
+		// itself stays synchronous (no extra microtask hop) so timer-driven callers
+		// observe the publish attempt within the same tick, as before.
+		const onFailure = (e: Error): Error => {
+			this._pending += pendingCount;
+			this._exposures.push(...pendingExposures);
+			this._goals.push(...pendingGoals);
+
+			this._logError(e);
+
+			// Reschedule automatic delivery for the restored batch; this is a no-op
+			// unless publishDelay >= 0 and no timer is already pending.
+			this._setTimeout();
+
+			if (typeof callback === "function") {
+				callback(e);
+			}
+
+			return e;
+		};
+
+		let publishResult: Promise<void>;
+		try {
+			publishResult = this._publisher.publish(request, this._sdk, this, requestOptions);
+		} catch (e) {
+			const result = onFailure(e as Error);
+			this._flushPromise = undefined;
+			return Promise.resolve(result);
+		}
+
+		this._flushPromise = publishResult
+			.then(() => {
+				this._logEvent("publish", request);
 
 				if (typeof callback === "function") {
 					callback();
 				}
-			}
-		}
+
+				return undefined;
+			})
+			.catch((e: Error) => onFailure(e))
+			.finally(() => {
+				this._flushPromise = undefined;
+			});
+
+		return this._flushPromise;
 	}
 
 	private _refresh(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
@@ -1153,41 +1199,46 @@ export default class Context {
 	}
 
 	private _finalize(requestOptions?: ClientRequestOptions) {
-		if (!this._finalized) {
-			if (!this._finalizing) {
-				if (this._refreshInterval !== undefined) {
-					clearInterval(this._refreshInterval);
-					delete this._refreshInterval;
-				}
+		if (this._finalized) {
+			return Promise.resolve();
+		}
 
-				if (this.pending() > 0) {
-					this._finalizing = new Promise<void>((resolve, reject) => {
-						this._flush((error) => {
-							this._finalizing = null;
-
-							if (error) {
-								reject(error);
-							} else {
-								this._finalized = true;
-								this._logEvent("finalize");
-
-								resolve();
-							}
-						}, requestOptions);
-					});
-
-					return this._finalizing;
-				}
-
-				this._finalized = true;
-				this._logEvent("finalize");
-
-				return Promise.resolve();
-			}
-
+		if (this._finalizing) {
 			return this._finalizing;
 		}
 
-		return Promise.resolve();
+		if (this._refreshInterval !== undefined) {
+			clearInterval(this._refreshInterval);
+			delete this._refreshInterval;
+		}
+
+		// `pending() === 0` alone is not sufficient: `_flush` resets `_pending`
+		// synchronously before its publish settles, so a flush can be in flight
+		// while the queue already looks empty. Only take the synchronous fast
+		// path when nothing is pending AND no flush is in progress; otherwise
+		// fall through to `_flush`, which itself waits for any in-flight attempt.
+		if (this._pending === 0 && !this._flushPromise) {
+			this._finalized = true;
+			this._logEvent("finalize");
+
+			return Promise.resolve();
+		}
+
+		this._finalizing = new Promise<void>((resolve, reject) => {
+			this._flush((error) => {
+				this._finalizing = null;
+
+				if (error) {
+					reject(error);
+				} else {
+					this._finalized = true;
+					this._logEvent("finalize");
+
+					resolve();
+				}
+			}, requestOptions);
+		});
+
+		return this._finalizing;
 	}
 }

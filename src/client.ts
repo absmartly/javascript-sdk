@@ -147,11 +147,12 @@ export default class Client {
 	request(options: ClientRequestOptions) {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
-			const params = new URLSearchParams();
-			for (const [key, value] of Object.entries(options.query)) {
-				params.append(key, String(value));
-			}
-			const queryString = params.toString();
+			// Built manually (not with URLSearchParams) because the declared IE 10
+			// browser target excludes the `web.*` core-js polyfills that would
+			// otherwise provide it (see babel.config.js).
+			const queryString = Object.entries(options.query)
+				.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+				.join("&");
 			if (queryString) {
 				url = `${url}?${queryString}`;
 			}
@@ -230,11 +231,15 @@ export default class Client {
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
 				console.warn(reason);
 
+				// timeout <= 0 means "no deadline": the retry budget is governed by
+				// `retries` alone, so the elapsed-time check below must not apply.
+				const hasDeadline = timeout > 0;
+
 				if (reason._bail || retries <= 0) {
 					throw new Error(reason.message);
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
-				} else if (waited >= timeout || reason.name === "AbortError") {
+				} else if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
 					if (tryWith.timedout) {
 						throw new TimeoutError(timeout);
 					}
@@ -243,7 +248,7 @@ export default class Client {
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (waited + delay > timeout) {
+				if (hasDeadline && waited + delay > timeout) {
 					delay = timeout - waited;
 				}
 

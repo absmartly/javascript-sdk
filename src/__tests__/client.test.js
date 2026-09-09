@@ -1202,5 +1202,27 @@ describe("Client", () => {
 
 			expect(client).toBeInstanceOf(Client);
 		});
+
+		it("should still retry a failing-then-succeeding request when timeout is 0 (no deadline)", (done) => {
+			fetch
+				.mockResolvedValueOnce(responseMock(500, "server error", "server error text"))
+				.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+			const client = new Client(Object.assign({}, clientOptions, { timeout: 0, retries: 5 }));
+
+			client
+				.request({
+					method: "GET",
+					path: "/context",
+				})
+				.then((response) => {
+					expect(fetch).toHaveBeenCalledTimes(2);
+					expect(response).toEqual(defaultMockResponse);
+
+					done();
+				});
+
+			advanceFakeTimers();
+		});
 	});
 });

@@ -136,7 +136,7 @@ When doing full-stack experimentation with A/B Smartly, we recommend creating a 
 
 ### Refreshing the Context with Fresh Experiment Data
 
-For long-running single-page-applications (SPA), the context is usually created once when the application is first reached. However, any experiments being tracked in your production code, but started after the context was created, will not be triggered. To mitigate this, we can use the `refreshInterval` option when creating the context.
+For long-running single-page-applications (SPA), the context is usually created once when the application is first reached. However, any experiments being tracked in your production code, but started after the context was created, will not be triggered. To mitigate this, we can use the `refreshPeriod` option when creating the context.
 
 ```javascript
 const request = {
@@ -146,7 +146,7 @@ const request = {
 };
 
 const context = sdk.createContext(request, {
-    refreshInterval: 5 * 60 * 1000, // 5 minutes
+    refreshPeriod: 5 * 60 * 1000, // 5 minutes
 });
 ```
 

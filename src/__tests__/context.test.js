@@ -4436,6 +4436,136 @@ describe("Context", () => {
 				done();
 			});
 		});
+
+		it("should not finalize while a concurrent publish() is still in flight", (done) => {
+			jest.useRealTimers();
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			let resolvePublish;
+			publisher.publish.mockReturnValue(
+				new Promise((resolve) => {
+					resolvePublish = resolve;
+				})
+			);
+
+			const publishPromise = context.publish();
+
+			// publish() has already reset the internal queue synchronously, so a
+			// naive pending()-based check would see an empty queue here even though
+			// the request has not settled yet.
+			expect(context.pending()).toEqual(0);
+
+			const finalizePromise = context.finalize();
+
+			// finalize() must not complete (or mark the context finalized) while the
+			// in-flight publish it is racing against hasn't settled.
+			expect(context.isFinalized()).toEqual(false);
+			expect(context.isFinalizing()).toEqual(true);
+
+			// Give any (incorrect) synchronous finalize path a chance to run before
+			// resolving the in-flight publish.
+			Promise.resolve()
+				.then(() => Promise.resolve())
+				.then(() => Promise.resolve())
+				.then(() => {
+					expect(context.isFinalized()).toEqual(false);
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+
+					resolvePublish();
+
+					return Promise.all([publishPromise, finalizePromise]);
+				})
+				.then(() => {
+					expect(context.isFinalized()).toEqual(true);
+					expect(context.isFinalizing()).toEqual(false);
+					expect(context.pending()).toEqual(0);
+					// finalize() waited on the same in-flight publish instead of
+					// triggering a second, redundant request.
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+
+					done();
+				});
+		});
+
+		it("should restore the queue and reject when the publisher throws synchronously", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			const syncError = new Error("synchronous publisher failure");
+			publisher.publish.mockImplementation(() => {
+				throw syncError;
+			});
+
+			context.publish().catch((e) => {
+				expect(e).toBe(syncError);
+				// The snapshot taken before the (synchronously throwing) publish call
+				// must be restored so the events are retried on the next flush.
+				expect(context.pending()).toEqual(1);
+
+				done();
+			});
+		});
+
+		it("should reschedule the automatic publish timer after a scheduled flush fails", (done) => {
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setTimeout");
+
+			const publishDelay = 100;
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+			expect(setTimeout).toHaveBeenCalledTimes(1);
+
+			publisher.publish.mockReturnValueOnce(Promise.reject(new Error("network error")));
+
+			jest.advanceTimersByTime(publishDelay);
+
+			// Flush the microtask queue so the rejection handler (which restores the
+			// queue and reschedules) has run before we assert on it.
+			Promise.resolve()
+				.then(() => Promise.resolve())
+				.then(() => {
+					expect(context.pending()).toEqual(1);
+					// A new automatic-publish timer must have been scheduled for the
+					// restored batch, otherwise it is silently dropped forever.
+					expect(setTimeout).toHaveBeenCalledTimes(2);
+
+					publisher.publish.mockReturnValueOnce(Promise.resolve());
+
+					jest.advanceTimersByTime(publishDelay);
+
+					Promise.resolve()
+						.then(() => Promise.resolve())
+						.then(() => {
+							expect(context.pending()).toEqual(0);
+							expect(publisher.publish).toHaveBeenCalledTimes(2);
+
+							done();
+						});
+				});
+		});
 	});
 
 	describe("override()", () => {

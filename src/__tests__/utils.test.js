@@ -314,6 +314,74 @@ describe("stringToUint8Array()", () => {
 		}
 		done();
 	});
+
+	describe("unmatched surrogates", () => {
+		// Unmatched surrogate code units are not valid UTF-8 code points; both TextEncoder
+		// and the manual fallback must emit U+FFFD (ef bf bd) for each one, matching the
+		// canonical UTF-8 replacement-character behavior.
+		const testCases = [
+			["lone high surrogate at end of string", "\uD800", Uint8Array.from([0xef, 0xbf, 0xbd])],
+			["lone low surrogate", "\uDC00", Uint8Array.from([0xef, 0xbf, 0xbd])],
+			["high surrogate followed by non-surrogate", "\uD800X", Uint8Array.from([0xef, 0xbf, 0xbd, 0x58])],
+			[
+				"two consecutive lone high surrogates",
+				"\uD800\uD800",
+				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
+			],
+			[
+				"two consecutive lone low surrogates",
+				"\uDC00\uDC00",
+				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
+			],
+			[
+				"low surrogate followed by high surrogate (wrong order)",
+				"\uDC00\uD800",
+				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
+			],
+			["lone high surrogate after ascii", "a\uD800", Uint8Array.from([0x61, 0xef, 0xbf, 0xbd])],
+			["lone low surrogate before ascii", "\uDC00b", Uint8Array.from([0xef, 0xbf, 0xbd, 0x62])],
+		];
+
+		it("should emit U+FFFD for unmatched surrogates via the built-in TextEncoder", (done) => {
+			for (const [, input, expected] of testCases) {
+				const array = stringToUint8Array(input);
+				expect(Array.from(array)).toEqual(Array.from(expected));
+			}
+			done();
+		});
+
+		it("should emit U+FFFD for unmatched surrogates via the manual fallback", (done) => {
+			const OriginalTextEncoder = global.TextEncoder;
+			// eslint-disable-next-line no-global-assign
+			delete global.TextEncoder;
+
+			try {
+				for (const [, input, expected] of testCases) {
+					const array = stringToUint8Array(input);
+					expect(Array.from(array)).toEqual(Array.from(expected));
+				}
+			} finally {
+				global.TextEncoder = OriginalTextEncoder;
+			}
+			done();
+		});
+
+		it("should produce identical hashUnit results for both code paths", (done) => {
+			const OriginalTextEncoder = global.TextEncoder;
+
+			for (const [, input] of testCases) {
+				const nativeHash = hashUnit(input);
+
+				// eslint-disable-next-line no-global-assign
+				delete global.TextEncoder;
+				const fallbackHash = hashUnit(input);
+				global.TextEncoder = OriginalTextEncoder;
+
+				expect(fallbackHash).toBe(nativeHash);
+			}
+			done();
+		});
+	});
 });
 
 describe("base64UrlNoPadding()", () => {
