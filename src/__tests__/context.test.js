@@ -3184,32 +3184,39 @@ describe("Context", () => {
 				]
 			);
 
-			expect(() => {
-				const context = new Context(sdk, contextOptions, contextParams, response);
-				expect(context.treatment("exp_holdout_dangling_plus_valid")).toEqual(0);
+			// Fixed per final-review finding M-4: the construction and the async publish
+			// assertions are split apart. `.not.toThrow()` only catches SYNCHRONOUS throws, so
+			// wrapping the `.then()` callback (with its `done()` call) inside it let any assertion
+			// failure inside the callback escape as an unhandled rejection / test timeout instead
+			// of a clean, attributable test failure. The synchronous construction is asserted not
+			// to throw on its own, and the publish/exposure assertions run unwrapped afterward,
+			// matching how every other test in this block is structured.
+			expect(() => new Context(sdk, contextOptions, contextParams, response)).not.toThrow();
 
-				publisher.publish.mockReturnValue(Promise.resolve());
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_holdout_dangling_plus_valid")).toEqual(0);
 
-				context.publish().then(() => {
-					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
-						{
-							id: 11,
-							name: "holdout_a",
-							unit: "session_id",
-							exposedAt: timeOrigin,
-							variant: 0,
-							assigned: true,
-							eligible: true,
-							overridden: false,
-							fullOn: false,
-							custom: false,
-							audienceMismatch: false,
-							ruleOverride: false,
-						},
-					]);
-					done();
-				});
-			}).not.toThrow();
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 11,
+						name: "holdout_a",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
 		});
 
 		// Scenario 208 (index 207): a holdout suppresses a full-on experiment (fullOnVariant != 0)
@@ -3450,7 +3457,7 @@ describe("Context", () => {
 		// holdout membership across two different covered experiments; the shared holdout's own
 		// exposure fires once on first evaluation and neither covered experiment fires its own
 		// exposure — the second call must fire nothing at all, not even a duplicate holdout exposure.
-		it("fires a shared holdout's exposure once across two covered experiments (scenario 213)", () => {
+		it("fires a shared holdout's exposure once across two covered experiments (scenario 213)", (done) => {
 			const response = buildHoldoutResponse(
 				[
 					{
@@ -3521,6 +3528,32 @@ describe("Context", () => {
 			// exp_shared_b is also suppressed, and the shared holdout already fired for exp_shared_a —
 			// no further exposures of any kind should be queued.
 			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			// Tightened per final-review finding M-3: assert the exact exposures array (matching
+			// every other test in this describe block) so this verifies the SPECIFIC exposure that
+			// fired is the shared holdout's own — not merely that exactly one exposure fired, which
+			// would pass even if the wrong exposure (e.g. exp_shared_a's own) had fired instead.
+			context.publish().then(() => {
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 1,
+						name: "holdout_shared",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
 		});
 
 		// Scenarios 214-220 (indices 213-219): the three-arm holdout battery. Same shared unit
@@ -4471,6 +4504,372 @@ describe("Context", () => {
 					},
 				]);
 				done();
+			});
+		});
+
+		// Final-review Finding I-1: a matching assignmentRules rule (a JS-SDK-only feature) must
+		// NOT bypass holdout suppression. Rules are a deterministic-per-attribute assignment
+		// mechanism — structurally the same category as a custom assignment (scenario 211: custom
+		// assignment yields to suppression) — not an override in the sense scenario 210
+		// establishes (only an explicit override() call is exempt from suppression). Before the
+		// fix, `ruleVariant !== null` set `assignment.variant`/`ruleOverride` unconditionally,
+		// bypassing the `if (assignment.suppressed)` branch entirely: a held-out unit would be
+		// silently TREATED with the rule's variant while its own exposure stayed suppressed (the
+		// exposure gate does not special-case `ruleOverride`) — measured nothing, but received
+		// real treatment. Ported shape from scenario 211 (custom-assignment path) applied to the
+		// rules path instead; the holdout fixture (id 11, seedHi 13, seedLo 111, split [0.1, 0.9])
+		// is identical to scenario 203's holdout_a, which is already proven to hold out the
+		// default `contextParams` unit (variant 0).
+		it("suppresses a matching assignment rule's variant, mirroring scenario 211 for the rules path (Finding I-1)", (done) => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_rules",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						assignmentRules: JSON.stringify({
+							rules: [
+								{
+									name: "US Internal Users",
+									type: "assign",
+									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+									environments: [],
+									variant: 1,
+								},
+							],
+						}),
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_rules_suppression",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			context.attribute("country", "US");
+
+			// Without the fix: the matching rule (variant 1) is applied unconditionally, bypassing
+			// suppression entirely, so this would return 1 instead of 0.
+			expect(context.treatment("exp_holdout_rules")).toEqual(0);
+
+			// White-box check (the exposure that would carry these fields never fires, since the
+			// experiment's own exposure is correctly suppressed below — see the publish assertion)
+			// to confirm the rule-variant computation branch did not run at all when suppressed:
+			// `ruleOverride` must stay false (never set to true and then have `variant`
+			// overwritten to 0 afterward) and `assigned` must be false, matching every other
+			// suppression case.
+			const assignment = context._assignments["exp_holdout_rules"];
+			expect(assignment.ruleOverride).toBeFalsy();
+			expect(assignment.assigned).toEqual(false);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				// Only the holdout's own exposure fires — the experiment's own exposure must NOT
+				// fire, exactly like scenario 211 (custom assignment yields to suppression), just
+				// via the rules path instead of the custom-assignment path.
+				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 11,
+						name: "holdout_rules_suppression",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					},
+				]);
+				done();
+			});
+		});
+
+		// Final-review Finding I-2, Test A: regression coverage for Task 5's override-fast-path
+		// fix (commit 716430c). Before that fix, the `hasOverride` branch in `_assign()` returned
+		// the cached assignment early on `overridden && variant match` alone, without checking
+		// `holdoutSetMatches` — so an already-overridden experiment whose holdout coverage changed
+		// across a refresh (here: holdout coverage added where there was none) kept returning the
+		// same frozen assignment forever, and the newly-applicable holdout's own exposure could
+		// never fire. This constructs exactly that: cache an overridden assignment with NO holdout
+		// coverage, refresh so the SAME experiment now has holdoutIds, and confirm the holdout's
+		// own exposure fires on the next treatment() call (proving the fast path rebuilt rather
+		// than returning the stale pinned holdouts/holdoutAssignments from before the refresh).
+		it("Task 5 regression: override fast path revalidates the holdout set added by a refresh (I-2 Test A)", (done) => {
+			const baseExperiment = {
+				id: 1,
+				name: "exp_override_holdout_added",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 100,
+				seedLo: 200,
+				split: [0.5, 0.5],
+				trafficSeedHi: 1,
+				trafficSeedLo: 2,
+				trafficSplit: [0, 1],
+				fullOnVariant: 0,
+				applications: [{ name: "website" }],
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+				audience: null,
+				audienceStrict: false,
+				customFieldValues: null,
+			};
+
+			const initialResponse = buildHoldoutResponse([baseExperiment], []);
+
+			const holdout = {
+				id: 11,
+				name: "holdout_added_after_override",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 13,
+				seedLo: 111,
+				split: [0.1, 0.9],
+				trafficSeedHi: 0,
+				trafficSeedLo: 0,
+				trafficSplit: [0, 1],
+				fullOnVariant: 0,
+				applications: [],
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+				audience: null,
+				audienceStrict: false,
+				customFieldValues: null,
+				holdoutType: "full",
+			};
+
+			const refreshedResponse = buildHoldoutResponse([{ ...baseExperiment, holdoutIds: [11] }], [holdout]);
+
+			const context = new Context(sdk, contextOptions, contextParams, initialResponse);
+			context.override("exp_override_holdout_added", 1);
+
+			// Caches the overridden assignment with no holdout coverage yet.
+			expect(context.treatment("exp_override_holdout_added")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshedResponse));
+
+			context.refresh().then(() => {
+				// Pre-fix: this returns the stale cached assignment (holdouts: undefined) without
+				// ever resolving the newly-applicable holdout, so its own exposure never fires.
+				// Override still wins the variant either way (scenario 210's precedent) — the
+				// regression is specifically about the holdout's own exposure never being able to
+				// fire once coverage is added after the override was cached.
+				expect(context.treatment("exp_override_holdout_added")).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					const holdoutExposure = exposures.find((e) => e.name === "holdout_added_after_override");
+
+					expect(holdoutExposure).toMatchObject({
+						id: 11,
+						unit: "session_id",
+						variant: 0,
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					});
+					done();
+				});
+			});
+		});
+
+		// Final-review Finding I-2, Test B: regression coverage for Task 5's holdout-arm-count
+		// pinning fix (commit 716430c). Before that fix, suppression read the arm count live from
+		// `holdouts[i].data.split.length` instead of the pinned `holdoutArmCount` on the holdout's
+		// own cached Assignment — but `_getHoldoutAssignment`'s cache only invalidates on (id,
+		// iteration) change, so a same-iteration split-length change (not expected on the real
+		// wire, but exactly the edge case the fix protects against) could desync the live arm
+		// count from the arm count the resolved variant was actually interpreted against.
+		//
+		// Construct: resolve a 2-arm holdout for one experiment (pinning holdoutArmCount: 2 and
+		// variant: 1, both cached independently of any one covered experiment). Refresh so the
+		// SAME holdout (same id, same iteration) now reports a 3-arm split. Query a SECOND,
+		// previously-unqueried experiment covered by the same holdout: its own assignment is built
+		// fresh, so it must resolve the holdout via `_getHoldoutAssignment`, hitting the (id,
+		// iteration) cache seeded by the first experiment. The seeds are chosen so the two arm
+		// counts disagree on the verdict: isHeldOutBy(1, 2, fullOnVariant=0) is false (2-arm,
+		// non-suppressing) but isHeldOutBy(1, 3, fullOnVariant=0) is true (3-arm variant 1 defers
+		// to full-on suppression) — so if the live (3) arm count were used instead of the pinned
+		// (2) one, the second experiment would flip from "not suppressed" to "suppressed".
+		// Asserting it stays NOT suppressed after the refresh proves the pinned value governs.
+		// Final-review Finding I-2, Test B: regression coverage for Task 5's holdout-arm-count
+		// pinning fix (commit 716430c). Before that fix, suppression read the arm count live from
+		// `holdouts[i].data.split.length` instead of the pinned `holdoutArmCount` on the holdout's
+		// own cached Assignment — but `_getHoldoutAssignment`'s cache only invalidates on (id,
+		// iteration) change, so a same-iteration split-length change (not expected on the real
+		// wire, but exactly the edge case the fix protects against) could desync the live arm
+		// count from the arm count the resolved variant was actually interpreted against.
+		//
+		// Construct: resolve a 2-arm holdout for one experiment (pinning holdoutArmCount: 2 and
+		// variant: 1, both cached independently of any one covered experiment). Refresh so the
+		// SAME holdout (same id, same iteration) now reports a 3-arm split. Query a SECOND,
+		// previously-unqueried experiment (fullOnVariant: 0, the arm-1-specific case per
+		// isHeldOutBy) covered by the same holdout: its own assignment is built fresh, so it must
+		// resolve the holdout via `_getHoldoutAssignment`, hitting the (id, iteration) cache seeded
+		// by the first experiment. The seeds are chosen so the two arm counts disagree on the
+		// verdict: isHeldOutBy(1, 2, fullOnVariant=0) is false (2-arm, non-suppressing) but
+		// isHeldOutBy(1, 3, fullOnVariant=0) is true (3-arm variant 1 forces control when
+		// fullOnVariant===0) — so if the live (3) arm count were used instead of the pinned (2)
+		// one, the second experiment would flip from "assigned normally" to "suppressed
+		// (assigned: false, no own exposure)". Asserting it stays assigned normally (with its own
+		// exposure firing) after the refresh proves the pinned value governs, not the live one.
+		it("Task 5 regression: same-iteration holdout split-length change does not desync the pinned arm count (I-2 Test B)", (done) => {
+			const holdoutTwoArm = {
+				id: 11,
+				name: "holdout_pin_test",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 13,
+				seedLo: 111,
+				split: [0.1, 0.9],
+				trafficSeedHi: 0,
+				trafficSeedLo: 0,
+				trafficSplit: [0, 1],
+				fullOnVariant: 0,
+				applications: [],
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+				audience: null,
+				audienceStrict: false,
+				customFieldValues: null,
+				holdoutType: "full",
+			};
+
+			const expA = {
+				id: 1,
+				name: "exp_pin_seed_a",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 100,
+				seedLo: 200,
+				split: [0.5, 0.5],
+				trafficSeedHi: 1,
+				trafficSeedLo: 2,
+				trafficSplit: [0, 1],
+				fullOnVariant: 0,
+				applications: [{ name: "website" }],
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+				audience: null,
+				audienceStrict: false,
+				customFieldValues: null,
+				holdoutIds: [11],
+			};
+
+			const initialResponse = buildHoldoutResponse([expA], [holdoutTwoArm]);
+
+			// Same unit hashed by scenario 204 to resolve this identical holdout definition
+			// (seedHi 13, seedLo 111, split [0.1, 0.9]) to variant 1 — i.e. NOT held out under a
+			// 2-arm interpretation.
+			const pinParams = { units: { session_id: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3" } };
+			const context = new Context(sdk, contextOptions, pinParams, initialResponse);
+
+			// Seeds _getHoldoutAssignment's cache: resolves and pins holdoutArmCount: 2 (the split
+			// length live at this moment) alongside variant: 1. Matches scenario 204's verdict for
+			// the identical holdout+unit pairing (not held out under 2 arms).
+			expect(context.treatment("exp_pin_seed_a")).toEqual(0);
+
+			// fullOnVariant: 0 is the key choice here — isHeldOutBy's 3-arm/variant-1 rule only
+			// forces control when the covered experiment's fullOnVariant === 0, so this is the
+			// only shape where the pinned (2) vs. live (3) arm count actually disagree on the
+			// suppression verdict.
+			const expB = {
+				...expA,
+				id: 2,
+				name: "exp_pin_seed_b",
+			};
+
+			// Same holdout id AND iteration — the key precondition — but now 3 arms instead of 2.
+			const holdoutThreeArm = { ...holdoutTwoArm, split: [0.3, 0.3, 0.4] };
+
+			const refreshedResponse = buildHoldoutResponse([expA, expB], [holdoutThreeArm]);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshedResponse));
+
+			context.refresh().then(() => {
+				// exp_pin_seed_b is queried for the first time here, so its own assignment is built
+				// fresh and must resolve the holdout via _getHoldoutAssignment, hitting the (id,
+				// iteration) cache seeded above.
+				//   Pinned arm count (2, correct): isHeldOutBy(1, 2, 0) is false -> NOT suppressed
+				//     -> normal traffic-split assignment path -> assigned: true, own exposure fires.
+				//   Live arm count (3, the pre-fix bug): isHeldOutBy(1, 3, 0) is true -> suppressed
+				//     -> assigned: false, variant forced to 0, own exposure does NOT fire.
+				context.treatment("exp_pin_seed_b");
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					const ownExposure = exposures.find((e) => e.name === "exp_pin_seed_b");
+
+					expect(ownExposure).toMatchObject({
+						assigned: true,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: false,
+					});
+					done();
+				});
 			});
 		});
 	});

@@ -732,81 +732,106 @@ export default class Context {
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
-
-				let ruleVariant: number | null = null;
 				const attrs = this._getAttributesMap();
 
-				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._computeRuleVariant(
-						experiment.data.assignmentRules,
-						experiment.data.variants.length,
-						attrs
-					);
-				}
-
-				assignment.ruleVariant = ruleVariant;
+				// `ruleKey` is bookkeeping only (a cache key derived from the rules string + env,
+				// not an evaluation of them against attrs), so it is always kept up to date —
+				// including when suppressed — mirroring `attrsSeq` below, which is also set
+				// unconditionally. Without this, a suppressed assignment would leave `ruleKey`
+				// unset, and the cache-validity check in `audienceMatches` (above) would see
+				// `ruleKeyChanged` as permanently true on every subsequent call for an experiment
+				// with assignmentRules, forcing a full rebuild (losing `assignment.exposed`) on
+				// every single treatment()/peek() call instead of only on a genuine change.
 				assignment.ruleKey = experiment.data.assignmentRules
 					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
-				if (ruleVariant !== null) {
-					assignment.variant = ruleVariant;
-					assignment.ruleOverride = true;
+				// Suppression is checked FIRST, before assignment rules (or audience, or the
+				// traffic-split/fullOn path) get any say over the variant. Assignment rules are a
+				// deterministic-per-attribute assignment mechanism — structurally the same category
+				// as a custom assignment (scenario 211: custom assignment yields to suppression) —
+				// not an override in the sense scenario 210 establishes (only an explicit override()
+				// call is exempt from suppression). If a matching rule were allowed to set the
+				// variant before this check, a held-out unit would be silently TREATED with the
+				// rule's variant while its exposure-firing gate
+				// (`!assignment.suppressed || assignment.overridden`, which does NOT include
+				// `ruleOverride`) still suppresses its own exposure — the worst combination:
+				// measured nothing, but received real treatment. Gating here means
+				// `ruleVariant`/`ruleOverride` are never computed nor set when suppressed, so the
+				// exposure gate needs no `ruleOverride` special-case: a suppressed assignment never
+				// has `ruleOverride: true` in the first place.
+				if (assignment.suppressed) {
+					assignment.assigned = false;
+					assignment.variant = 0;
 				} else {
-					if (experiment.data.audience && experiment.data.audience.length > 0) {
-						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+					let ruleVariant: number | null = null;
 
-						if (typeof result === "boolean") {
-							assignment.audienceMismatch = !result;
-						}
+					if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
+						ruleVariant = this._computeRuleVariant(
+							experiment.data.assignmentRules,
+							experiment.data.variants.length,
+							attrs
+						);
 					}
 
-					if (assignment.suppressed) {
-						assignment.assigned = false;
-						assignment.variant = 0;
-					} else if (experiment.data.audienceStrict && assignment.audienceMismatch) {
-						assignment.variant = 0;
-					} else if (experiment.data.fullOnVariant === 0) {
-						if (unitType !== null) {
-							if (unitType in this._units) {
-								const unit = this._unitHash(unitType);
-								if (unit !== null) {
-									const assigner =
-										unitType in this._assigners
-											? this._assigners[unitType]
-											: (this._assigners[unitType] = new VariantAssigner(unit));
-									const eligible =
-										assigner.assign(
-											experiment.data.trafficSplit,
-											experiment.data.trafficSeedHi,
-											experiment.data.trafficSeedLo
-										) === 1;
+					assignment.ruleVariant = ruleVariant;
 
-									assignment.assigned = true;
-									assignment.eligible = eligible;
+					if (ruleVariant !== null) {
+						assignment.variant = ruleVariant;
+						assignment.ruleOverride = true;
+					} else {
+						if (experiment.data.audience && experiment.data.audience.length > 0) {
+							const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
-									if (eligible) {
-										if (hasCustom) {
-											assignment.variant = this._cassignments[experimentName];
-											assignment.custom = true;
+							if (typeof result === "boolean") {
+								assignment.audienceMismatch = !result;
+							}
+						}
+
+						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+							assignment.variant = 0;
+						} else if (experiment.data.fullOnVariant === 0) {
+							if (unitType !== null) {
+								if (unitType in this._units) {
+									const unit = this._unitHash(unitType);
+									if (unit !== null) {
+										const assigner =
+											unitType in this._assigners
+												? this._assigners[unitType]
+												: (this._assigners[unitType] = new VariantAssigner(unit));
+										const eligible =
+											assigner.assign(
+												experiment.data.trafficSplit,
+												experiment.data.trafficSeedHi,
+												experiment.data.trafficSeedLo
+											) === 1;
+
+										assignment.assigned = true;
+										assignment.eligible = eligible;
+
+										if (eligible) {
+											if (hasCustom) {
+												assignment.variant = this._cassignments[experimentName];
+												assignment.custom = true;
+											} else {
+												assignment.variant = assigner.assign(
+													experiment.data.split,
+													experiment.data.seedHi,
+													experiment.data.seedLo
+												);
+											}
 										} else {
-											assignment.variant = assigner.assign(
-												experiment.data.split,
-												experiment.data.seedHi,
-												experiment.data.seedLo
-											);
+											assignment.variant = 0;
 										}
-									} else {
-										assignment.variant = 0;
 									}
 								}
 							}
+						} else {
+							assignment.assigned = true;
+							assignment.eligible = true;
+							assignment.variant = experiment.data.fullOnVariant;
+							assignment.fullOn = true;
 						}
-					} else {
-						assignment.assigned = true;
-						assignment.eligible = true;
-						assignment.variant = experiment.data.fullOnVariant;
-						assignment.fullOn = true;
 					}
 				}
 
