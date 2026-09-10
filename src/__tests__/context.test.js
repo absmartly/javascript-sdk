@@ -3564,7 +3564,7 @@ describe("Context", () => {
 			// experiment, full-on or not, identically to a 2-arm holdout's variant 0; the holdout's
 			// own exposure fires once at variant 0 and neither covered experiment emits its own
 			// exposure.
-			it("3-arm variant 0 holds out both full-on and non-full-on covered experiments (scenario 214)", () => {
+			it("3-arm variant 0 holds out both full-on and non-full-on covered experiments (scenario 214)", (done) => {
 				const response = buildHoldoutResponse(
 					[
 						{
@@ -3634,6 +3634,28 @@ describe("Context", () => {
 
 				expect(context.treatment("exp_three_arm_0_fullon")).toEqual(0);
 				expect(context.pending()).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+						{
+							id: 21,
+							name: "holdout_three_arm_v0",
+							unit: "session_id",
+							exposedAt: timeOrigin,
+							variant: 0,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: false,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
 			});
 
 			// Scenario 215 (index 214): a 3-arm holdout's variant 1 forces control only for a covered
