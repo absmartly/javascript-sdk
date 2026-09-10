@@ -4737,25 +4737,6 @@ describe("Context", () => {
 		// Construct: resolve a 2-arm holdout for one experiment (pinning holdoutArmCount: 2 and
 		// variant: 1, both cached independently of any one covered experiment). Refresh so the
 		// SAME holdout (same id, same iteration) now reports a 3-arm split. Query a SECOND,
-		// previously-unqueried experiment covered by the same holdout: its own assignment is built
-		// fresh, so it must resolve the holdout via `_getHoldoutAssignment`, hitting the (id,
-		// iteration) cache seeded by the first experiment. The seeds are chosen so the two arm
-		// counts disagree on the verdict: isHeldOutBy(1, 2, fullOnVariant=0) is false (2-arm,
-		// non-suppressing) but isHeldOutBy(1, 3, fullOnVariant=0) is true (3-arm variant 1 defers
-		// to full-on suppression) — so if the live (3) arm count were used instead of the pinned
-		// (2) one, the second experiment would flip from "not suppressed" to "suppressed".
-		// Asserting it stays NOT suppressed after the refresh proves the pinned value governs.
-		// Final-review Finding I-2, Test B: regression coverage for Task 5's holdout-arm-count
-		// pinning fix (commit 716430c). Before that fix, suppression read the arm count live from
-		// `holdouts[i].data.split.length` instead of the pinned `holdoutArmCount` on the holdout's
-		// own cached Assignment — but `_getHoldoutAssignment`'s cache only invalidates on (id,
-		// iteration) change, so a same-iteration split-length change (not expected on the real
-		// wire, but exactly the edge case the fix protects against) could desync the live arm
-		// count from the arm count the resolved variant was actually interpreted against.
-		//
-		// Construct: resolve a 2-arm holdout for one experiment (pinning holdoutArmCount: 2 and
-		// variant: 1, both cached independently of any one covered experiment). Refresh so the
-		// SAME holdout (same id, same iteration) now reports a 3-arm split. Query a SECOND,
 		// previously-unqueried experiment (fullOnVariant: 0, the arm-1-specific case per
 		// isHeldOutBy) covered by the same holdout: its own assignment is built fresh, so it must
 		// resolve the holdout via `_getHoldoutAssignment`, hitting the (id, iteration) cache seeded
