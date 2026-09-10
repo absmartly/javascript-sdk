@@ -957,31 +957,24 @@ export default class Context {
 		}
 
 		if (this._failed) {
-			// Guarded the same way as the transport-failure path below: a throwing
-			// custom eventLogger here must not propagate synchronously out of
-			// `_flush` — that would skip clearing `_pending`/`_exposures`/`_goals`
-			// and (via `_finalize`'s callback never running) permanently strand
-			// `_finalizing` with no settlement.
-			try {
-				this._logError(
-					new Error(
-						`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
-					)
-				);
-			} catch (observerError) {
-				console.error(observerError);
-			}
+			// _logError() isolates a throwing custom eventLogger internally, so it
+			// (and the internal `callback` below, which only calls resolve/reject
+			// and _logEvent()/_logError()) can't propagate an observer exception
+			// out of _flush() — that would skip clearing
+			// `_pending`/`_exposures`/`_goals` and, via `_finalize`'s callback never
+			// running, permanently strand `_finalizing` with no settlement.
+			this._logError(
+				new Error(
+					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+				)
+			);
 
 			this._pending = 0;
 			this._exposures = [];
 			this._goals = [];
 
 			if (typeof callback === "function") {
-				try {
-					callback();
-				} catch (observerError) {
-					console.error(observerError);
-				}
+				callback();
 			}
 			return Promise.resolve(undefined);
 		}
@@ -1058,32 +1051,25 @@ export default class Context {
 		// observe the publish attempt within the same tick, as before.
 		const onFailure = (e: Error): Error => {
 			this._pending += pendingCount;
-			this._exposures.push(...pendingExposures);
-			this._goals.push(...pendingGoals);
+			// Prepend rather than append: the restored batch failed to send while
+			// this._exposures/this._goals were already accumulating newer events
+			// recorded during the in-flight publish, so appending would put the
+			// older, previously-recorded events after the newer ones — reordering
+			// exposures/goals as seen by the collector.
+			this._exposures = pendingExposures.concat(this._exposures);
+			this._goals = pendingGoals.concat(this._goals);
 
-			try {
-				this._logError(e);
-			} catch (observerError) {
-				console.error(observerError);
-			}
+			this._logError(e);
 
 			// Reschedule automatic delivery for the restored batch; this is a no-op
 			// unless publishDelay >= 0 and no timer is already pending.
 			this._setTimeout();
 
-			// `callback` is internal glue (from `publish()`/`finalize()`), but it can
-			// itself invoke a user-supplied eventLogger (see `_finalize`'s callback,
-			// which calls `_logEvent("finalize")`). A throw there must not propagate
-			// into this promise chain: `_flushPromise` is cleared unconditionally
-			// below regardless of whether `onFailure`/`onSuccess` throw, but an
-			// unguarded throw here would still skip the `callback(e)` call's own
-			// completion and any code after it in the caller.
+			// `callback` is internal glue (from `publish()`/`finalize()`); it only
+			// calls resolve/reject and _logEvent()/_logError() (both of which
+			// isolate a throwing custom eventLogger internally), so it can't throw.
 			if (typeof callback === "function") {
-				try {
-					callback(e);
-				} catch (observerError) {
-					console.error(observerError);
-				}
+				callback(e);
 			}
 
 			return e;
@@ -1092,21 +1078,14 @@ export default class Context {
 		// The batch has already been delivered by this point, so an exception from
 		// observing that success (e.g. a throwing custom eventLogger) must not be
 		// treated as a publish failure — that would incorrectly restore and resend
-		// an already-delivered batch. `callback()` still runs unconditionally
-		// afterward so `publish()`/`finalize()`'s own promise settles either way.
+		// an already-delivered batch. `_logEvent()` isolates the observer exception
+		// internally, and `callback()` still runs unconditionally afterward so
+		// `publish()`/`finalize()`'s own promise settles either way.
 		const onSuccess = (): undefined => {
-			try {
-				this._logEvent("publish", request);
-			} catch (observerError) {
-				console.error(observerError);
-			}
+			this._logEvent("publish", request);
 
 			if (typeof callback === "function") {
-				try {
-					callback();
-				} catch (observerError) {
-					console.error(observerError);
-				}
+				callback();
 			}
 
 			return undefined;
@@ -1170,13 +1149,28 @@ export default class Context {
 
 	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
 		if (this._eventLogger) {
-			this._eventLogger(this, eventName, data);
+			// A throwing custom eventLogger must never propagate out of this method:
+			// every call site treats logging as a side effect, and letting an
+			// observer exception escape here has repeatedly corrupted unrelated
+			// control flow (e.g. turning a successful init into a "failed" one when
+			// this call sits inside a .then() immediately followed by .catch(),
+			// or stranding a promise whose settlement was supposed to happen right
+			// after this call).
+			try {
+				this._eventLogger(this, eventName, data);
+			} catch (observerError) {
+				console.error(observerError);
+			}
 		}
 	}
 
 	private _logError(error: Error) {
 		if (this._eventLogger) {
-			this._eventLogger(this, "error", error);
+			try {
+				this._eventLogger(this, "error", error);
+			} catch (observerError) {
+				console.error(observerError);
+			}
 		}
 	}
 
@@ -1276,12 +1270,7 @@ export default class Context {
 		// fall through to `_flush`, which itself waits for any in-flight attempt.
 		if (this._pending === 0 && !this._flushPromise) {
 			this._finalized = true;
-
-			try {
-				this._logEvent("finalize");
-			} catch (observerError) {
-				console.error(observerError);
-			}
+			this._logEvent("finalize");
 
 			return Promise.resolve();
 		}
@@ -1318,17 +1307,13 @@ export default class Context {
 			} else {
 				this._finalized = true;
 
-				// Settle the finalize promise before logging the event: a throwing
-				// custom eventLogger must not prevent `finalizing` from resolving
-				// (which would strand `isFinalizing()`/`isFinalized()` and any
-				// awaiters forever).
+				// Settle the finalize promise before logging the event: even though
+				// `_logEvent()` isolates a throwing custom eventLogger internally
+				// (it never throws), resolving first means `finalizing` settles
+				// exactly when the state it reflects (`_finalized`/`isFinalizing()`)
+				// becomes true, rather than depending on the logger call completing.
 				resolveFinalizing();
-
-				try {
-					this._logEvent("finalize");
-				} catch (observerError) {
-					console.error(observerError);
-				}
+				this._logEvent("finalize");
 			}
 		}, requestOptions);
 

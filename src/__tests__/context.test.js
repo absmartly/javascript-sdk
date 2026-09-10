@@ -4606,6 +4606,50 @@ describe("Context", () => {
 			});
 		});
 
+		it("should restore a failed batch ahead of events recorded during the in-flight publish, preserving chronological order", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.track("old_goal");
+			expect(context.pending()).toEqual(1);
+
+			let rejectFirst;
+			publisher.publish.mockReturnValueOnce(
+				new Promise((resolve, reject) => {
+					rejectFirst = reject;
+				})
+			);
+
+			const firstPublish = context.publish();
+
+			// Record a newer event while the first publish is still in flight (its
+			// snapshot was already taken and _goals/_exposures were reset).
+			context.track("new_goal");
+
+			rejectFirst(new Error("transport failed"));
+
+			firstPublish.catch((e) => {
+				expect(e.message).toEqual("transport failed");
+				expect(context.pending()).toEqual(2);
+
+				publisher.publish.mockReturnValueOnce(Promise.resolve());
+
+				context.publish().then(() => {
+					const retryRequest = publisher.publish.mock.calls[1][0];
+					// The restored (older) batch must come before the newer event, not
+					// after it — otherwise the collector sees goals out of chronological
+					// order.
+					expect(retryRequest.goals.map((g) => g.name)).toEqual(["old_goal", "new_goal"]);
+
+					done();
+				});
+			});
+		});
+
 		it("should clear isFinalizing() and allow a retry after a synchronously throwing publisher", (done) => {
 			const context = new Context(
 				sdk,
@@ -5517,6 +5561,67 @@ describe("Context input handling and lifecycle regressions", () => {
 
 			expect(() => context.track("goal_name")).not.toThrow();
 			expect(() => context.attribute("attr", "value")).not.toThrow();
+		});
+
+		it("should still resolve true and record the error when a custom eventLogger throws on init failure", async () => {
+			const initError = new Error("fetch failed");
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "error") {
+					throw new Error("eventLogger boom on error");
+				}
+			});
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const context = new Context(
+				newMockSDK(),
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				Promise.reject(initError)
+			);
+
+			// The v2 migration guide promises ready() always resolves true; a
+			// throwing observer on the "error" event must not turn that into a
+			// rejection.
+			const result = await context.ready();
+
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(true);
+			expect(context.readyError()).toBe(initError);
+			expect(consoleErrorSpy).toHaveBeenCalled();
+
+			consoleErrorSpy.mockRestore();
+		});
+
+		it("should not mark a successful init as failed when a custom eventLogger throws on the ready event", async () => {
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "ready") {
+					throw new Error("eventLogger boom on ready");
+				}
+			});
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const context = new Context(
+				newMockSDK(),
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				Promise.resolve({ experiments: [] })
+			);
+
+			// The success handler runs `this._logEvent("ready", data)`; an observer
+			// exception there sits between a `.then()` and the constructor's own
+			// `.catch()` on the same promise chain, so an unguarded throw would
+			// incorrectly route through the failure branch and mark this a failed
+			// init even though the fetch itself succeeded.
+			const result = await context.ready();
+
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(false);
+			expect(context.readyError()).toBe(null);
+			expect(consoleErrorSpy).toHaveBeenCalled();
+
+			consoleErrorSpy.mockRestore();
 		});
 	});
 
