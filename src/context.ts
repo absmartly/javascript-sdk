@@ -1105,7 +1105,15 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
+	// Ported from java-sdk's getVariableAssignment (Context.java:1332-1373). A suppressed
+	// (held-out) experiment never wins resolution over a genuinely assigned/overridden one sharing
+	// the same key, but it IS used as a fallback when no candidate wins: a held-out unit must still
+	// read the experiment's control-variant value, not the caller's default, so it stays
+	// indistinguishable from a control unit. Only the first-encountered suppressed candidate is
+	// kept (java's ordering), since only one fallback can ever be returned.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
+		let suppressedFallback: string | undefined;
+
 		for (const experiment of this._indexVariables[key] ?? []) {
 			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
@@ -1116,13 +1124,19 @@ export default class Context {
 					this._triggerExposures(experimentName, assignment);
 				}
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					return assignment.variables[key] as string;
+				if (key in assignment.variables) {
+					if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
+						return assignment.variables[key] as string;
+					}
+
+					if (assignment.suppressed && suppressedFallback === undefined) {
+						suppressedFallback = assignment.variables[key] as string;
+					}
 				}
 			}
 		}
 
-		return defaultValue;
+		return suppressedFallback !== undefined ? suppressedFallback : defaultValue;
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
