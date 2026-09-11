@@ -4606,6 +4606,30 @@ describe("Context", () => {
 			});
 		});
 
+		it("should not brick finalize() when a custom publisher returns a non-Promise value", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			// A beacon-style or misimplemented custom publisher that forgets to
+			// return a promise (e.g. `navigator.sendBeacon`-style success flag).
+			publisher.publish.mockReturnValue(true);
+
+			context.finalize().then(() => {
+				expect(context.pending()).toEqual(0);
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
+
+				done();
+			});
+		});
+
 		it("should restore a failed batch ahead of events recorded during the in-flight publish, preserving chronological order", (done) => {
 			const context = new Context(
 				sdk,

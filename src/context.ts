@@ -1093,7 +1093,14 @@ export default class Context {
 
 		let publishResult: Promise<void>;
 		try {
-			publishResult = this._publisher.publish(request, this._sdk, this, requestOptions);
+			// `Promise.resolve(...)` normalizes the extension point: a custom
+			// publisher is only required to conform to `ContextPublisher`'s type at
+			// compile time, but nothing stops a runtime implementation from
+			// returning a non-Promise (e.g. a bare boolean from a beacon-style
+			// publisher, or a forgotten `return`). Without normalizing, the `.then`
+			// access below would throw synchronously outside this `try`, bricking
+			// the flush before the queue could be restored or the callback invoked.
+			publishResult = Promise.resolve(this._publisher.publish(request, this._sdk, this, requestOptions));
 		} catch (e) {
 			const result = onFailure(e as Error);
 			this._flushPromise = undefined;

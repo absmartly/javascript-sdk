@@ -109,6 +109,26 @@ describe("AbortController", () => {
 			const controller = new AbortController();
 			expect(controller.signal.reason).toBeUndefined();
 		});
+
+		it("should preserve an explicit null reason instead of falling back to the default error", () => {
+			// Matches native AbortController: only an omitted/undefined reason
+			// gets the default error; an explicit null is preserved as-is.
+			const controller = new AbortController();
+			controller.abort(null);
+			expect(controller.signal.reason).toBeNull();
+		});
+
+		it("should latch the first reason and ignore a second abort() call", () => {
+			const controller = new AbortController();
+			const handler = jest.fn();
+			controller.signal.addEventListener("abort", handler);
+
+			controller.abort("first");
+			controller.abort("second");
+
+			expect(controller.signal.reason).toBe("first");
+			expect(handler).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe("dispatchEvent onabort handling", () => {

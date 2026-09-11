@@ -57,6 +57,15 @@ export class AbortController {
 	signal = new AbortSignal();
 
 	abort(reason?: unknown) {
+		// Match native AbortController: a second call is a no-op (the first
+		// reason is latched, and the "abort" event fires at most once), and an
+		// explicit `null` reason is preserved as-is — only an omitted/undefined
+		// reason falls back to the default error. `??` would incorrectly replace
+		// an explicit `null` with the default.
+		if (this.signal.aborted) {
+			return;
+		}
+
 		let evt: Event | { type: string; bubbles: boolean; cancelable: boolean };
 		try {
 			evt = new Event("abort");
@@ -69,7 +78,7 @@ export class AbortController {
 		}
 
 		this.signal.aborted = true;
-		this.signal.reason = reason ?? new Error("The operation was aborted.");
+		this.signal.reason = reason === undefined ? new Error("The operation was aborted.") : reason;
 		this.signal.dispatchEvent(evt);
 	}
 
