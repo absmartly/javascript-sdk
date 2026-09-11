@@ -5243,6 +5243,93 @@ describe("Context", () => {
 					].sort()
 				);
 			});
+
+			// A throwing error-event logger must not itself interrupt exposure processing: it must
+			// not prevent the holdout loop from running when it's reporting the covered experiment's
+			// own exposure failure, and it must not stop the holdout loop partway through when it's
+			// reporting one holdout's exposure failure. Regression test for _logErrorSafely.
+			it("does not let a throwing error-event logger interrupt exposure processing", () => {
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure") {
+						throw new Error(`exposure boom for ${data.name}`);
+					}
+					if (eventName === "error") {
+						throw new Error("error-handler boom");
+					}
+				});
+
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_holdout_throwing_error_logger",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0, 1],
+							fullOnVariant: 1,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [11],
+						},
+					],
+					[
+						{
+							id: 11,
+							name: "holdout_throwing_error_logger",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 111,
+							split: [0.0, 1.0],
+							trafficSeedHi: 0,
+							trafficSeedLo: 0,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							applications: [],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutType: "full",
+						},
+					]
+				);
+
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+
+				let caught;
+				try {
+					context.treatment("exp_holdout_throwing_error_logger");
+				} catch (e) {
+					caught = e;
+				}
+
+				// The covered experiment's exposure attempt threw, and reporting that error via the
+				// (also throwing) error-event logger must not have prevented the holdout loop from
+				// running: the holdout's own exposure attempt must still have been made (and its
+				// error, in turn, safely reported without escaping).
+				expect(caught).toBeDefined();
+				expect(caught.message).toEqual("exposure boom for exp_holdout_throwing_error_logger");
+
+				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
+				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
+					["exp_holdout_throwing_error_logger", "holdout_throwing_error_logger"].sort()
+				);
+			});
 		});
 	});
 
