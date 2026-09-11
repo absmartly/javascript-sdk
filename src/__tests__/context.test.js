@@ -3679,6 +3679,28 @@ describe("Context", () => {
 			});
 		});
 
+		it.each([undefined, null, false])(
+			"should reject and restore the batch when the publisher rejects with the falsy reason %p",
+			(falsyReason, done) => {
+				const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+				context.track("goal1", { amount: 125 });
+				expect(context.pending()).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.reject(falsyReason));
+
+				context.publish().then(
+					() => done(new Error("publish() must not resolve when the publisher rejected")),
+					(e) => {
+						expect(e).toBeTruthy();
+						expect(context.pending()).toEqual(1);
+
+						done();
+					}
+				);
+			}
+		);
+
 		it("should call client publish", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
@@ -4367,6 +4389,28 @@ describe("Context", () => {
 			expect(context.isFinalizing()).toEqual(true);
 			expect(context.isFinalized()).toEqual(false);
 		});
+
+		it.each([undefined, null, false])(
+			"should reject and leave finalize() unfinalized when the publisher rejects with the falsy reason %p",
+			(falsyReason, done) => {
+				const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+				context.treatment("exp_test_ab");
+
+				publisher.publish.mockReturnValue(Promise.reject(falsyReason));
+
+				context.finalize().then(
+					() => done(new Error("finalize() must not resolve when the publisher rejected")),
+					(e) => {
+						expect(e).toBeTruthy();
+						expect(context.isFinalizing()).toEqual(false);
+						expect(context.isFinalized()).toEqual(false);
+
+						done();
+					}
+				);
+			}
+		);
 
 		it("should call event logger on success", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);

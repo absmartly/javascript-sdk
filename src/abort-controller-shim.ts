@@ -52,6 +52,19 @@ export class AbortSignal {
 	}
 }
 
+// Native AbortController defaults `signal.reason` to a `DOMException` named
+// "AbortError" (not a plain `Error`), and callers classify cancellation via
+// `signal.reason.name`. `DOMException` isn't guaranteed to exist in the older
+// environments this shim targets, so fall back to a same-named `Error`.
+function createDefaultAbortReason(): Error {
+	if (typeof DOMException !== "undefined") {
+		return new DOMException("The operation was aborted.", "AbortError") as unknown as Error;
+	}
+	const error = new Error("The operation was aborted.");
+	error.name = "AbortError";
+	return error;
+}
+
 // eslint-disable-next-line no-shadow
 export class AbortController {
 	signal = new AbortSignal();
@@ -78,7 +91,7 @@ export class AbortController {
 		}
 
 		this.signal.aborted = true;
-		this.signal.reason = reason === undefined ? new Error("The operation was aborted.") : reason;
+		this.signal.reason = reason === undefined ? createDefaultAbortReason() : reason;
 		this.signal.dispatchEvent(evt);
 	}
 

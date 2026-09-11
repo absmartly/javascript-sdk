@@ -94,8 +94,8 @@ describe("AbortController", () => {
 			const controller = new AbortController();
 			controller.abort();
 			expect(controller.signal.aborted).toBe(true);
-			expect(controller.signal.reason).toBeInstanceOf(Error);
 			expect(controller.signal.reason.message).toBe("The operation was aborted.");
+			expect(controller.signal.reason.name).toBe("AbortError");
 		});
 
 		it("should set custom reason on abort(reason)", () => {

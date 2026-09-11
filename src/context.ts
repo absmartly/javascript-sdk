@@ -932,6 +932,18 @@ export default class Context {
 		return allAttributes;
 	}
 
+	// A caught exception or a rejected promise's reason can be any value. Only
+	// a truthy reason survives the `if (error)` checks in `publish()`'s and
+	// `finalize()`'s callbacks, so a falsy one (`undefined`, `null`, `false`)
+	// must be replaced with a truthy `Error`; a truthy non-Error reason (e.g. a
+	// plain string) is left as-is to preserve its original shape.
+	private _asFailure(reason: unknown): Error {
+		if (reason) {
+			return reason as Error;
+		}
+		return new Error(`Publish failed with a falsy reason: ${String(reason)}`);
+	}
+
 	private _flush(
 		callback?: (error?: Error) => void,
 		requestOptions?: ClientRequestOptions
@@ -1021,12 +1033,13 @@ export default class Context {
 				request.attributes = allAttributes;
 			}
 		} catch (e) {
-			this._logError(e as Error);
+			const failure = this._asFailure(e);
+			this._logError(failure);
 
 			if (typeof callback === "function") {
-				callback(e as Error);
+				callback(failure);
 			}
-			return Promise.resolve(e as Error);
+			return Promise.resolve(failure);
 		}
 
 		// Snapshot and reset synchronously before the async publish.
@@ -1049,7 +1062,15 @@ export default class Context {
 		// as an async rejection, so the snapshot is restored either way. The call
 		// itself stays synchronous (no extra microtask hop) so timer-driven callers
 		// observe the publish attempt within the same tick, as before.
-		const onFailure = (e: Error): Error => {
+		const onFailure = (reason: unknown): Error => {
+			// A custom publisher can reject with any value, including a falsy one
+			// (`undefined`, `null`, `false`). `publish()`/`finalize()` decide success
+			// with `if (error)`, so a falsy reason would otherwise be mistaken for a
+			// successful publish while this restored batch is left stranded. Normalize
+			// only falsy reasons to a truthy `Error`; a truthy non-Error reason (e.g. a
+			// plain string) is passed through unchanged to preserve its original shape.
+			const e = this._asFailure(reason);
+
 			this._pending += pendingCount;
 			// Prepend rather than append: the restored batch failed to send while
 			// this._exposures/this._goals were already accumulating newer events
@@ -1102,7 +1123,7 @@ export default class Context {
 			// the flush before the queue could be restored or the callback invoked.
 			publishResult = Promise.resolve(this._publisher.publish(request, this._sdk, this, requestOptions));
 		} catch (e) {
-			const result = onFailure(e as Error);
+			const result = onFailure(e);
 			this._flushPromise = undefined;
 			return Promise.resolve(result);
 		}
