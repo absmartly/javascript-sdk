@@ -5450,6 +5450,77 @@ describe("Context", () => {
 
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 			});
+
+			// Ported from java's getVariableAssignment (Context.java:1362-1364): java pins the whole
+			// first-encountered suppressed Assignment as the fallback and only checks the key on it
+			// afterwards — it never skips past a suppressed candidate lacking the key to consider a
+			// later one that has it. An earlier suppressed candidate without the key must produce the
+			// caller's default, not a later suppressed candidate's value.
+			it("an earlier suppressed candidate without the key blocks a later suppressed candidate that has it (java's ordering)", () => {
+				const firstSuppressed = holdoutVarExperiment({
+					id: 1,
+					name: "exp_holdout_var_first",
+					// Held out -> forced to variant 0 (control), which does NOT define the key.
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "FIRST_TREATMENT" }) },
+					],
+				});
+
+				const secondSuppressed = holdoutVarExperiment({
+					id: 2,
+					name: "exp_holdout_var_second",
+					// Held out -> forced to variant 0 (control), which DOES define the key.
+					variants: [
+						{ name: "A", config: JSON.stringify({ "button.color": "SECOND_CONTROL" }) },
+						{ name: "B", config: null },
+					],
+				});
+
+				const response = buildHoldoutResponse([firstSuppressed, secondSuppressed], [alwaysHoldsOut({})]);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+			});
+
+			// A throwing eventLogger for one candidate's exposure must not stop the loop from
+			// visiting (and firing exposures for) the remaining candidates sharing the key — the
+			// same "collect first error, keep going" guarantee _triggerExposures already provides
+			// within a single experiment's own exposure set must also hold across the candidate loop.
+			it("a throwing eventLogger for one candidate does not stop later candidates in the loop from being visited and exposed", () => {
+				const firstExperiment = holdoutVarExperiment({
+					id: 1,
+					name: "exp_holdout_var_throw_first",
+					holdoutIds: [11],
+				});
+
+				const secondExperiment = holdoutVarExperiment({
+					id: 2,
+					name: "exp_holdout_var_throw_second",
+					holdoutIds: [12],
+				});
+
+				const secondHoldout = alwaysHoldsOut({ id: 12, name: "holdout_var_second" });
+
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure" && data.name === "holdout_var") {
+						throw new Error("boom");
+					}
+				});
+
+				const response = buildHoldoutResponse(
+					[firstExperiment, secondExperiment],
+					[alwaysHoldsOut({}), secondHoldout]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+
+				expect(() => context.variableValue("button.color", "APP_FALLBACK")).toThrow("boom");
+
+				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
+				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
+					["holdout_var", "holdout_var_second"].sort()
+				);
+			});
 		});
 	});
 

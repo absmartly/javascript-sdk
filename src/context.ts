@@ -1065,10 +1065,19 @@ export default class Context {
 	// (held-out) experiment never wins resolution over a genuinely assigned/overridden one sharing
 	// the same key, but it IS used as a fallback when no candidate wins: a held-out unit must still
 	// read the experiment's control-variant value, not the caller's default, so it stays
-	// indistinguishable from a control unit. Only the first-encountered suppressed candidate is
-	// kept (java's ordering), since only one fallback can ever be returned.
+	// indistinguishable from a control unit. The first-encountered suppressed candidate is captured
+	// as the fallback regardless of whether it defines the key (matching java, which pins the whole
+	// Assignment and only checks the key afterwards) — an earlier suppressed candidate lacking the
+	// key must not let a later suppressed candidate that does have it win instead.
+	//
+	// A throwing eventLogger for one candidate must not stop the loop from visiting (and firing
+	// exposures for) the remaining candidates, mirroring java's collect-first-failure-then-rethrow
+	// (Context.java:1350-1368): every candidate's exposures still fire, and the first error is
+	// thrown only once resolution is otherwise complete (a winning candidate found, or the loop
+	// exhausted).
 	private _variableValue(key: string, defaultValue: string): string {
-		let suppressedFallback: string | undefined;
+		let suppressedFallback: Record<string, unknown> | undefined;
+		let firstError: CaughtError;
 
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
@@ -1077,44 +1086,62 @@ export default class Context {
 				if (!assignment.exposed) {
 					assignment.exposed = true;
 
-					this._triggerExposures(experimentName, assignment);
+					try {
+						this._triggerExposures(experimentName, assignment);
+					} catch (error) {
+						if (!firstError) {
+							firstError = { value: error };
+						}
+					}
 				}
 
-				if (key in assignment.variables) {
-					if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
-						return assignment.variables[key] as string;
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
+					if (firstError) {
+						throw firstError.value;
 					}
 
-					if (assignment.suppressed && suppressedFallback === undefined) {
-						suppressedFallback = assignment.variables[key] as string;
-					}
+					return assignment.variables[key] as string;
+				}
+
+				if (assignment.suppressed && suppressedFallback === undefined) {
+					suppressedFallback = assignment.variables;
 				}
 			}
 		}
 
-		return suppressedFallback !== undefined ? suppressedFallback : defaultValue;
+		if (firstError) {
+			throw firstError.value;
+		}
+
+		if (suppressedFallback !== undefined && key in suppressedFallback) {
+			return suppressedFallback[key] as string;
+		}
+
+		return defaultValue;
 	}
 
 	private _peekVariable(key: string, defaultValue: string): string {
-		let suppressedFallback: string | undefined;
+		let suppressedFallback: Record<string, unknown> | undefined;
 
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
-				if (key in assignment.variables) {
-					if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
-						return assignment.variables[key] as string;
-					}
+				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
+					return assignment.variables[key] as string;
+				}
 
-					if (assignment.suppressed && suppressedFallback === undefined) {
-						suppressedFallback = assignment.variables[key] as string;
-					}
+				if (assignment.suppressed && suppressedFallback === undefined) {
+					suppressedFallback = assignment.variables;
 				}
 			}
 		}
 
-		return suppressedFallback !== undefined ? suppressedFallback : defaultValue;
+		if (suppressedFallback !== undefined && key in suppressedFallback) {
+			return suppressedFallback[key] as string;
+		}
+
+		return defaultValue;
 	}
 
 	private _validateGoal(goalName: string, properties?: Record<string, unknown>) {
