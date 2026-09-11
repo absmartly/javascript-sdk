@@ -47,6 +47,7 @@ export type ExperimentData = {
 	custom: boolean;
 	audienceMismatch: boolean;
 	customFieldValues: CustomFieldValue[] | null;
+	holdoutIds?: number[];
 };
 
 type Assignment = {
@@ -68,11 +69,27 @@ type Assignment = {
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
+	// Set whenever the covered experiment has one or more applicable holdouts, regardless of
+	// override/custom-assignment/rule-variant handling. Unlike java-sdk — whose override write
+	// path never sets this field at all, so its exposure gate's `!suppressed` check trivially
+	// always passes for an override — the JS port pins it eagerly on the override path too, so
+	// the exposure-firing gate (`_triggerExposures`) must special-case `overridden` explicitly to
+	// reproduce the same firing outcome (an override always fires its own exposure).
+	suppressed?: boolean;
+	holdouts?: Experiment[];
+	holdoutAssignments?: (Assignment | null)[];
+	// Only set on a holdout's own resolved Assignment (as returned by _getHoldoutAssignment): the
+	// arm count (`split.length`) the holdout's definition had at the moment `variant` was
+	// resolved. Pinned alongside `variant` rather than re-read from the live holdout definition,
+	// so a same-iteration refresh that changes `split.length` can't desync the resolved arm from
+	// the arm count used to interpret it (mirrors java-sdk's HoldoutAssignment, Context.java:1218-1222).
+	holdoutArmCount?: number;
 };
 
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
+	holdouts?: Experiment[] | null;
 };
 
 export type Unit = {
@@ -126,7 +143,22 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
+	holdouts?: ExperimentData[];
 };
+
+// Ported verbatim from java-sdk's Context.isHeldOutBy (Context.java:1319-1330). Decides whether
+// a single holdout's resolved arm suppresses the covered experiment it applies to.
+function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVariant: number): boolean {
+	if (holdoutVariant === 0) return true;
+	if (holdoutArmCount === 3 && holdoutVariant === 1) return fullOnVariant === 0;
+	return false;
+}
+
+// Wraps a caught error so "no error occurred" (undefined) can be distinguished from "an error of
+// value `undefined` was thrown" when collecting the first error across multiple try/catch sites
+// (the covered experiment's own exposure attempt and the holdout-firing loop) that must share one
+// "first error wins" outcome, mirroring java-sdk's triggerExposure (Context.java:481-503).
+type CaughtError = { value: unknown } | undefined;
 
 export default class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
@@ -149,6 +181,8 @@ export default class Context {
 	private _goals: Goal[];
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
+	private _holdoutsById: Record<number, ExperimentData>;
+	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
@@ -173,6 +207,7 @@ export default class Context {
 		this._cassignments = {};
 		this._units = {};
 		this._assigners = {};
+		this._holdoutAssignments = {};
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
 		this._attrsSeq = 0;
@@ -309,6 +344,40 @@ export default class Context {
 		}
 
 		this._units[unitType] = uid;
+
+		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
+	}
+
+	// Ported from java-sdk's invalidateAssignmentsPinnedWithMissingUnit (Context.java:325-381,
+	// called from setUnit at line 344). A cached assignment's `holdoutAssignments` snapshot pins a
+	// null entry when the covered experiment's unit was unavailable at the time it was resolved
+	// (see `_getHoldoutAssignment`'s `unit === null` early return) — holdouts in that snapshot are
+	// resolved using the covered experiment's own `unitType`, not each holdout's declared
+	// unitType, so only installing THAT unit type can repair the null entry. Resolving the holdout
+	// live later (rather than evicting and letting `_assign()` rebuild both the decision and its
+	// exposures together) could publish a holdout verdict inconsistent with the cached experiment
+	// decision, so we evict instead.
+	//
+	// Only unexposed assignments are evicted: eviction lets a later `_assign()`/`_treatment()` call
+	// recompute (and re-fire) exposure from scratch, so evicting an already-exposed assignment
+	// could publish a duplicate or contradictory experiment exposure. This is not protecting a
+	// pristine record — an exposure queued before this call may already carry the late unit, since
+	// publish() reads units from the live `_units` map — but the decision behind it was made
+	// without that unit, and recomputation cannot repair a record already queued, only add a
+	// second, conflicting one. The guard avoids compounding a degraded record.
+	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
+		for (const experimentName in this._assignments) {
+			const assignment = this._assignments[experimentName];
+			const holdoutAssignments = assignment.holdoutAssignments;
+
+			if (holdoutAssignments && assignment.unitType === unitType && !assignment.exposed) {
+				const hasMissingEntry = holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null);
+
+				if (hasMissingEntry) {
+					delete this._assignments[experimentName];
+				}
+			}
+		}
 	}
 
 	getUnits() {
@@ -529,6 +598,32 @@ export default class Context {
 			return true;
 		};
 
+		// Ported from java-sdk's Context.holdoutSetMatches (Context.java:991-1005). Compares the
+		// pinned holdout set the cached assignment was built against with the freshly-resolved
+		// applicable-holdout set by (id, iteration) per entry — not full deep-equality, since
+		// cosmetic holdout edits (e.g. seed/split changes) on an unrelated field shouldn't force a
+		// duplicate exposure. Only membership/identity changes (added/removed holdout, or an
+		// existing one's id/iteration changing) invalidate the cached assignment.
+		const holdoutSetMatches = (experiment: Experiment, assignment: Assignment) => {
+			const freshHoldouts = experiment.holdouts ?? [];
+			const pinnedHoldouts = assignment.holdouts ?? [];
+
+			if (freshHoldouts.length !== pinnedHoldouts.length) {
+				return false;
+			}
+
+			for (let i = 0; i < freshHoldouts.length; i++) {
+				if (freshHoldouts[i].data.id !== pinnedHoldouts[i].data.id) {
+					return false;
+				}
+				if (freshHoldouts[i].data.iteration !== pinnedHoldouts[i].data.iteration) {
+					return false;
+				}
+			}
+
+			return true;
+		};
+
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
@@ -536,7 +631,18 @@ export default class Context {
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
 			if (hasOverride) {
-				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
+				// The holdout set must be revalidated here too, mirroring the non-override
+				// branch below — otherwise a holdout that becomes (or stops being) applicable
+				// to an already-overridden experiment after a refresh is never picked up, and
+				// assignment.holdouts/holdoutAssignments/suppressed stay frozen forever (Task 6
+				// relies on holdoutAssignments to decide which holdouts' own exposures to fire).
+				// `experiment == null` means there's no live experiment to check against, so
+				// treat that as trivially matching (nothing to invalidate against).
+				if (
+					assignment.overridden &&
+					assignment.variant === this._overrides[experimentName] &&
+					(experiment == null || holdoutSetMatches(experiment, assignment))
+				) {
 					// override up-to-date
 					return assignment;
 				}
@@ -545,8 +651,18 @@ export default class Context {
 					// previously not-running experiment
 					return assignment;
 				}
-			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
-				if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
+			} else if (assignment.suppressed || !hasCustom || this._cassignments[experimentName] === assignment.variant) {
+				// When the assignment is currently suppressed, a custom-assignment variant
+				// mismatch is expected (the holdout forces variant 0 regardless of the custom
+				// assignment on file per scenario 211) and must not be treated as staleness on
+				// its own — experimentMatches/audienceMatches/holdoutSetMatches below still gate
+				// the return, so a real change (unit type, holdout set, etc.) still falls through
+				// to a rebuild.
+				if (
+					experimentMatches(experiment.data, assignment) &&
+					audienceMatches(experiment.data, assignment) &&
+					holdoutSetMatches(experiment, assignment)
+				) {
 					// assignment up-to-date
 					return assignment;
 				}
@@ -571,6 +687,46 @@ export default class Context {
 
 		this._assignments[experimentName] = assignment;
 
+		// Resolve applicable holdouts and compute suppression unconditionally — this must run
+		// regardless of override/custom-assignment/rule-variant handling below, because a
+		// holdout's own exposure (fired later, using assignment.holdoutAssignments) must fire
+		// whether or not the covered experiment itself ends up overridden or suppressed.
+		if (experiment != null && experiment.holdouts != null && experiment.holdouts.length > 0) {
+			const holdouts = experiment.holdouts;
+			const holdoutUnitType = experiment.data.unitType;
+
+			const holdoutAssignments: (Assignment | null)[] = holdouts.map((holdout) =>
+				holdoutUnitType !== null ? this._getHoldoutAssignment(holdout, holdoutUnitType) : null
+			);
+
+			assignment.holdouts = holdouts;
+			assignment.holdoutAssignments = holdoutAssignments;
+
+			let suppressed = false;
+			holdoutAssignments.forEach((holdoutAssignment) => {
+				if (holdoutAssignment != null) {
+					// Read the arm count from the holdout's own pinned Assignment
+					// (holdoutArmCount), not the live holdout definition (holdouts[i].data.split.length)
+					// — the pinned Assignment's `variant` was resolved against whatever split
+					// length was live at that time, and a same-iteration refresh can change
+					// split.length without invalidating _getHoldoutAssignment's cache, so reading
+					// the live value here could desync the resolved arm from the arm count used
+					// to interpret it. See holdoutArmCount's doc comment on the Assignment type.
+					if (
+						isHeldOutBy(
+							holdoutAssignment.variant,
+							holdoutAssignment.holdoutArmCount ?? 0,
+							experiment.data.fullOnVariant
+						)
+					) {
+						suppressed = true;
+					}
+				}
+			});
+
+			assignment.suppressed = suppressed;
+		}
+
 		if (hasOverride) {
 			if (experiment != null) {
 				assignment.id = experiment.data.id;
@@ -582,78 +738,106 @@ export default class Context {
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
-
-				let ruleVariant: number | null = null;
 				const attrs = this._getAttributesMap();
 
-				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._computeRuleVariant(
-						experiment.data.assignmentRules,
-						experiment.data.variants.length,
-						attrs
-					);
-				}
-
-				assignment.ruleVariant = ruleVariant;
+				// `ruleKey` is bookkeeping only (a cache key derived from the rules string + env,
+				// not an evaluation of them against attrs), so it is always kept up to date —
+				// including when suppressed — mirroring `attrsSeq` below, which is also set
+				// unconditionally. Without this, a suppressed assignment would leave `ruleKey`
+				// unset, and the cache-validity check in `audienceMatches` (above) would see
+				// `ruleKeyChanged` as permanently true on every subsequent call for an experiment
+				// with assignmentRules, forcing a full rebuild (losing `assignment.exposed`) on
+				// every single treatment()/peek() call instead of only on a genuine change.
 				assignment.ruleKey = experiment.data.assignmentRules
 					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
-				if (ruleVariant !== null) {
-					assignment.variant = ruleVariant;
-					assignment.ruleOverride = true;
+				// Suppression is checked FIRST, before assignment rules (or audience, or the
+				// traffic-split/fullOn path) get any say over the variant. Assignment rules are a
+				// deterministic-per-attribute assignment mechanism — structurally the same category
+				// as a custom assignment (scenario 211: custom assignment yields to suppression) —
+				// not an override in the sense scenario 210 establishes (only an explicit override()
+				// call is exempt from suppression). If a matching rule were allowed to set the
+				// variant before this check, a held-out unit would be silently TREATED with the
+				// rule's variant while its exposure-firing gate
+				// (`!assignment.suppressed || assignment.overridden`, which does NOT include
+				// `ruleOverride`) still suppresses its own exposure — the worst combination:
+				// measured nothing, but received real treatment. Gating here means
+				// `ruleVariant`/`ruleOverride` are never computed nor set when suppressed, so the
+				// exposure gate needs no `ruleOverride` special-case: a suppressed assignment never
+				// has `ruleOverride: true` in the first place.
+				if (assignment.suppressed) {
+					assignment.assigned = false;
+					assignment.variant = 0;
 				} else {
-					if (experiment.data.audience && experiment.data.audience.length > 0) {
-						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+					let ruleVariant: number | null = null;
 
-						if (typeof result === "boolean") {
-							assignment.audienceMismatch = !result;
-						}
+					if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
+						ruleVariant = this._computeRuleVariant(
+							experiment.data.assignmentRules,
+							experiment.data.variants.length,
+							attrs
+						);
 					}
 
-					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
-						assignment.variant = 0;
-					} else if (experiment.data.fullOnVariant === 0) {
-						if (unitType !== null) {
-							if (unitType in this._units) {
-								const unit = this._unitHash(unitType);
-								if (unit !== null) {
-									const assigner =
-										unitType in this._assigners
-											? this._assigners[unitType]
-											: (this._assigners[unitType] = new VariantAssigner(unit));
-									const eligible =
-										assigner.assign(
-											experiment.data.trafficSplit,
-											experiment.data.trafficSeedHi,
-											experiment.data.trafficSeedLo
-										) === 1;
+					assignment.ruleVariant = ruleVariant;
 
-									assignment.assigned = true;
-									assignment.eligible = eligible;
+					if (ruleVariant !== null) {
+						assignment.variant = ruleVariant;
+						assignment.ruleOverride = true;
+					} else {
+						if (experiment.data.audience && experiment.data.audience.length > 0) {
+							const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
-									if (eligible) {
-										if (hasCustom) {
-											assignment.variant = this._cassignments[experimentName];
-											assignment.custom = true;
+							if (typeof result === "boolean") {
+								assignment.audienceMismatch = !result;
+							}
+						}
+
+						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+							assignment.variant = 0;
+						} else if (experiment.data.fullOnVariant === 0) {
+							if (unitType !== null) {
+								if (unitType in this._units) {
+									const unit = this._unitHash(unitType);
+									if (unit !== null) {
+										const assigner =
+											unitType in this._assigners
+												? this._assigners[unitType]
+												: (this._assigners[unitType] = new VariantAssigner(unit));
+										const eligible =
+											assigner.assign(
+												experiment.data.trafficSplit,
+												experiment.data.trafficSeedHi,
+												experiment.data.trafficSeedLo
+											) === 1;
+
+										assignment.assigned = true;
+										assignment.eligible = eligible;
+
+										if (eligible) {
+											if (hasCustom) {
+												assignment.variant = this._cassignments[experimentName];
+												assignment.custom = true;
+											} else {
+												assignment.variant = assigner.assign(
+													experiment.data.split,
+													experiment.data.seedHi,
+													experiment.data.seedLo
+												);
+											}
 										} else {
-											assignment.variant = assigner.assign(
-												experiment.data.split,
-												experiment.data.seedHi,
-												experiment.data.seedLo
-											);
+											assignment.variant = 0;
 										}
-									} else {
-										assignment.variant = 0;
 									}
 								}
 							}
+						} else {
+							assignment.assigned = true;
+							assignment.eligible = true;
+							assignment.variant = experiment.data.fullOnVariant;
+							assignment.fullOn = true;
 						}
-					} else {
-						assignment.assigned = true;
-						assignment.eligible = true;
-						assignment.variant = experiment.data.fullOnVariant;
-						assignment.fullOn = true;
 					}
 				}
 
@@ -684,10 +868,87 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			this._queueExposure(experimentName, assignment);
+			this._triggerExposures(experimentName, assignment);
 		}
 
 		return assignment;
+	}
+
+	// Ported from java-sdk's triggerExposure (Context.java:481-503): the own-exposure attempt
+	// and the holdout-firing loop share one "first error wins" outcome — a throwing eventLogger
+	// on the OWN exposure must not prevent the holdout loop from running (and vice versa), and
+	// whichever throws first is what ultimately propagates to the caller, only after both have
+	// had a chance to fire. Shared by `_treatment` and `_variableValue`, whose exposure-firing
+	// behavior is otherwise identical once the one-shot `exposed` gate has been checked.
+	//
+	// Every caught error is reported via `_logErrorSafely` as it's caught (unlike java-sdk, which
+	// only ever surfaces the first): with N applicable holdouts there can be up to N+1 independent
+	// exposure-firing attempts, and only one error can be rethrown to the caller, so without this
+	// every failure past the first would otherwise vanish with no trace at all.
+	private _triggerExposures(experimentName: string, assignment: Assignment): void {
+		let firstError: CaughtError;
+
+		// An override always fires its own exposure, even when the covered experiment is also
+		// suppressed by a holdout: overriding replaces the resolved variant outright (the override's
+		// value wins, not the holdout's), so its own exposure must still be observable. This mirrors
+		// java-sdk's outcome for the override path (Context.java:1184-1244, triggerExposure at
+		// Context.java:481-503) — java's override write path never sets `assignment.suppressed` at
+		// all, so its own `!assignment.suppressed` exposure gate trivially always passes there. Our
+		// JS port pins `suppressed` eagerly for the override path too (Task 4's deliberate
+		// divergence, see Assignment.suppressed doc comment), so the exposure gate here must
+		// special-case `overridden` explicitly to reproduce the same firing outcome.
+		if (!assignment.suppressed || assignment.overridden) {
+			try {
+				this._queueExposure(experimentName, assignment);
+			} catch (error) {
+				this._logErrorSafely(error as Error);
+				firstError = { value: error };
+			}
+		}
+
+		const holdoutError = this._triggerApplicableHoldoutExposures(assignment);
+		if (!firstError) {
+			firstError = holdoutError;
+		}
+
+		if (firstError) {
+			throw firstError.value;
+		}
+	}
+
+	// Ported from java-sdk's triggerApplicableHoldoutExposures/triggerHoldoutExposure
+	// (Context.java:481-546). Fires each applicable holdout's own exposure exactly once,
+	// using the pinned `assignment.holdoutAssignments` snapshot (not a live re-resolution),
+	// so a data refresh landing between the suppression decision and the exposure trigger
+	// can't publish a holdout exposure from a different epoch (Context.java:505-514).
+	// A throwing eventLogger for one holdout must not prevent siblings from firing: collect
+	// the first error and return it (rather than throwing here) so the caller can combine it
+	// with its own try/catch's outcome and issue a single final throw after everything has fired.
+	private _triggerApplicableHoldoutExposures(assignment: Assignment): CaughtError {
+		const holdouts = assignment.holdouts;
+		const holdoutAssignments = assignment.holdoutAssignments;
+		if (!holdouts || !holdoutAssignments) return undefined;
+
+		let firstError: CaughtError;
+
+		holdoutAssignments.forEach((holdoutAssignment, i) => {
+			if (holdoutAssignment == null) return;
+
+			if (!holdoutAssignment.exposed) {
+				holdoutAssignment.exposed = true;
+
+				try {
+					this._queueExposure(holdouts[i].data.name, holdoutAssignment);
+				} catch (error) {
+					this._logErrorSafely(error as Error);
+					if (!firstError) {
+						firstError = { value: error };
+					}
+				}
+			}
+		});
+
+		return firstError;
 	}
 
 	private _queueExposure(experimentName: string, assignment: Assignment) {
@@ -705,12 +966,17 @@ export default class Context {
 			audienceMismatch: assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride,
 		};
-		this._logEvent("exposure", exposureEvent);
-
+		// The exposure is appended and counted BEFORE the (user-supplied) eventLogger runs: a
+		// throwing logger must not discard the exposure itself, only fail to report it. _setTimeout
+		// is scheduled in a finally so a throwing logger still flushes what's already queued.
 		this._exposures.push(exposureEvent);
 		this._pending++;
 
-		this._setTimeout();
+		try {
+			this._logEvent("exposure", exposureEvent);
+		} finally {
+			this._setTimeout();
+		}
 	}
 
 	private _customFieldKeys() {
@@ -795,7 +1061,27 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
+	// Ported from java-sdk's getVariableAssignment (Context.java:1332-1373). A suppressed
+	// (held-out) experiment never wins resolution over a genuinely assigned/overridden/rule-matched
+	// one sharing the same key, but it IS used as a fallback when no candidate wins: a held-out
+	// unit must still read the experiment's control-variant value, not the caller's default, so it
+	// stays indistinguishable from a control unit. The first-encountered suppressed candidate is
+	// captured as the fallback regardless of whether it defines the key (matching java, which pins
+	// the whole Assignment and only checks the key afterwards) — an earlier suppressed candidate
+	// lacking the key must not let a later suppressed candidate that does have it win instead.
+	// Overridden assignments are excluded from the capture even if `suppressed` is set: java's
+	// override path never sets `suppressed` at all (see Assignment.suppressed doc comment for why
+	// the JS port's override path pins it anyway), so an override can never become java's fallback.
+	//
+	// A throwing eventLogger for one candidate must not stop the loop from visiting (and firing
+	// exposures for) the remaining candidates, mirroring java's collect-first-failure-then-rethrow
+	// (Context.java:1350-1368): every candidate's exposures still fire, and the first error is
+	// thrown only once resolution is otherwise complete (a winning candidate found, or the loop
+	// exhausted).
 	private _variableValue(key: string, defaultValue: string): string {
+		let suppressedFallback: Record<string, unknown> | undefined;
+		let firstError: CaughtError;
+
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -803,19 +1089,43 @@ export default class Context {
 				if (!assignment.exposed) {
 					assignment.exposed = true;
 
-					this._queueExposure(experimentName, assignment);
+					try {
+						this._triggerExposures(experimentName, assignment);
+					} catch (error) {
+						if (!firstError) {
+							firstError = { value: error };
+						}
+					}
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
+					if (firstError) {
+						throw firstError.value;
+					}
+
 					return assignment.variables[key] as string;
 				}
+
+				if (assignment.suppressed && !assignment.overridden && suppressedFallback === undefined) {
+					suppressedFallback = assignment.variables;
+				}
 			}
+		}
+
+		if (firstError) {
+			throw firstError.value;
+		}
+
+		if (suppressedFallback !== undefined && key in suppressedFallback) {
+			return suppressedFallback[key] as string;
 		}
 
 		return defaultValue;
 	}
 
 	private _peekVariable(key: string, defaultValue: string): string {
+		let suppressedFallback: Record<string, unknown> | undefined;
+
 		for (const i in this._indexVariables[key]) {
 			const experimentName = this._indexVariables[key][i].data.name;
 			const assignment = this._assign(experimentName);
@@ -823,7 +1133,15 @@ export default class Context {
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
 					return assignment.variables[key] as string;
 				}
+
+				if (assignment.suppressed && !assignment.overridden && suppressedFallback === undefined) {
+					suppressedFallback = assignment.variables;
+				}
 			}
+		}
+
+		if (suppressedFallback !== undefined && key in suppressedFallback) {
+			return suppressedFallback[key] as string;
 		}
 
 		return defaultValue;
@@ -1017,18 +1335,93 @@ export default class Context {
 		}
 	}
 
+	// Like `_logError`, but swallows a throw from the (user-supplied) eventLogger itself. Used at
+	// exposure-firing call sites where reporting one failure must never prevent the remaining
+	// exposure attempts (sibling holdouts, or the covered experiment's own) from still running.
+	private _logErrorSafely(error: Error) {
+		try {
+			this._logError(error);
+		} catch {
+			// Deliberately ignored — see comment above.
+		}
+	}
+
 	private _unitHash(unitType: string) {
 		if (!this._hashes) {
 			this._hashes = {};
 		}
 
 		if (!(unitType in this._hashes)) {
-			const hash = unitType in this._units ? hashUnit(this._units[unitType]) : null;
+			// Only cache when the unit is actually available. A `null` result here means the unit
+			// hasn't been set yet — that can change later (via `unit()`/`setUnit`), whereas a
+			// resolved hash is stable for the unit's lifetime (the same unit type can only ever be
+			// set once, enforced by `unit()`). Caching `null` would permanently poison this cache
+			// for a unit type queried before it was set — e.g. `_getHoldoutAssignment` (unlike the
+			// ordinary experiment-assignment path, which only calls `_unitHash` after already
+			// checking `unitType in this._units`) calls this unconditionally, so a holdout resolved
+			// via `peek()`/`_assign()` before its unit type is installed must be able to resolve
+			// correctly once that unit later arrives, without a stale cached `null` blocking it.
+			if (!(unitType in this._units)) {
+				return null;
+			}
+
+			const hash = hashUnit(this._units[unitType]);
 			this._hashes[unitType] = hash;
 			return hash;
 		}
 
 		return this._hashes[unitType];
+	}
+
+	// Resolves the arm a unit falls into within a holdout itself (as opposed to resolving an
+	// ordinary experiment's assignment, which is `_assign()`). Ported from java-sdk's
+	// getHoldoutAssignment (Context.java:1412-1468), minus the read/write-lock dance: js is
+	// single-threaded, so this simplifies to a plain memoized-by-(id, unitType) cache.
+	//
+	// `holdout` may be a stale reference (e.g. captured before a data refresh) so it is always
+	// re-resolved against the live `_holdoutsById` index first (falling back to the caller-supplied
+	// reference only if the id is no longer present, e.g. the holdout was removed by the latest
+	// refresh) — this mirrors java-sdk's resolveLiveHoldout and ensures the cache is keyed and
+	// validated against the currently-installed definition rather than a possibly-dead one.
+	private _getHoldoutAssignment(holdout: Experiment, unitType: string): Assignment | null {
+		const liveHoldoutData = this._holdoutsById[holdout.data.id] ?? holdout.data;
+
+		const cacheKey = `${liveHoldoutData.id}:${unitType}`;
+		const cached = this._holdoutAssignments[cacheKey];
+		if (cached && cached.id === liveHoldoutData.id && cached.iteration === liveHoldoutData.iteration) {
+			return cached;
+		}
+
+		const unit = this._unitHash(unitType);
+		if (unit === null) {
+			// No unit set for this unitType yet — mirrors java-sdk's `uid == null -> return null`.
+			// Do not cache: a later call, once the unit is set, must recompute.
+			return null;
+		}
+
+		const assigner =
+			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+
+		const assignment: Assignment = {
+			id: liveHoldoutData.id,
+			iteration: liveHoldoutData.iteration,
+			fullOnVariant: 0,
+			unitType,
+			variant: assigner.assign(liveHoldoutData.split, liveHoldoutData.seedHi, liveHoldoutData.seedLo),
+			overridden: false,
+			assigned: true,
+			exposed: false,
+			eligible: true,
+			fullOn: false,
+			custom: false,
+			audienceMismatch: false,
+			ruleOverride: false,
+			holdoutArmCount: liveHoldoutData.split.length,
+		};
+
+		this._holdoutAssignments[cacheKey] = assignment;
+
+		return assignment;
 	}
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
@@ -1038,11 +1431,68 @@ export default class Context {
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
 
+		// Live index of holdout definitions by id, skipping holdouts with no/empty
+		// split (they can never be assigned to, so they are treated as non-existent).
+		// Kept as raw ExperimentData (not a resolved Experiment/Assignment) so later
+		// lookups (e.g. resolving a holdout's own assignment) always read against the
+		// currently-installed data rather than a possibly-stale cached reference.
+		const holdoutsById: Record<number, ExperimentData> = {};
+
+		(data.holdouts || []).forEach((holdout) => {
+			if (holdout.split && holdout.split.length > 0) {
+				holdoutsById[holdout.id] = holdout;
+			}
+		});
+
+		this._holdoutsById = holdoutsById;
+
+		// Experiment wrappers (data + parsed variables) for holdouts, built lazily and
+		// memoized per _init() call so a holdout referenced by multiple experiments is
+		// only parsed once.
+		const holdoutExperiments: Record<number, Experiment> = {};
+
+		const resolveHoldoutExperiment = (holdoutId: number): Experiment | undefined => {
+			if (holdoutExperiments[holdoutId]) {
+				return holdoutExperiments[holdoutId];
+			}
+
+			// Read via the live field (not the local `holdoutsById` closure) so this
+			// always resolves against the currently-installed data.
+			const holdoutData = this._holdoutsById[holdoutId];
+			if (!holdoutData) {
+				return undefined;
+			}
+
+			const holdoutEntry: Experiment = {
+				data: holdoutData,
+				variables: [],
+			};
+
+			holdoutExperiments[holdoutId] = holdoutEntry;
+			return holdoutEntry;
+		};
+
 		(data.experiments || []).forEach((experiment) => {
 			const variables: Record<string, unknown>[] = [];
-			const entry = {
+
+			let holdouts: Experiment[] | null = null;
+			if (experiment.holdoutIds && experiment.holdoutIds.length > 0) {
+				const resolved: Experiment[] = [];
+
+				experiment.holdoutIds.forEach((holdoutId) => {
+					const holdoutExperiment = resolveHoldoutExperiment(holdoutId);
+					if (holdoutExperiment) {
+						insertUniqueSorted(resolved, holdoutExperiment, (a, b) => a.data.id < b.data.id);
+					}
+				});
+
+				holdouts = resolved.length > 0 ? resolved : null;
+			}
+
+			const entry: Experiment = {
 				data: experiment,
 				variables,
+				holdouts,
 			};
 
 			index[experiment.name] = entry;
