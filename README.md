@@ -507,9 +507,9 @@ document.getElementById("checkout-btn").addEventListener("click", () => {
 });
 ```
 
-## Migration Guide (v1 → v2)
+## Migration Guide (1.13.x → 1.14.0)
 
-Version 2.0.0 contains breaking changes made for cross-SDK consistency and correctness. These align the JavaScript SDK with the Python, Swift, Java, and other A/B Smartly SDKs. Most applications will not need code changes, but review the items below.
+Version 1.14.0 contains breaking changes made for cross-SDK consistency and correctness. These align the JavaScript SDK with the Python, Swift, Java, and other A/B Smartly SDKs. Most applications will not need code changes, but review the items below.
 
 ### `ready()` no longer resolves with the Error object on failure
 
@@ -533,7 +533,7 @@ const variant = context.treatment("exp_test"); // returns 0 (control) on failure
 
 **After:** Unit IDs are encoded as canonical 4-byte UTF-8, matching the A/B Smartly collector (which hashes with `UTF_8`) and the SDKs already using native UTF-8 (Go, Python, Ruby, etc.).
 
-**When this might be a problem:** A unit ID that contains an astral character (emoji, rare CJK, etc.) may now be assigned a **different variant** than it was under v1. **Unit IDs composed entirely of BMP characters (≤ U+FFFF) — which covers essentially all typical session IDs, UUIDs, and user IDs — are unaffected.** This only changes assignment for units whose IDs contain astral characters.
+**When this might be a problem:** A unit ID that contains an astral character (emoji, rare CJK, etc.) may now be assigned a **different variant** than it was in earlier versions. **Unit IDs composed entirely of BMP characters (≤ U+FFFF) — which covers essentially all typical session IDs, UUIDs, and user IDs — are unaffected.** This only changes assignment for units whose IDs contain astral characters.
 
 ### `audienceMismatch` cache invalidation on indeterminate audiences
 
