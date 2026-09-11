@@ -5333,6 +5333,124 @@ describe("Context", () => {
 				);
 			});
 		});
+
+		describe("holdouts: variable resolution", () => {
+			// Ported from java-sdk's getVariableAssignment (Context.java:1332-1373). A suppressed
+			// experiment must never win variable-key resolution over one that is genuinely
+			// assigned/overridden, but it must still be usable as a fallback: a held-out unit reads
+			// the experiment's own control-variant value, not the caller's default, so it stays
+			// indistinguishable from a control unit for variable resolution purposes.
+			const holdoutVarExperiment = (over) => ({
+				id: 1,
+				name: "exp_holdout_var",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 100,
+				seedLo: 200,
+				split: [0.5, 0.5],
+				trafficSeedHi: 1,
+				trafficSeedLo: 2,
+				trafficSplit: [0, 1],
+				fullOnVariant: 0,
+				applications: [{ name: "website" }],
+				variants: [
+					{ name: "A", config: JSON.stringify({ "button.color": "CONTROL_GREY" }) },
+					{ name: "B", config: JSON.stringify({ "button.color": "TREATMENT_GREEN" }) },
+				],
+				audience: null,
+				audienceStrict: false,
+				customFieldValues: null,
+				holdoutIds: [11],
+				...over,
+			});
+
+			const alwaysHoldsOut = (over) => ({
+				id: 11,
+				name: "holdout_var",
+				iteration: 1,
+				unitType: "session_id",
+				seedHi: 13,
+				seedLo: 111,
+				split: [1.0, 0.0],
+				trafficSeedHi: 0,
+				trafficSeedLo: 0,
+				trafficSplit: [0, 1],
+				fullOnVariant: 0,
+				applications: [],
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+				audience: null,
+				audienceStrict: false,
+				customFieldValues: null,
+				holdoutType: "full",
+				...over,
+			});
+
+			it("variableValue() returns the control-variant value (not the caller default) for a held-out unit, and still fires the holdout's own exposure", () => {
+				const response = buildHoldoutResponse([holdoutVarExperiment({})], [alwaysHoldsOut({})]);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.treatment("exp_holdout_var")).toEqual(0);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("CONTROL_GREY");
+				expect(context.pending()).toEqual(1);
+			});
+
+			it("peekVariableValue() returns the control-variant value for a held-out unit without triggering any exposure", () => {
+				const response = buildHoldoutResponse([holdoutVarExperiment({})], [alwaysHoldsOut({})]);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("CONTROL_GREY");
+				expect(context.pending()).toEqual(0);
+			});
+
+			it("a genuinely assigned experiment still wins variable-key resolution over a suppressed one sharing the same key", () => {
+				const winningExperiment = {
+					id: 2,
+					name: "exp_holdout_var_winner",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 300,
+					seedLo: 400,
+					split: [0, 1],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 1,
+					applications: [{ name: "website" }],
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "WINNER_BLUE" }) },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+				};
+
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winningExperiment],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_BLUE");
+			});
+
+			it("returns the caller default when every candidate for the key is suppressed but none defines the key on its held-out variant", () => {
+				const noKeyOnControlExperiment = holdoutVarExperiment({
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "TREATMENT_GREEN" }) },
+					],
+				});
+
+				const response = buildHoldoutResponse([noKeyOnControlExperiment], [alwaysHoldsOut({})]);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+			});
+		});
 	});
 
 	describe("variableValue()", () => {
