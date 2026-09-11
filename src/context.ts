@@ -931,7 +931,7 @@ export default class Context {
 			try {
 				this._queueExposure(experimentName, assignment);
 			} catch (error) {
-				this._logError(error as Error);
+				this._logErrorSafely(error as Error);
 				firstError = { value: error };
 			}
 		}
@@ -970,7 +970,7 @@ export default class Context {
 				try {
 					this._queueExposure(holdouts[i].data.name, holdoutAssignment);
 				} catch (error) {
-					this._logError(error as Error);
+					this._logErrorSafely(error as Error);
 					if (!firstError) {
 						firstError = { value: error };
 					}
@@ -1452,6 +1452,17 @@ export default class Context {
 			} catch (observerError) {
 				console.error(observerError);
 			}
+		}
+	}
+
+	// Like `_logError`, but swallows a throw from the (user-supplied) eventLogger itself. Used at
+	// exposure-firing call sites where reporting one failure must never prevent the remaining
+	// exposure attempts (sibling holdouts, or the covered experiment's own) from still running.
+	private _logErrorSafely(error: Error) {
+		try {
+			this._logError(error);
+		} catch {
+			// Deliberately ignored — see comment above.
 		}
 	}
 
