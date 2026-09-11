@@ -5521,6 +5521,86 @@ describe("Context", () => {
 					["holdout_var", "holdout_var_second"].sort()
 				);
 			});
+
+			// peekVariableValue() shares the exact same suppressedFallback capture as variableValue()
+			// (both fixed together in the same commit), but never triggers exposures, so it needs its
+			// own ordering regression test rather than relying on variableValue()'s coverage.
+			it("peekVariableValue(): an earlier suppressed candidate without the key blocks a later suppressed candidate that has it", () => {
+				const firstSuppressed = holdoutVarExperiment({
+					id: 1,
+					name: "exp_holdout_var_peek_first",
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "FIRST_TREATMENT" }) },
+					],
+				});
+
+				const secondSuppressed = holdoutVarExperiment({
+					id: 2,
+					name: "exp_holdout_var_peek_second",
+					variants: [
+						{ name: "A", config: JSON.stringify({ "button.color": "SECOND_CONTROL" }) },
+						{ name: "B", config: null },
+					],
+				});
+
+				const response = buildHoldoutResponse([firstSuppressed, secondSuppressed], [alwaysHoldsOut({})]);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+
+				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.pending()).toEqual(0);
+			});
+
+			// The doc comment on _variableValue states the collected error is thrown "once resolution
+			// is otherwise complete (a winning candidate found, or the loop exhausted)" -- including
+			// when a LATER candidate wins after an EARLIER candidate's exposure-firing already threw.
+			// That immediate-rethrow-on-winner branch must not be bypassed just because resolution
+			// otherwise succeeded: the caller needs to know an exposure was dropped, even though a
+			// value could technically still be returned.
+			it("still throws the first collected error even when a later candidate in the loop is a genuine winner", () => {
+				const suppressedFirst = holdoutVarExperiment({
+					id: 1,
+					name: "exp_holdout_var_winner_after_throw",
+					holdoutIds: [11],
+				});
+
+				const winningSecond = {
+					id: 2,
+					name: "exp_holdout_var_winner_after_throw_2",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 300,
+					seedLo: 400,
+					split: [0, 1],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 1,
+					applications: [{ name: "website" }],
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "WINNER_AFTER_THROW" }) },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+				};
+
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure" && data.name === "holdout_var") {
+						throw new Error("boom");
+					}
+				});
+
+				const response = buildHoldoutResponse([suppressedFirst, winningSecond], [alwaysHoldsOut({})]);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+
+				expect(() => context.variableValue("button.color", "APP_FALLBACK")).toThrow("boom");
+
+				// The winning candidate's own exposure still fired despite the earlier throw.
+				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
+				expect(exposureCalls.map((c) => c[2].name)).toContain("exp_holdout_var_winner_after_throw_2");
+			});
 		});
 	});
 
