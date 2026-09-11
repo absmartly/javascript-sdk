@@ -875,8 +875,8 @@ export default class Context {
 	// had a chance to fire. Shared by `_treatment` and `_variableValue`, whose exposure-firing
 	// behavior is otherwise identical once the one-shot `exposed` gate has been checked.
 	//
-	// Every caught error is reported via `_logError` as it's caught (unlike java-sdk, which only
-	// ever surfaces the first): with N applicable holdouts there can be up to N+1 independent
+	// Every caught error is reported via `_logErrorSafely` as it's caught (unlike java-sdk, which
+	// only ever surfaces the first): with N applicable holdouts there can be up to N+1 independent
 	// exposure-firing attempts, and only one error can be rethrown to the caller, so without this
 	// every failure past the first would otherwise vanish with no trace at all.
 	private _triggerExposures(experimentName: string, assignment: Assignment): void {

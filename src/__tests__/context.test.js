@@ -4878,8 +4878,7 @@ describe("Context", () => {
 
 		// This behavior is inherited from java-sdk's Context (Context.java:325-381,
 		// invalidateAssignmentsPinnedWithMissingUnit) and is intentionally left unchanged here for
-		// parity — see the discussion on PR #65. Documented as known behavior, not a target for a
-		// JS-only fix.
+		// parity. Documented as known behavior, not a target for a JS-only fix.
 		describe("holdouts: known java-sdk-parity behavior (not fixed here)", () => {
 			// A full-on experiment's own variant never needs a unit, so treatment() can resolve and
 			// expose it before the covered experiment's unit type is ever installed. If a holdout
@@ -4982,8 +4981,7 @@ describe("Context", () => {
 
 			// This behavior is inherited from java-sdk's Context (Context.java:974-1005,
 			// experimentMatches/holdoutSetMatches) and is intentionally left unchanged here for
-			// parity — see the discussion on PR #65. Documented as known behavior, not a target for a
-			// JS-only fix.
+			// parity. Documented as known behavior, not a target for a JS-only fix.
 			//
 			// experimentMatches() folds holdoutSetMatches() into its cache-validity check, so ANY
 			// change to an experiment's applicable-holdout set — even adding a holdout that does not
@@ -5242,6 +5240,10 @@ describe("Context", () => {
 						"boom for holdout_multi_error_b",
 					].sort()
 				);
+
+				// All three exposures were queued despite all three throwing while reporting —
+				// the ordering fix applies independently to each attempt, not just the first.
+				expect(context.pending()).toEqual(3);
 			});
 
 			// A throwing error-event logger must not itself interrupt exposure processing: it must
