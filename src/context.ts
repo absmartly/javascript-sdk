@@ -1062,13 +1062,16 @@ export default class Context {
 	}
 
 	// Ported from java-sdk's getVariableAssignment (Context.java:1332-1373). A suppressed
-	// (held-out) experiment never wins resolution over a genuinely assigned/overridden one sharing
-	// the same key, but it IS used as a fallback when no candidate wins: a held-out unit must still
-	// read the experiment's control-variant value, not the caller's default, so it stays
-	// indistinguishable from a control unit. The first-encountered suppressed candidate is captured
-	// as the fallback regardless of whether it defines the key (matching java, which pins the whole
-	// Assignment and only checks the key afterwards) — an earlier suppressed candidate lacking the
-	// key must not let a later suppressed candidate that does have it win instead.
+	// (held-out) experiment never wins resolution over a genuinely assigned/overridden/rule-matched
+	// one sharing the same key, but it IS used as a fallback when no candidate wins: a held-out
+	// unit must still read the experiment's control-variant value, not the caller's default, so it
+	// stays indistinguishable from a control unit. The first-encountered suppressed candidate is
+	// captured as the fallback regardless of whether it defines the key (matching java, which pins
+	// the whole Assignment and only checks the key afterwards) — an earlier suppressed candidate
+	// lacking the key must not let a later suppressed candidate that does have it win instead.
+	// Overridden assignments are excluded from the capture even if `suppressed` is set: java's
+	// override path never sets `suppressed` at all (see Assignment.suppressed doc comment for why
+	// the JS port's override path pins it anyway), so an override can never become java's fallback.
 	//
 	// A throwing eventLogger for one candidate must not stop the loop from visiting (and firing
 	// exposures for) the remaining candidates, mirroring java's collect-first-failure-then-rethrow
@@ -1103,7 +1106,7 @@ export default class Context {
 					return assignment.variables[key] as string;
 				}
 
-				if (assignment.suppressed && suppressedFallback === undefined) {
+				if (assignment.suppressed && !assignment.overridden && suppressedFallback === undefined) {
 					suppressedFallback = assignment.variables;
 				}
 			}
@@ -1131,7 +1134,7 @@ export default class Context {
 					return assignment.variables[key] as string;
 				}
 
-				if (assignment.suppressed && suppressedFallback === undefined) {
+				if (assignment.suppressed && !assignment.overridden && suppressedFallback === undefined) {
 					suppressedFallback = assignment.variables;
 				}
 			}

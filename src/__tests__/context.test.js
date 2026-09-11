@@ -5601,6 +5601,73 @@ describe("Context", () => {
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
 				expect(exposureCalls.map((c) => c[2].name)).toContain("exp_holdout_var_winner_after_throw_2");
 			});
+
+			// java's override write path never sets `suppressed` at all (see Assignment.suppressed's
+			// doc comment), so an override can never become java's suppressedFallback. The JS port
+			// pins `suppressed` eagerly on the override path too, so the fallback capture must
+			// explicitly exclude overridden assignments to reproduce the same outcome — otherwise an
+			// override to a variant that happens to omit the requested key could win the fallback
+			// slot ahead of a genuinely suppressed sibling that actually defines it.
+			it("excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
+				const overriddenExperiment = {
+					id: 1,
+					name: "exp_holdout_var_overridden",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 100,
+					seedLo: 200,
+					split: [0.5, 0.5],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 0,
+					applications: [{ name: "website" }],
+					variants: [
+						// Override target (variant 0) omits the key, so this candidate can't win
+						// outright, and must not be allowed to claim the fallback slot either.
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "OVERRIDE_SIBLING" }) },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+					holdoutIds: [11],
+				};
+
+				const genuinelySuppressedExperiment = {
+					id: 2,
+					name: "exp_holdout_var_genuinely_suppressed",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 300,
+					seedLo: 400,
+					split: [0.5, 0.5],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 0,
+					applications: [{ name: "website" }],
+					variants: [
+						{ name: "A", config: JSON.stringify({ "button.color": "GENUINE_SUPPRESSED_CTRL" }) },
+						{ name: "B", config: null },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+					holdoutIds: [12],
+				};
+
+				const secondHoldout = alwaysHoldsOut({ id: 12, name: "holdout_var_second" });
+
+				const response = buildHoldoutResponse(
+					[overriddenExperiment, genuinelySuppressedExperiment],
+					[alwaysHoldsOut({}), secondHoldout]
+				);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				context.override("exp_holdout_var_overridden", 0);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
+			});
 		});
 	});
 
