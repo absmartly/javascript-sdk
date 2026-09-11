@@ -5668,6 +5668,69 @@ describe("Context", () => {
 
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
 			});
+
+			// _peekVariable carries the identical override-exclusion guard as _variableValue (same
+			// fix, same commit), but never triggers exposures, so it needs its own regression test
+			// rather than relying on variableValue()'s coverage of the guard.
+			it("peekVariableValue(): excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
+				const overriddenExperiment = {
+					id: 1,
+					name: "exp_holdout_var_peek_overridden",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 100,
+					seedLo: 200,
+					split: [0.5, 0.5],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 0,
+					applications: [{ name: "website" }],
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "button.color": "OVERRIDE_SIBLING" }) },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+					holdoutIds: [11],
+				};
+
+				const genuinelySuppressedExperiment = {
+					id: 2,
+					name: "exp_holdout_var_peek_genuinely_suppressed",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 300,
+					seedLo: 400,
+					split: [0.5, 0.5],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 0,
+					applications: [{ name: "website" }],
+					variants: [
+						{ name: "A", config: JSON.stringify({ "button.color": "GENUINE_SUPPRESSED_CTRL" }) },
+						{ name: "B", config: null },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+					holdoutIds: [12],
+				};
+
+				const secondHoldout = alwaysHoldsOut({ id: 12, name: "holdout_var_peek_second" });
+
+				const response = buildHoldoutResponse(
+					[overriddenExperiment, genuinelySuppressedExperiment],
+					[alwaysHoldsOut({}), secondHoldout]
+				);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				context.override("exp_holdout_var_peek_overridden", 0);
+
+				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
+				expect(context.pending()).toEqual(0);
+			});
 		});
 	});
 
