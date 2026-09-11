@@ -4875,6 +4875,375 @@ describe("Context", () => {
 				});
 			});
 		});
+
+		// This behavior is inherited from java-sdk's Context (Context.java:325-381,
+		// invalidateAssignmentsPinnedWithMissingUnit) and is intentionally left unchanged here for
+		// parity — see the discussion on PR #65. Documented as known behavior, not a target for a
+		// JS-only fix.
+		describe("holdouts: known java-sdk-parity behavior (not fixed here)", () => {
+			// A full-on experiment's own variant never needs a unit, so treatment() can resolve and
+			// expose it before the covered experiment's unit type is ever installed. If a holdout
+			// covering it also needs that unit, its own assignment resolves to null and gets pinned
+			// into the (now-exposed) assignment's holdoutAssignments. Once installed, `unit()`'s
+			// eviction only clears UNEXPOSED assignments (to avoid double-firing the covered
+			// experiment's own exposure — see the next test) — so this assignment, already exposed,
+			// is never evicted, and the holdout's null entry can never be repaired. The holdout's own
+			// exposure is lost for the life of the context. java-sdk has the identical gap.
+			it("permanently loses a holdout's exposure when treatment() (not peek()) resolves a full-on experiment before its unit is set", (done) => {
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_holdout_treatment_before_unit",
+							iteration: 1,
+							unitType: "user_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5, 0.0],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0, 1],
+							fullOnVariant: 2,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+								{ name: "C", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [11],
+						},
+					],
+					[
+						{
+							id: 11,
+							name: "holdout_treatment_before_unit",
+							iteration: 1,
+							unitType: "user_id",
+							seedHi: 1,
+							seedLo: 222,
+							split: [0.1, 0.9],
+							trafficSeedHi: 0,
+							trafficSeedLo: 0,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							applications: [],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutType: "full",
+						},
+					]
+				);
+
+				const lateUnitParams = { units: { session_id: "context-created-without-user-id" } };
+				const context = new Context(sdk, contextOptions, lateUnitParams, response);
+
+				// treatment() (not peek()) fires the covered experiment's own exposure immediately,
+				// since full-on doesn't need a unit — pinning a null holdout entry as a side effect.
+				expect(context.treatment("exp_holdout_treatment_before_unit")).toEqual(2);
+				expect(context.pending()).toEqual(1);
+
+				context.unit("user_id", "e791e240fcd3df7d238cfc285f475e8152fcc0ec");
+
+				expect(context.treatment("exp_holdout_treatment_before_unit")).toEqual(2);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					// Known limitation: only the covered experiment's own exposure is ever published.
+					// The holdout's exposure never fires, even though its unit is now available.
+					expect(exposures).toEqual([
+						{
+							id: 1,
+							name: "exp_holdout_treatment_before_unit",
+							unit: "user_id",
+							exposedAt: timeOrigin,
+							variant: 2,
+							assigned: true,
+							eligible: true,
+							overridden: false,
+							fullOn: true,
+							custom: false,
+							audienceMismatch: false,
+							ruleOverride: false,
+						},
+					]);
+					done();
+				});
+			});
+
+			// This behavior is inherited from java-sdk's Context (Context.java:974-1005,
+			// experimentMatches/holdoutSetMatches) and is intentionally left unchanged here for
+			// parity — see the discussion on PR #65. Documented as known behavior, not a target for a
+			// JS-only fix.
+			//
+			// experimentMatches() folds holdoutSetMatches() into its cache-validity check, so ANY
+			// change to an experiment's applicable-holdout set — even adding a holdout that does not
+			// end up suppressing the unit — invalidates the cached assignment and forces a full
+			// rebuild via _assign(), which starts the new Assignment with exposed: false regardless
+			// of whether the resolved variant/suppression outcome actually changed. If the covered
+			// experiment had already fired its own exposure before the refresh, the next treatment()
+			// call fires it again. java-sdk has the identical gap: the covered-experiment side of
+			// this exact scenario is untested there for the non-override path, but the override path
+			// has an equivalent, explicitly-asserted duplicate (see
+			// holdoutBecomingApplicableAfterRefreshStillFiresForOverriddenExperiment in
+			// ContextHoldoutTest.java), governed by the same experimentMatches/holdoutSetMatches
+			// mechanism.
+			it("duplicates the covered experiment's own exposure when a refresh adds a non-suppressing holdout to an already-exposed experiment", (done) => {
+				const baseExperiment = {
+					id: 1,
+					name: "exp_holdout_added_non_suppressing",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 100,
+					seedLo: 200,
+					split: [0.5, 0.5],
+					trafficSeedHi: 1,
+					trafficSeedLo: 2,
+					trafficSplit: [0, 1],
+					fullOnVariant: 1,
+					applications: [{ name: "website" }],
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: null },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+				};
+
+				const initialResponse = buildHoldoutResponse([baseExperiment], []);
+
+				const context = new Context(sdk, contextOptions, contextParams, initialResponse);
+
+				// Fires the covered experiment's own exposure — no holdout coverage yet.
+				expect(context.treatment("exp_holdout_added_non_suppressing")).toEqual(1);
+				expect(context.pending()).toEqual(1);
+
+				const nonSuppressingHoldout = {
+					id: 11,
+					name: "holdout_non_suppressing",
+					iteration: 1,
+					unitType: "session_id",
+					seedHi: 13,
+					seedLo: 111,
+					// This unit always lands in variant 1 of this holdout, which never holds out a
+					// full-on-variant-1 experiment (isHeldOutBy only suppresses on variant 0, or
+					// variant 1 of a 3-arm holdout when fullOnVariant === 0).
+					split: [0.0, 1.0],
+					trafficSeedHi: 0,
+					trafficSeedLo: 0,
+					trafficSplit: [0, 1],
+					fullOnVariant: 0,
+					applications: [],
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: null },
+					],
+					audience: null,
+					audienceStrict: false,
+					customFieldValues: null,
+					holdoutType: "full",
+				};
+
+				const refreshedResponse = buildHoldoutResponse(
+					[{ ...baseExperiment, holdoutIds: [11] }],
+					[nonSuppressingHoldout]
+				);
+
+				provider.getContextData.mockReturnValue(Promise.resolve(refreshedResponse));
+
+				context.refresh().then(() => {
+					// Known limitation: the covered experiment's outcome hasn't changed (still
+					// variant 1, still not suppressed), but the holdout-set change alone forces a
+					// rebuild that re-fires its own exposure.
+					expect(context.treatment("exp_holdout_added_non_suppressing")).toEqual(1);
+
+					publisher.publish.mockReturnValue(Promise.resolve());
+
+					context.publish().then(() => {
+						const exposures = publisher.publish.mock.calls[0][0].exposures;
+						const ownExposures = exposures.filter((e) => e.name === "exp_holdout_added_non_suppressing");
+
+						expect(ownExposures).toHaveLength(2);
+
+						const holdoutExposures = exposures.filter((e) => e.name === "holdout_non_suppressing");
+						expect(holdoutExposures).toHaveLength(1);
+
+						done();
+					});
+				});
+			});
+		});
+
+		describe("holdouts: error handling", () => {
+			// _queueExposure must append to the publish queue and increment pending() BEFORE calling
+			// the (user-supplied) eventLogger, so a throwing logger only fails to report the
+			// exposure, not discard it outright. Regression test for the ordering fix: previously
+			// _logEvent ran first, so a throw there meant the push/increment never happened and the
+			// exposure was lost for the life of the context, not merely unlogged.
+			it("keeps a queued exposure even when the eventLogger throws while reporting it", () => {
+				const throwingEventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure") {
+						throw new Error("logger boom");
+					}
+				});
+
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_holdout_throwing_logger",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0, 1],
+							fullOnVariant: 1,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+						},
+					],
+					[]
+				);
+
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger: throwingEventLogger },
+					contextParams,
+					response
+				);
+
+				expect(() => context.treatment("exp_holdout_throwing_logger")).toThrow("logger boom");
+
+				// The exposure was appended and counted before the logger ran, so the throw only
+				// fails to report it — it is not lost.
+				expect(context.pending()).toEqual(1);
+			});
+
+			// With N applicable holdouts there can be up to N+1 independent exposure-firing attempts
+			// per call (the covered experiment's own, plus one per holdout), but only one error can
+			// ever be rethrown to the caller. Every caught error must still be reported via the
+			// eventLogger's "error" event as it's caught, or every failure past the first vanishes
+			// with no trace at all.
+			it("reports every dropped exposure error via the eventLogger, not just the one that is rethrown", () => {
+				const loggedErrors = [];
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "error") {
+						loggedErrors.push(data);
+						return;
+					}
+					if (eventName === "exposure") {
+						throw new Error(`boom for ${data.name}`);
+					}
+				});
+
+				const response = buildHoldoutResponse(
+					[
+						{
+							id: 1,
+							name: "exp_holdout_multi_error",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 100,
+							seedLo: 200,
+							split: [0.5, 0.5],
+							trafficSeedHi: 1,
+							trafficSeedLo: 2,
+							trafficSplit: [0, 1],
+							fullOnVariant: 1,
+							applications: [{ name: "website" }],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutIds: [11, 12],
+						},
+					],
+					[
+						{
+							id: 11,
+							name: "holdout_multi_error_a",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 111,
+							split: [0.0, 1.0],
+							trafficSeedHi: 0,
+							trafficSeedLo: 0,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							applications: [],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutType: "full",
+						},
+						{
+							id: 12,
+							name: "holdout_multi_error_b",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 2,
+							seedLo: 222,
+							split: [0.0, 1.0],
+							trafficSeedHi: 0,
+							trafficSeedLo: 0,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							applications: [],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: null },
+							],
+							audience: null,
+							audienceStrict: false,
+							customFieldValues: null,
+							holdoutType: "full",
+						},
+					]
+				);
+
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+
+				expect(() => context.treatment("exp_holdout_multi_error")).toThrow(/boom for/);
+
+				// All three exposure attempts (the covered experiment + both holdouts) threw, so all
+				// three must have been reported — not just the one whose error was rethrown.
+				expect(loggedErrors).toHaveLength(3);
+				expect(loggedErrors.map((e) => e.message).sort()).toEqual(
+					[
+						"boom for exp_holdout_multi_error",
+						"boom for holdout_multi_error_a",
+						"boom for holdout_multi_error_b",
+					].sort()
+				);
+			});
+		});
 	});
 
 	describe("variableValue()", () => {

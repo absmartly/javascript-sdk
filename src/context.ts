@@ -874,6 +874,11 @@ export default class Context {
 	// whichever throws first is what ultimately propagates to the caller, only after both have
 	// had a chance to fire. Shared by `_treatment` and `_variableValue`, whose exposure-firing
 	// behavior is otherwise identical once the one-shot `exposed` gate has been checked.
+	//
+	// Every caught error is reported via `_logError` as it's caught (unlike java-sdk, which only
+	// ever surfaces the first): with N applicable holdouts there can be up to N+1 independent
+	// exposure-firing attempts, and only one error can be rethrown to the caller, so without this
+	// every failure past the first would otherwise vanish with no trace at all.
 	private _triggerExposures(experimentName: string, assignment: Assignment): void {
 		let firstError: CaughtError;
 
@@ -890,6 +895,7 @@ export default class Context {
 			try {
 				this._queueExposure(experimentName, assignment);
 			} catch (error) {
+				this._logError(error as Error);
 				firstError = { value: error };
 			}
 		}
@@ -928,6 +934,7 @@ export default class Context {
 				try {
 					this._queueExposure(holdouts[i].data.name, holdoutAssignment);
 				} catch (error) {
+					this._logError(error as Error);
 					if (!firstError) {
 						firstError = { value: error };
 					}
@@ -953,12 +960,17 @@ export default class Context {
 			audienceMismatch: assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride,
 		};
-		this._logEvent("exposure", exposureEvent);
-
+		// The exposure is appended and counted BEFORE the (user-supplied) eventLogger runs: a
+		// throwing logger must not discard the exposure itself, only fail to report it. _setTimeout
+		// is scheduled in a finally so a throwing logger still flushes what's already queued.
 		this._exposures.push(exposureEvent);
 		this._pending++;
 
-		this._setTimeout();
+		try {
+			this._logEvent("exposure", exposureEvent);
+		} finally {
+			this._setTimeout();
+		}
 	}
 
 	private _customFieldKeys() {
