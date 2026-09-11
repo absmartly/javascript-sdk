@@ -69,6 +69,12 @@ type Assignment = {
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
+	// Set whenever the covered experiment has one or more applicable holdouts, regardless of
+	// override/custom-assignment/rule-variant handling. Unlike java-sdk — whose override write
+	// path never sets this field at all, so its exposure gate's `!suppressed` check trivially
+	// always passes for an override — the JS port pins it eagerly on the override path too, so
+	// the exposure-firing gate (`_triggerExposures`) must special-case `overridden` explicitly to
+	// reproduce the same firing outcome (an override always fires its own exposure).
 	suppressed?: boolean;
 	holdouts?: Experiment[];
 	holdoutAssignments?: (Assignment | null)[];
