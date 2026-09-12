@@ -98,6 +98,27 @@ describe("AbortController", () => {
 			expect(controller.signal.reason.name).toBe("AbortError");
 		});
 
+		it("should fall back to an Error-based reason when DOMException is defined but not constructible", () => {
+			// Matches legacy environments (e.g. IE 10, this shim's floor) that expose
+			// DOMException as a global but throw on `new DOMException(...)`.
+			const originalDOMException = global.DOMException;
+			global.DOMException = function NonConstructibleDOMException() {
+				throw new TypeError("Illegal constructor");
+			};
+
+			try {
+				const controller = new AbortController();
+				controller.abort();
+
+				expect(controller.signal.aborted).toBe(true);
+				expect(controller.signal.reason).toBeInstanceOf(Error);
+				expect(controller.signal.reason.message).toBe("The operation was aborted.");
+				expect(controller.signal.reason.name).toBe("AbortError");
+			} finally {
+				global.DOMException = originalDOMException;
+			}
+		});
+
 		it("should set custom reason on abort(reason)", () => {
 			const controller = new AbortController();
 			const customReason = new Error("custom abort");

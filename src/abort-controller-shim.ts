@@ -55,10 +55,18 @@ export class AbortSignal {
 // Native AbortController defaults `signal.reason` to a `DOMException` named
 // "AbortError" (not a plain `Error`), and callers classify cancellation via
 // `signal.reason.name`. `DOMException` isn't guaranteed to exist in the older
-// environments this shim targets, so fall back to a same-named `Error`.
+// environments this shim targets, so fall back to a same-named `Error`. Some
+// legacy environments (e.g. IE 10, the browser build's floor) expose
+// `DOMException` as a global but don't support constructing it with `new` —
+// a `typeof` check alone would select this branch and then throw, so the
+// construction itself must be guarded too.
 function createDefaultAbortReason(): Error {
 	if (typeof DOMException !== "undefined") {
-		return new DOMException("The operation was aborted.", "AbortError") as unknown as Error;
+		try {
+			return new DOMException("The operation was aborted.", "AbortError") as unknown as Error;
+		} catch (error) {
+			// Fall through to the Error-based fallback below.
+		}
 	}
 	const error = new Error("The operation was aborted.");
 	error.name = "AbortError";
