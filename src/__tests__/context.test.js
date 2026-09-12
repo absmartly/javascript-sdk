@@ -166,7 +166,7 @@ describe("Context", () => {
 						config: '{"card.width":"75%"}',
 					},
 				],
-				audience: "{}",
+				audience: "",
 				customFieldValues: null,
 			},
 			{
@@ -204,7 +204,7 @@ describe("Context", () => {
 						config: '{"submit.color":"green","submit.shape":"square"}',
 					},
 				],
-				audience: "null",
+				audience: "",
 				customFieldValues: null,
 			},
 			{
@@ -612,12 +612,12 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 
 			expect(() => context.data()).toThrow();
-			expect(() => context.treatment("test")).toThrow();
-			expect(() => context.peek("test")).toThrow();
-			expect(() => context.experiments()).toThrow();
-			expect(() => context.variableKeys()).toThrow();
-			expect(() => context.variableValue("a", 17)).toThrow();
-			expect(() => context.peekVariableValue("a", 17)).toThrow();
+			expect(() => context.treatment("test")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peek("test")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.experiments()).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.variableKeys()).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.variableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peekVariableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1074,6 +1074,158 @@ describe("Context", () => {
 			});
 		});
 
+		it("should clear assignment cache for started experiment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_new")).toEqual(0);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshContextResponse));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_new")).toEqual(expectedVariants["exp_test_new"]);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache for stopped experiment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithStoppedExperiment = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.filter((x) => x.name !== "exp_test_abc"),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithStoppedExperiment));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when experiment ID changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithChangedId = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							id: 11,
+							trafficSeedHi: 54870830,
+							trafficSeedLo: 398724581,
+							// Chosen so the resulting variant (1) differs from
+							// expectedVariants["exp_test_abc"] (2): proves the cache was
+							// actually recomputed with the new seed, not just re-serving a
+							// stale cached assignment that happens to still be valid.
+							seedHi: 1,
+							seedLo: 3,
+						};
+					}
+					return x;
+				}),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithChangedId));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when full-on changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithFullOn = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_abc") {
+						return {
+							...x,
+							fullOnVariant: 1,
+						};
+					}
+					return x;
+				}),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithFullOn));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when traffic split changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_not_eligible")).toEqual(expectedVariants["exp_test_not_eligible"]);
+			expect(context.treatment("not_found")).toEqual(0);
+
+			expect(context.pending()).toEqual(2);
+
+			const refreshWithTrafficSplit = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) => {
+					if (x.name === "exp_test_not_eligible") {
+						return {
+							...x,
+							trafficSplit: [0.0, 1.0],
+						};
+					}
+					return x;
+				}),
+			};
+
+			provider.getContextData.mockReturnValue(Promise.resolve(refreshWithTrafficSplit));
+
+			context.refresh().then(() => {
+				expect(context.treatment("exp_test_not_eligible")).toEqual(2);
+				expect(context.treatment("not_found")).toEqual(0);
+
+				expect(context.pending()).toEqual(3);
+
+				done();
+			});
+		});
+
 		it("should throw after finalized() call", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
@@ -1371,6 +1523,30 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(0);
 
 			done();
+		});
+
+		it("should throw when not ready", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
+			expect(context.isReady()).toEqual(false);
+
+			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
+
+			done();
+		});
+
+		it("should throw after finalize", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.treatment("exp_test_ab");
+
+			context.finalize().then(() => {
+				expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
+				done();
+			});
+
+			expect(context.isFinalizing()).toEqual(true);
+			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
 		});
 	});
 
@@ -1815,13 +1991,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.treatment("exp_test_ab")).toThrow();
+				expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.treatment("exp_test_ab")).toThrow();
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
 		});
 
 		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
@@ -2017,6 +2193,15 @@ describe("Context", () => {
 
 			// Should NOT queue another exposure since audience result didn't change
 			expect(context.pending()).toEqual(1);
+
+			done();
+		});
+
+		it("should throw when not ready", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
+			expect(context.isReady()).toEqual(false);
+
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -3128,13 +3313,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.variableValue("button.color", 17)).toThrow();
+				expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.variableValue("button.color", 17)).toThrow();
+			expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalizing.");
 		});
 	});
 
@@ -3493,6 +3678,28 @@ describe("Context", () => {
 				done();
 			});
 		});
+
+		it.each([undefined, null, false])(
+			"should reject and restore the batch when the publisher rejects with the falsy reason %p",
+			(falsyReason, done) => {
+				const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+				context.track("goal1", { amount: 125 });
+				expect(context.pending()).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.reject(falsyReason));
+
+				context.publish().then(
+					() => done(new Error("publish() must not resolve when the publisher rejected")),
+					(e) => {
+						expect(e).toBeTruthy();
+						expect(context.pending()).toEqual(1);
+
+						done();
+					}
+				);
+			}
+		);
 
 		it("should call client publish", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
@@ -3978,6 +4185,46 @@ describe("Context", () => {
 			expect(context.isFinalizing()).toEqual(true);
 			expect(() => context.publish()).toThrow();
 		});
+
+		it("should not restore or resend an already-delivered batch when a custom eventLogger throws on the publish success event", (done) => {
+			const observerError = new Error("eventLogger failure");
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "publish") {
+					throw observerError;
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				getContextResponse
+			);
+
+			context.track("goal1", { amount: 125 });
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			context.publish().then(() => {
+				// The batch was already delivered successfully; the observer's throw
+				// must not be treated as a publish failure that restores the queue
+				// and resends the batch on the next flush.
+				expect(context.pending()).toEqual(0);
+				expect(consoleErrorSpy).toHaveBeenCalledWith(observerError);
+
+				publisher.publish.mockClear();
+
+				context.publish().then(() => {
+					expect(publisher.publish).not.toHaveBeenCalled();
+
+					consoleErrorSpy.mockRestore();
+					done();
+				});
+			});
+		});
 	});
 
 	describe("finalize()", () => {
@@ -4143,6 +4390,28 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 		});
 
+		it.each([undefined, null, false])(
+			"should reject and leave finalize() unfinalized when the publisher rejects with the falsy reason %p",
+			(falsyReason, done) => {
+				const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+				context.treatment("exp_test_ab");
+
+				publisher.publish.mockReturnValue(Promise.reject(falsyReason));
+
+				context.finalize().then(
+					() => done(new Error("finalize() must not resolve when the publisher rejected")),
+					(e) => {
+						expect(e).toBeTruthy();
+						expect(context.isFinalizing()).toEqual(false);
+						expect(context.isFinalized()).toEqual(false);
+
+						done();
+					}
+				);
+			}
+		);
+
 		it("should call event logger on success", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 
@@ -4182,6 +4451,46 @@ describe("Context", () => {
 
 				expect(context.isFinalizing()).toEqual(false);
 				expect(context.isFinalized()).toEqual(true);
+			});
+		});
+
+		it("should still settle finalize() when a custom eventLogger throws while discarding events after failed initialization", (done) => {
+			// The constructor's own ready-rejection handler also calls the
+			// eventLogger with "error" — only start throwing after that call, so
+			// this isolates the discard path inside _flush()/_finalize().
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "error" && throwingEventLogger.mock.calls.length > 1) {
+					throw new Error("eventLogger boom on error");
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				Promise.reject("bad request error text")
+			);
+
+			context.ready().then(() => {
+				context.treatment("exp_test_ab");
+				expect(context.pending()).toEqual(1);
+
+				const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+				// Discarding queued events after a failed init must still settle
+				// finalize() (and clear the queue) even when the eventLogger throws —
+				// otherwise `_finalizing` is left referencing a promise that never
+				// resolves or rejects.
+				context.finalize().then(() => {
+					expect(publisher.publish).not.toHaveBeenCalled();
+					expect(context.pending()).toEqual(0);
+					expect(context.isFinalizing()).toEqual(false);
+					expect(context.isFinalized()).toEqual(true);
+					expect(consoleErrorSpy).toHaveBeenCalled();
+
+					consoleErrorSpy.mockRestore();
+					done();
+				});
 			});
 		});
 
@@ -4254,6 +4563,316 @@ describe("Context", () => {
 
 				done();
 			});
+		});
+
+		it("should not finalize while a concurrent publish() is still in flight", (done) => {
+			jest.useRealTimers();
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			let resolvePublish;
+			publisher.publish.mockReturnValue(
+				new Promise((resolve) => {
+					resolvePublish = resolve;
+				})
+			);
+
+			const publishPromise = context.publish();
+
+			// publish() has already reset the internal queue synchronously, so a
+			// naive pending()-based check would see an empty queue here even though
+			// the request has not settled yet.
+			expect(context.pending()).toEqual(0);
+
+			const finalizePromise = context.finalize();
+
+			// finalize() must not complete (or mark the context finalized) while the
+			// in-flight publish it is racing against hasn't settled.
+			expect(context.isFinalized()).toEqual(false);
+			expect(context.isFinalizing()).toEqual(true);
+
+			// Give any (incorrect) synchronous finalize path a chance to run before
+			// resolving the in-flight publish.
+			Promise.resolve()
+				.then(() => Promise.resolve())
+				.then(() => Promise.resolve())
+				.then(() => {
+					expect(context.isFinalized()).toEqual(false);
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+
+					resolvePublish();
+
+					return Promise.all([publishPromise, finalizePromise]);
+				})
+				.then(() => {
+					expect(context.isFinalized()).toEqual(true);
+					expect(context.isFinalizing()).toEqual(false);
+					expect(context.pending()).toEqual(0);
+					// finalize() waited on the same in-flight publish instead of
+					// triggering a second, redundant request.
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+
+					done();
+				});
+		});
+
+		it("should restore the queue and reject when the publisher throws synchronously", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			const syncError = new Error("synchronous publisher failure");
+			publisher.publish.mockImplementation(() => {
+				throw syncError;
+			});
+
+			context.publish().catch((e) => {
+				expect(e).toBe(syncError);
+				// The snapshot taken before the (synchronously throwing) publish call
+				// must be restored so the events are retried on the next flush.
+				expect(context.pending()).toEqual(1);
+
+				done();
+			});
+		});
+
+		it("should not brick finalize() when a custom publisher returns a non-Promise value", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			// A beacon-style or misimplemented custom publisher that forgets to
+			// return a promise (e.g. `navigator.sendBeacon`-style success flag).
+			publisher.publish.mockReturnValue(true);
+
+			context.finalize().then(() => {
+				expect(context.pending()).toEqual(0);
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
+
+				done();
+			});
+		});
+
+		it("should restore a failed batch ahead of events recorded during the in-flight publish, preserving chronological order", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.track("old_goal");
+			expect(context.pending()).toEqual(1);
+
+			let rejectFirst;
+			publisher.publish.mockReturnValueOnce(
+				new Promise((resolve, reject) => {
+					rejectFirst = reject;
+				})
+			);
+
+			const firstPublish = context.publish();
+
+			// Record a newer event while the first publish is still in flight (its
+			// snapshot was already taken and _goals/_exposures were reset).
+			context.track("new_goal");
+
+			rejectFirst(new Error("transport failed"));
+
+			firstPublish.catch((e) => {
+				expect(e.message).toEqual("transport failed");
+				expect(context.pending()).toEqual(2);
+
+				publisher.publish.mockReturnValueOnce(Promise.resolve());
+
+				context.publish().then(() => {
+					const retryRequest = publisher.publish.mock.calls[1][0];
+					// The restored (older) batch must come before the newer event, not
+					// after it — otherwise the collector sees goals out of chronological
+					// order.
+					expect(retryRequest.goals.map((g) => g.name)).toEqual(["old_goal", "new_goal"]);
+
+					done();
+				});
+			});
+		});
+
+		it("should clear isFinalizing() and allow a retry after a synchronously throwing publisher", (done) => {
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			const syncError = new Error("synchronous publisher failure");
+			publisher.publish.mockImplementationOnce(() => {
+				throw syncError;
+			});
+
+			context.finalize().catch((e) => {
+				expect(e).toBe(syncError);
+				// A `finalize()` callback that fires synchronously (as it does here,
+				// since the publisher throws before any microtask boundary) must not
+				// leave isFinalizing() stuck true — otherwise the context can never
+				// finalize or retry.
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(false);
+				expect(context.pending()).toEqual(1);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.finalize().then(() => {
+					expect(context.isFinalizing()).toEqual(false);
+					expect(context.isFinalized()).toEqual(true);
+					expect(context.pending()).toEqual(0);
+					expect(publisher.publish).toHaveBeenCalledTimes(2);
+
+					done();
+				});
+			});
+		});
+
+		it("should settle the finalize() promise even when a custom eventLogger throws on the finalize event", (done) => {
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "finalize") {
+					throw new Error("eventLogger boom on finalize");
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0, eventLogger: throwingEventLogger },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			// A throwing eventLogger on the "finalize" event must not prevent
+			// finalize() from resolving, or leave isFinalizing()/isFinalized() stuck.
+			context.finalize().then(() => {
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(true);
+				expect(consoleErrorSpy).toHaveBeenCalled();
+
+				consoleErrorSpy.mockRestore();
+				done();
+			});
+		});
+
+		it("should not get stuck when a custom eventLogger throws on the error event during finalize()", (done) => {
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "error") {
+					throw new Error("eventLogger boom on error");
+				}
+			});
+
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay: -1, refreshPeriod: 0, eventLogger: throwingEventLogger },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+
+			publisher.publish.mockReturnValue(Promise.reject(new Error("transport failed")));
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			context.finalize().catch((e) => {
+				expect(e.message).toEqual("transport failed");
+				expect(context.isFinalizing()).toEqual(false);
+				expect(context.isFinalized()).toEqual(false);
+				expect(context.pending()).toEqual(1);
+				expect(consoleErrorSpy).toHaveBeenCalled();
+
+				// Retry must still work — the flush must not be left permanently stuck.
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.finalize().then(() => {
+					expect(context.isFinalized()).toEqual(true);
+
+					consoleErrorSpy.mockRestore();
+					done();
+				});
+			});
+		});
+
+		it("should reschedule the automatic publish timer after a scheduled flush fails", (done) => {
+			jest.useFakeTimers("legacy");
+			jest.spyOn(global, "setTimeout");
+
+			const publishDelay = 100;
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, publishDelay, refreshPeriod: 0 },
+				contextParams,
+				getContextResponse
+			);
+
+			context.treatment("exp_test_ab");
+			expect(context.pending()).toEqual(1);
+			expect(setTimeout).toHaveBeenCalledTimes(1);
+
+			publisher.publish.mockReturnValueOnce(Promise.reject(new Error("network error")));
+
+			jest.advanceTimersByTime(publishDelay);
+
+			// Flush the microtask queue so the rejection handler (which restores the
+			// queue and reschedules) has run before we assert on it.
+			Promise.resolve()
+				.then(() => Promise.resolve())
+				.then(() => {
+					expect(context.pending()).toEqual(1);
+					// A new automatic-publish timer must have been scheduled for the
+					// restored batch, otherwise it is silently dropped forever.
+					expect(setTimeout).toHaveBeenCalledTimes(2);
+
+					publisher.publish.mockReturnValueOnce(Promise.resolve());
+
+					jest.advanceTimersByTime(publishDelay);
+
+					Promise.resolve()
+						.then(() => Promise.resolve())
+						.then(() => {
+							expect(context.pending()).toEqual(0);
+							expect(publisher.publish).toHaveBeenCalledTimes(2);
+
+							done();
+						});
+				});
 		});
 	});
 
@@ -4329,6 +4948,87 @@ describe("Context", () => {
 					done();
 				});
 			});
+		});
+
+		it("should clear assignment cache when override changes", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			context.override("exp_test_ab", 2);
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			context.override("exp_test_ab", 2);
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(1);
+
+			context.override("exp_test_ab", 3);
+			context.treatment("exp_test_ab");
+
+			expect(context.pending()).toEqual(2);
+
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.publish().then(() => {
+				expect(publisher.publish).toHaveBeenCalledWith(
+					{
+						publishedAt: 1611141535729,
+						units: publishUnits,
+						hashed: true,
+						sdkVersion: SDK_VERSION,
+						exposures: [
+							{
+								id: 1,
+								name: "exp_test_ab",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 2,
+								assigned: false,
+								eligible: true,
+								overridden: true,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+								ruleOverride: false,
+							},
+							{
+								id: 1,
+								name: "exp_test_ab",
+								unit: "session_id",
+								exposedAt: 1611141535729,
+								variant: 3,
+								assigned: false,
+								eligible: true,
+								overridden: true,
+								fullOn: false,
+								custom: false,
+								audienceMismatch: false,
+								ruleOverride: false,
+							},
+						],
+					},
+					sdk,
+					context,
+					undefined
+				);
+
+				done();
+			});
+		});
+
+		it("should clear assignment cache when overriding computed assignment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+
+			expect(context.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+			expect(context.pending()).toEqual(1);
+
+			context.override("exp_test_ab", 9);
+			expect(context.treatment("exp_test_ab")).toEqual(9);
+
+			expect(context.pending()).toEqual(2);
+
+			done();
 		});
 	});
 
@@ -4606,27 +5306,28 @@ describe("Context", () => {
 			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
 		});
 
-		it("should console an error when JSON cannot be parsed", () => {
-			const errorSpy = jest.spyOn(console, "error");
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+		it("should log an error through eventLogger when JSON cannot be parsed", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
-			);
+			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
 		});
 
-		it("should console an error when a field type is invalid", () => {
-			const errorSpy = jest.spyOn(console, "error");
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+		it("should log an error through eventLogger when a field type is invalid", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
+			expect(eventLogger).toHaveBeenCalledWith(
+				context,
+				"error",
+				expect.objectContaining({
+					message:
+						"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
+				})
 			);
 		});
 	});
@@ -4866,6 +5567,299 @@ describe("Context", () => {
 
 				done();
 			});
+		});
+	});
+});
+
+describe("Context input handling and lifecycle regressions", () => {
+	const contextOptions = {
+		publishDelay: -1,
+		refreshPeriod: 0,
+	};
+
+	const contextParams = {
+		units: {
+			session_id: "test-session",
+		},
+	};
+
+	function newMockSDK() {
+		const sdk = new SDK();
+		const publisher = new ContextPublisher();
+		const provider = new ContextDataProvider();
+
+		sdk.getContextDataProvider.mockReturnValue(provider);
+		sdk.getContextPublisher.mockReturnValue(publisher);
+		sdk.getClient.mockReturnValue(new Client());
+		sdk.getEventLogger.mockReturnValue(SDK.defaultEventLogger);
+
+		return sdk;
+	}
+
+	describe("ready() error handling and readyError()", () => {
+		it("should store error via readyError() when context fetch fails", async () => {
+			const error = new Error("fetch failed");
+			const context = new Context(newMockSDK(), contextOptions, contextParams, Promise.reject(error));
+			await context.ready();
+
+			expect(context.isFailed()).toBe(true);
+			expect(context.readyError()).toBe(error);
+		});
+
+		it("should return null for readyError() when no failure", () => {
+			const context = new Context(newMockSDK(), contextOptions, contextParams, { experiments: [] });
+			expect(context.readyError()).toBe(null);
+		});
+
+		it("should allow treatment/peek/track calls after failed init without throwing", async () => {
+			const error = new Error("fetch failed");
+			const context = new Context(newMockSDK(), contextOptions, contextParams, Promise.reject(error));
+			const result = await context.ready();
+
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(true);
+			expect(context.isReady()).toBe(true);
+
+			expect(context.treatment("any_experiment")).toBe(0);
+			expect(context.peek("any_experiment")).toBe(0);
+			expect(context.variableValue("any_key", "fallback")).toBe("fallback");
+			expect(context.peekVariableValue("any_key", "fallback")).toBe("fallback");
+			expect(context.experiments()).toBeUndefined();
+			expect(context.variableKeys()).toEqual({});
+
+			expect(() => context.track("goal_name")).not.toThrow();
+			expect(() => context.attribute("attr", "value")).not.toThrow();
+		});
+
+		it("should still resolve true and record the error when a custom eventLogger throws on init failure", async () => {
+			const initError = new Error("fetch failed");
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "error") {
+					throw new Error("eventLogger boom on error");
+				}
+			});
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const context = new Context(
+				newMockSDK(),
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				Promise.reject(initError)
+			);
+
+			// The v2 migration guide promises ready() always resolves true; a
+			// throwing observer on the "error" event must not turn that into a
+			// rejection.
+			const result = await context.ready();
+
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(true);
+			expect(context.readyError()).toBe(initError);
+			expect(consoleErrorSpy).toHaveBeenCalled();
+
+			consoleErrorSpy.mockRestore();
+		});
+
+		it("should not mark a successful init as failed when a custom eventLogger throws on the ready event", async () => {
+			const throwingEventLogger = jest.fn((_, eventName) => {
+				if (eventName === "ready") {
+					throw new Error("eventLogger boom on ready");
+				}
+			});
+
+			const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const context = new Context(
+				newMockSDK(),
+				{ ...contextOptions, eventLogger: throwingEventLogger },
+				contextParams,
+				Promise.resolve({ experiments: [] })
+			);
+
+			// The success handler runs `this._logEvent("ready", data)`; an observer
+			// exception there sits between a `.then()` and the constructor's own
+			// `.catch()` on the same promise chain, so an unguarded throw would
+			// incorrectly route through the failure branch and mark this a failed
+			// init even though the fetch itself succeeded.
+			const result = await context.ready();
+
+			expect(result).toBe(true);
+			expect(context.isFailed()).toBe(false);
+			expect(context.readyError()).toBe(null);
+			expect(consoleErrorSpy).toHaveBeenCalled();
+
+			consoleErrorSpy.mockRestore();
+		});
+	});
+
+	describe("variable resolution over experiment arrays", () => {
+		it("should handle unknown variable keys without error", () => {
+			const context = new Context(
+				newMockSDK(),
+				contextOptions,
+				{
+					units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" },
+				},
+				{
+					experiments: [
+						{
+							id: 1,
+							name: "exp_test",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 3603515,
+							seedLo: 233373850,
+							split: [0.5, 0.5],
+							trafficSeedHi: 449867249,
+							trafficSeedLo: 455443629,
+							trafficSplit: [0.0, 1.0],
+							fullOnVariant: 0,
+							audience: null,
+							audienceStrict: false,
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: '{"color":"red"}' },
+							],
+							customFieldValues: null,
+						},
+					],
+				}
+			);
+
+			expect(context.variableValue("nonexistent_key", "default")).toBe("default");
+		});
+	});
+
+	describe("error logging routed through eventLogger", () => {
+		it("should not call console.error directly for custom field parse errors", () => {
+			const eventLogger = jest.fn();
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(eventLogger);
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0, eventLogger },
+				{ units: { session_id: "test" } },
+				{
+					experiments: [
+						{
+							id: 1,
+							name: "exp",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 1,
+							split: [1],
+							trafficSeedHi: 1,
+							trafficSeedLo: 1,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							audience: null,
+							audienceStrict: false,
+							variants: [{ name: "A", config: null }],
+							customFieldValues: [{ name: "bad_json", value: "{invalid", type: "json" }],
+						},
+					],
+				}
+			);
+
+			context.customFieldValue("exp", "bad_json");
+			expect(errorSpy).not.toHaveBeenCalled();
+			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			errorSpy.mockRestore();
+		});
+
+		it("should route variant config parse errors through eventLogger", () => {
+			const eventLogger = jest.fn();
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(eventLogger);
+
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0, eventLogger },
+				{ units: { session_id: "test" } },
+				{
+					experiments: [
+						{
+							id: 1,
+							name: "exp_bad_config",
+							iteration: 1,
+							unitType: "session_id",
+							seedHi: 1,
+							seedLo: 1,
+							split: [1],
+							trafficSeedHi: 1,
+							trafficSeedLo: 1,
+							trafficSplit: [0, 1],
+							fullOnVariant: 0,
+							audience: null,
+							audienceStrict: false,
+							variants: [{ name: "A", config: "{invalid json}" }],
+							customFieldValues: null,
+						},
+					],
+				}
+			);
+
+			expect(errorSpy).not.toHaveBeenCalled();
+			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			errorSpy.mockRestore();
+		});
+	});
+
+	describe("finalizing state", () => {
+		it("should expose isFinalizing/isFinalized as false before finalize", () => {
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(jest.fn());
+
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0 },
+				{ units: { session_id: "test" } },
+				{ experiments: [] }
+			);
+
+			expect(context.isFinalizing()).toBe(false);
+			expect(context.isFinalized()).toBe(false);
+		});
+	});
+
+	describe("attribute map caching", () => {
+		it("should return correct attributes after multiple attribute() calls", () => {
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(jest.fn());
+
+			const context = new Context(
+				sdk,
+				{ publishDelay: -1, refreshPeriod: 0 },
+				{ units: { session_id: "test" } },
+				{ experiments: [] }
+			);
+
+			context.attribute("age", 25);
+			context.attribute("country", "US");
+
+			const attrs = context.getAttributes();
+			expect(attrs).toEqual({ age: 25, country: "US" });
+		});
+	});
+
+	describe("getOptions() returns a shallow copy", () => {
+		it("should not allow mutation of internal options", () => {
+			const sdk = newMockSDK();
+			sdk.getEventLogger.mockReturnValue(jest.fn());
+
+			const originalOptions = { publishDelay: 100, refreshPeriod: 0 };
+			const context = new Context(sdk, originalOptions, { units: { session_id: "test" } }, { experiments: [] });
+
+			const opts = context.getOptions();
+			opts.publishDelay = 9999;
+
+			expect(context.getOptions().publishDelay).toBe(100);
 		});
 	});
 });

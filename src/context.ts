@@ -2,10 +2,10 @@ import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
-import SDK, { EventLogger, EventName } from "./sdk";
-import { ContextPublisher, PublishParams } from "./publisher";
+import SDK, { type EventLogger, type EventName } from "./sdk";
+import { ContextPublisher, type PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { ClientRequestOptions } from "./client";
+import { type ClientRequestOptions } from "./client";
 import { SDK_VERSION } from "./version";
 
 type JSONPrimitive = string | number | boolean | null;
@@ -144,18 +144,22 @@ export default class Context {
 	private _data: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
+	private _failedError: Error | null;
 	private _finalized: boolean;
-	private _finalizing: boolean | Promise<void> | null;
+	private _finalizing: Promise<void> | null;
 	private _goals: Goal[];
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
+	private _attrsMapCache: Record<string, unknown> | null;
+	private _attrsMapCacheSeq: number;
 	private _hashes?: Record<string, string | null>;
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
 	private _refreshInterval?: ReturnType<typeof setInterval>;
+	private _flushPromise?: Promise<Error | undefined>;
 
 	constructor(sdk: SDK, options: ContextOptions, params: ContextParams, promise: ContextData | Promise<ContextData>) {
 		this._sdk = sdk;
@@ -165,6 +169,7 @@ export default class Context {
 		this._opts = options;
 		this._pending = 0;
 		this._failed = false;
+		this._failedError = null;
 		this._finalized = false;
 		this._attrs = [];
 		this._goals = [];
@@ -176,6 +181,8 @@ export default class Context {
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
 		this._attrsSeq = 0;
+		this._attrsMapCache = null;
+		this._attrsMapCacheSeq = -1;
 
 		if (params.units) {
 			this.units(params.units);
@@ -197,6 +204,7 @@ export default class Context {
 					this._init({});
 
 					this._failed = true;
+					this._failedError = error;
 					delete this._promise;
 
 					this._logError(error);
@@ -225,14 +233,16 @@ export default class Context {
 		return this._failed;
 	}
 
+	readyError(): Error | null {
+		return this._failedError;
+	}
+
 	ready() {
 		if (this.isReady()) {
 			return Promise.resolve(true);
 		}
 
-		return new Promise((resolve) => {
-			this._promise?.then(() => resolve(true)).catch((e) => resolve(e));
-		});
+		return this._promise?.then(() => true) ?? Promise.resolve(true);
 	}
 
 	pending() {
@@ -312,23 +322,20 @@ export default class Context {
 	}
 
 	getUnits() {
-		return this._units;
+		return { ...this._units };
 	}
 
 	units(units: Record<string, number | string>) {
-		Object.entries(units).forEach(([unitType, uid]) => {
+		for (const [unitType, uid] of Object.entries(units)) {
 			this.unit(unitType, uid);
-		});
+		}
 	}
 
 	getAttribute(attrName: string) {
-		let result;
-
-		this._attrs.forEach((attr) => {
-			if (attr.name === attrName) result = attr.value;
-		});
-
-		return result;
+		for (let i = this._attrs.length - 1; i >= 0; i--) {
+			if (this._attrs[i].name === attrName) return this._attrs[i].value;
+		}
+		return undefined;
 	}
 
 	attribute(attrName: string, value: unknown) {
@@ -340,18 +347,16 @@ export default class Context {
 
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
-		this._attrs
-			.map((a) => [a.name, a.value])
-			.forEach(([key, value]) => {
-				attributes[key as string] = value;
-			});
+		for (const attr of this._attrs) {
+			attributes[attr.name] = attr.value;
+		}
 		return attributes;
 	}
 
 	attributes(attrs: Record<string, unknown>) {
-		Object.entries(attrs).forEach(([attrName, value]) => {
+		for (const [attrName, value] of Object.entries(attrs)) {
 			this.attribute(attrName, value);
-		});
+		}
 	}
 
 	peek(experimentName: string) {
@@ -399,24 +404,28 @@ export default class Context {
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
-		Object.entries(this._indexVariables).forEach(([key, values]) => {
-			values.forEach((value) => {
+		for (const [key, values] of Object.entries(this._indexVariables)) {
+			for (const value of values) {
 				if (variableExperiments[key]) variableExperiments[key].push(value.data.name);
 				else variableExperiments[key] = [value.data.name];
-			});
-		});
+			}
+		}
 
 		return variableExperiments;
 	}
 
 	override(experimentName: string, variant: number) {
+		// Deliberately allowed after finalize() — not guarded by
+		// _checkNotFinalized(), unlike track()/treatment()/etc. This is the
+		// canonical cross-SDK behavior for this SDK: see cross-sdk-tests
+		// scenario "190 - Post-Finalize - override() Allowed (Verified Finalized)".
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
 	overrides(experimentVariants: Record<string, number>) {
-		Object.entries(experimentVariants).forEach(([experimentName, variant]) => {
+		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
 			this.override(experimentName, variant);
-		});
+		}
 	}
 
 	customAssignment(experimentName: string, variant: number) {
@@ -426,16 +435,24 @@ export default class Context {
 	}
 
 	customAssignments(experimentVariants: Record<string, number>) {
-		Object.entries(experimentVariants).forEach(([experimentName, variant]) => {
+		for (const [experimentName, variant] of Object.entries(experimentVariants)) {
 			this.customAssignment(experimentName, variant);
-		});
+		}
+	}
+
+	getSDK(): SDK {
+		return this._sdk;
+	}
+
+	getOptions(): ContextOptions {
+		return { ...this._opts };
 	}
 
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
-			throw new Error("ABSmartly Context is finalized.");
+			throw new Error("ABsmartly Context is finalized.");
 		} else if (this.isFinalizing()) {
-			throw new Error("ABSmartly Context is finalizing.");
+			throw new Error("ABsmartly Context is finalizing.");
 		}
 	}
 
@@ -450,7 +467,7 @@ export default class Context {
 
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
-			throw new Error("ABSmartly Context is not yet ready.");
+			throw new Error("ABsmartly Context is not yet ready.");
 		}
 
 		if (expectNotFinalized) {
@@ -459,6 +476,9 @@ export default class Context {
 	}
 
 	private _getAttributesMap(): Record<string, unknown> {
+		if (this._attrsMapCache !== null && this._attrsMapCacheSeq === this._attrsSeq) {
+			return this._attrsMapCache;
+		}
 		const attrs: Record<string, unknown> = {};
 		if (this._opts.includeSystemAttributes === true) {
 			const client = this._sdk.getClient();
@@ -472,10 +492,21 @@ export default class Context {
 				attrs["app_version"] = app.version;
 			}
 		}
-		this._attrs.forEach((attr) => {
+		for (const attr of this._attrs) {
 			attrs[attr.name] = attr.value;
-		});
+		}
+		this._attrsMapCache = attrs;
+		this._attrsMapCacheSeq = this._attrsSeq;
 		return attrs;
+	}
+
+	private _evaluateAudience(audience: string): boolean | null {
+		try {
+			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
+		} catch (error) {
+			this._logError(error as Error);
+			return null;
+		}
 	}
 
 	private _assign(experimentName: string) {
@@ -515,8 +546,13 @@ export default class Context {
 				}
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
-					const result = this._audienceMatcher.evaluate(experiment.audience, attrs);
-					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
+					const result = this._evaluateAudience(experiment.audience);
+					// An indeterminate (null) audience result leaves the cached
+					// `audienceMismatch` flag as-is rather than forcing it to `false`,
+					// so a cached mismatch=true assignment isn't wrongly treated as
+					// stale — this only affects the cache-validity check below, not
+					// the flag's value.
+					const newAudienceMismatch = result !== null ? !result : assignment.audienceMismatch;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
@@ -604,9 +640,13 @@ export default class Context {
 					assignment.ruleOverride = true;
 				} else {
 					if (experiment.data.audience && experiment.data.audience.length > 0) {
-						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+						const result = this._evaluateAudience(experiment.data.audience);
 
-						if (typeof result === "boolean") {
+						// Only flag a mismatch when the audience actually evaluated
+						// to a boolean. A null result (e.g. an audience with no
+						// usable filter like `{}`) leaves audienceMismatch false,
+						// matching the collector (ContextAPI: `if (result != null)`).
+						if (result !== null) {
 							assignment.audienceMismatch = !result;
 						}
 					}
@@ -753,14 +793,22 @@ export default class Context {
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
 						} catch (e) {
-							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
+							this._logError(
+								new Error(
+									`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${
+										(e as Error).message
+									}`
+								)
+							);
 							return null;
 						}
 					case "boolean":
 						return field.value === "true";
 					default:
-						console.error(
-							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+						this._logError(
+							new Error(
+								`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+							)
 						);
 						return null;
 				}
@@ -795,14 +843,13 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
-	private _variableValue(key: string, defaultValue: string): string {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
+	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
+		for (const experiment of this._indexVariables[key] ?? []) {
+			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
-				if (!assignment.exposed) {
+				if (shouldQueueExposure && !assignment.exposed) {
 					assignment.exposed = true;
-
 					this._queueExposure(experimentName, assignment);
 				}
 
@@ -815,18 +862,12 @@ export default class Context {
 		return defaultValue;
 	}
 
-	private _peekVariable(key: string, defaultValue: string): string {
-		for (const i in this._indexVariables[key]) {
-			const experimentName = this._indexVariables[key][i].data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					return assignment.variables[key] as string;
-				}
-			}
-		}
+	private _variableValue(key: string, defaultValue: string): string {
+		return this._resolveVariableValue(key, defaultValue, true);
+	}
 
-		return defaultValue;
+	private _peekVariable(key: string, defaultValue: string): string {
+		return this._resolveVariableValue(key, defaultValue, false);
 	}
 
 	private _validateGoal(goalName: string, properties?: Record<string, unknown>) {
@@ -856,6 +897,7 @@ export default class Context {
 		if (this.isReady()) {
 			if (this._publishTimeout === undefined && this._opts.publishDelay >= 0) {
 				this._publishTimeout = setTimeout(() => {
+					// _flush already logs publish errors via the callback.
 					this._flush();
 				}, this._opts.publishDelay);
 			}
@@ -890,92 +932,220 @@ export default class Context {
 		return allAttributes;
 	}
 
-	private _flush(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
+	// A caught exception or a rejected promise's reason can be any value. Only
+	// a truthy reason survives the `if (error)` checks in `publish()`'s and
+	// `finalize()`'s callbacks, so a falsy one (`undefined`, `null`, `false`)
+	// must be replaced with a truthy `Error`; a truthy non-Error reason (e.g. a
+	// plain string) is left as-is to preserve its original shape.
+	private _asFailure(reason: unknown): Error {
+		if (reason) {
+			return reason as Error;
+		}
+		return new Error(`Publish failed with a falsy reason: ${String(reason)}`);
+	}
+
+	private _flush(
+		callback?: (error?: Error) => void,
+		requestOptions?: ClientRequestOptions
+	): Promise<Error | undefined> {
 		if (this._publishTimeout !== undefined) {
 			clearTimeout(this._publishTimeout);
 			delete this._publishTimeout;
+		}
+
+		// A flush is already in flight (it already reset `_pending` synchronously,
+		// so a concurrent caller can't see it via `pending()`). Wait for it to settle
+		// before re-evaluating, so callers like `finalize()` don't act on a queue that
+		// only *looks* empty because the snapshot hasn't been restored/published yet.
+		if (this._flushPromise) {
+			return this._flushPromise.then(() => this._flush(callback, requestOptions));
 		}
 
 		if (this._pending === 0) {
 			if (typeof callback === "function") {
 				callback();
 			}
-		} else {
-			if (!this._failed) {
-				try {
-					const request: PublishParams = {
-						publishedAt: Date.now(),
-						units: Object.entries(this._units).map((entry) => ({
-							type: entry[0],
-							uid: this._unitHash(entry[0]),
-						})),
-						hashed: true,
-						sdkVersion: SDK_VERSION,
-					};
+			return Promise.resolve(undefined);
+		}
 
-					if (this._goals.length > 0) {
-						request.goals = this._goals.map((x) => ({
-							name: x.name,
-							achievedAt: x.achievedAt,
-							properties: x.properties,
-						}));
-					}
-
-					if (this._exposures.length > 0) {
-						request.exposures = this._exposures.map((x) => ({
-							id: x.id,
-							name: x.name,
-							unit: x.unit,
-							exposedAt: x.exposedAt,
-							variant: x.variant,
-							assigned: x.assigned,
-							eligible: x.eligible,
-							overridden: x.overridden,
-							fullOn: x.fullOn,
-							custom: x.custom,
-							audienceMismatch: x.audienceMismatch,
-							ruleOverride: x.ruleOverride,
-						}));
-					}
-
-					const allAttributes = this._buildAttributes();
-					if (allAttributes.length > 0) {
-						request.attributes = allAttributes;
-					}
-
-					this._publisher
-						.publish(request, this._sdk, this, requestOptions)
-						.then(() => {
-							this._logEvent("publish", request);
-
-							if (typeof callback === "function") {
-								callback();
-							}
-						})
-						.catch((e: Error) => {
-							this._logError(e);
-
-							if (typeof callback === "function") {
-								callback(e);
-							}
-						});
-				} catch (e) {
-					this._logError(e as Error);
-
-					if (typeof callback === "function") {
-						callback(e as Error);
-					}
-				}
-			} else {
-				if (typeof callback === "function") {
-					callback();
-				}
-			}
+		if (this._failed) {
+			// _logError() isolates a throwing custom eventLogger internally, so it
+			// (and the internal `callback` below, which only calls resolve/reject
+			// and _logEvent()/_logError()) can't propagate an observer exception
+			// out of _flush() — that would skip clearing
+			// `_pending`/`_exposures`/`_goals` and, via `_finalize`'s callback never
+			// running, permanently strand `_finalizing` with no settlement.
+			this._logError(
+				new Error(
+					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+				)
+			);
 
 			this._pending = 0;
 			this._exposures = [];
 			this._goals = [];
+
+			if (typeof callback === "function") {
+				callback();
+			}
+			return Promise.resolve(undefined);
 		}
+
+		let request: PublishParams;
+		try {
+			request = {
+				publishedAt: Date.now(),
+				units: Object.entries(this._units).map((entry) => ({
+					type: entry[0],
+					uid: this._unitHash(entry[0]),
+				})),
+				hashed: true,
+				sdkVersion: SDK_VERSION,
+			};
+
+			if (this._goals.length > 0) {
+				request.goals = this._goals.map((x) => ({
+					name: x.name,
+					achievedAt: x.achievedAt,
+					properties: x.properties,
+				}));
+			}
+
+			if (this._exposures.length > 0) {
+				request.exposures = this._exposures.map((x) => ({
+					id: x.id,
+					name: x.name,
+					unit: x.unit,
+					exposedAt: x.exposedAt,
+					variant: x.variant,
+					assigned: x.assigned,
+					eligible: x.eligible,
+					overridden: x.overridden,
+					fullOn: x.fullOn,
+					custom: x.custom,
+					audienceMismatch: x.audienceMismatch,
+					ruleOverride: x.ruleOverride,
+				}));
+			}
+
+			const allAttributes = this._buildAttributes();
+			if (allAttributes.length > 0) {
+				request.attributes = allAttributes;
+			}
+		} catch (e) {
+			const failure = this._asFailure(e);
+			this._logError(failure);
+
+			if (typeof callback === "function") {
+				callback(failure);
+			}
+			return Promise.resolve(failure);
+		}
+
+		// Snapshot and reset synchronously before the async publish.
+		// The data is already copied into `request` via .map(), so clearing
+		// immediately is safe and allows new events to accumulate during the
+		// in-flight publish. On failure, we restore the snapshot so the events
+		// are retried on the next flush cycle. `_flushPromise` tracks this in-flight
+		// attempt so concurrent callers (e.g. `finalize()`) can wait on it instead of
+		// racing the synchronous reset above.
+		const pendingCount = this._pending;
+		const pendingExposures = this._exposures;
+		const pendingGoals = this._goals;
+
+		this._pending = 0;
+		this._exposures = [];
+		this._goals = [];
+
+		// Routing the publisher call through a shared handler normalizes a
+		// synchronously throwing custom publisher into the same restore/reject path
+		// as an async rejection, so the snapshot is restored either way. The call
+		// itself stays synchronous (no extra microtask hop) so timer-driven callers
+		// observe the publish attempt within the same tick, as before.
+		const onFailure = (reason: unknown): Error => {
+			// A custom publisher can reject with any value, including a falsy one
+			// (`undefined`, `null`, `false`). `publish()`/`finalize()` decide success
+			// with `if (error)`, so a falsy reason would otherwise be mistaken for a
+			// successful publish while this restored batch is left stranded. Normalize
+			// only falsy reasons to a truthy `Error`; a truthy non-Error reason (e.g. a
+			// plain string) is passed through unchanged to preserve its original shape.
+			const e = this._asFailure(reason);
+
+			this._pending += pendingCount;
+			// Prepend rather than append: the restored batch failed to send while
+			// this._exposures/this._goals were already accumulating newer events
+			// recorded during the in-flight publish, so appending would put the
+			// older, previously-recorded events after the newer ones — reordering
+			// exposures/goals as seen by the collector.
+			this._exposures = pendingExposures.concat(this._exposures);
+			this._goals = pendingGoals.concat(this._goals);
+
+			this._logError(e);
+
+			// Reschedule automatic delivery for the restored batch; this is a no-op
+			// unless publishDelay >= 0 and no timer is already pending.
+			this._setTimeout();
+
+			// `callback` is internal glue (from `publish()`/`finalize()`); it only
+			// calls resolve/reject and _logEvent()/_logError() (both of which
+			// isolate a throwing custom eventLogger internally), so it can't throw.
+			if (typeof callback === "function") {
+				callback(e);
+			}
+
+			return e;
+		};
+
+		// The batch has already been delivered by this point, so an exception from
+		// observing that success (e.g. a throwing custom eventLogger) must not be
+		// treated as a publish failure — that would incorrectly restore and resend
+		// an already-delivered batch. `_logEvent()` isolates the observer exception
+		// internally, and `callback()` still runs unconditionally afterward so
+		// `publish()`/`finalize()`'s own promise settles either way.
+		const onSuccess = (): undefined => {
+			this._logEvent("publish", request);
+
+			if (typeof callback === "function") {
+				callback();
+			}
+
+			return undefined;
+		};
+
+		let publishResult: Promise<void>;
+		try {
+			// `Promise.resolve(...)` normalizes the extension point: a custom
+			// publisher is only required to conform to `ContextPublisher`'s type at
+			// compile time, but nothing stops a runtime implementation from
+			// returning a non-Promise (e.g. a bare boolean from a beacon-style
+			// publisher, or a forgotten `return`). Without normalizing, the `.then`
+			// access below would throw synchronously outside this `try`, bricking
+			// the flush before the queue could be restored or the callback invoked.
+			publishResult = Promise.resolve(this._publisher.publish(request, this._sdk, this, requestOptions));
+		} catch (e) {
+			const result = onFailure(e);
+			this._flushPromise = undefined;
+			return Promise.resolve(result);
+		}
+
+		// Neither `onSuccess` nor `onFailure` throws (both isolate observer
+		// exceptions internally), so `.then(onSuccess, onFailure)` never rejects.
+		// The `_flushPromise` cleanup below still uses the two-argument `.then()`
+		// form defensively, so a flush can never get stuck referencing a settled
+		// promise. `.finally()` is avoided (not part of the ES6 Promise contract
+		// the documented IE 10 target relies on a polyfill for).
+		this._flushPromise = publishResult.then(onSuccess, onFailure).then(
+			(result) => {
+				this._flushPromise = undefined;
+				return result;
+			},
+			(e) => {
+				this._flushPromise = undefined;
+				throw e;
+			}
+		);
+
+		return this._flushPromise;
 	}
 
 	private _refresh(callback?: (error?: Error) => void, requestOptions?: ClientRequestOptions) {
@@ -1007,13 +1177,28 @@ export default class Context {
 
 	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
 		if (this._eventLogger) {
-			this._eventLogger(this, eventName, data);
+			// A throwing custom eventLogger must never propagate out of this method:
+			// every call site treats logging as a side effect, and letting an
+			// observer exception escape here has repeatedly corrupted unrelated
+			// control flow (e.g. turning a successful init into a "failed" one when
+			// this call sits inside a .then() immediately followed by .catch(),
+			// or stranding a promise whose settlement was supposed to happen right
+			// after this call).
+			try {
+				this._eventLogger(this, eventName, data);
+			} catch (observerError) {
+				console.error(observerError);
+			}
 		}
 	}
 
 	private _logError(error: Error) {
 		if (this._eventLogger) {
-			this._eventLogger(this, "error", error);
+			try {
+				this._eventLogger(this, "error", error);
+			} catch (observerError) {
+				console.error(observerError);
+			}
 		}
 	}
 
@@ -1038,7 +1223,7 @@ export default class Context {
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
 
-		(data.experiments || []).forEach((experiment) => {
+		for (const experiment of data.experiments || []) {
 			const variables: Record<string, unknown>[] = [];
 			const entry = {
 				data: experiment,
@@ -1047,11 +1232,27 @@ export default class Context {
 
 			index[experiment.name] = entry;
 
-			experiment.variants.forEach((variant, i) => {
+			for (let i = 0; i < experiment.variants.length; i++) {
+				const variant = experiment.variants[i];
 				const config = variant.config;
-				const parsed = config != null && config.length > 0 ? JSON.parse(config) : {};
+				let parsed = {};
 
-				Object.keys(parsed).forEach((key) => {
+				if (config != null && config.length > 0) {
+					try {
+						const value = JSON.parse(config);
+						if (isObject(value)) {
+							parsed = value;
+						}
+					} catch (error) {
+						this._logError(
+							new Error(
+								`Failed to parse config for experiment '${experiment.name}' variant ${i}: ${(error as Error).message}`
+							)
+						);
+					}
+				}
+
+				for (const key of Object.keys(parsed)) {
 					const value = entry;
 					if (indexVariables[key]) {
 						insertUniqueSorted(
@@ -1060,57 +1261,90 @@ export default class Context {
 							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
 					} else indexVariables[key] = [value];
-				});
+				}
 
 				variables[i] = parsed;
-			});
-		});
+			}
+		}
 
 		this._index = index;
 		this._indexVariables = indexVariables;
 		this._assignments = assignments;
 
 		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {
+			// _refresh already logs refresh errors via the callback.
 			this._refreshInterval = setInterval(() => this._refresh(), this._opts.refreshPeriod);
 		}
 	}
 
 	private _finalize(requestOptions?: ClientRequestOptions) {
-		if (!this._finalized) {
-			if (!this._finalizing) {
-				if (this._refreshInterval !== undefined) {
-					clearInterval(this._refreshInterval);
-					delete this._refreshInterval;
-				}
+		if (this._finalized) {
+			return Promise.resolve();
+		}
 
-				if (this.pending() > 0) {
-					this._finalizing = new Promise<void>((resolve, reject) => {
-						this._flush((error) => {
-							this._finalizing = null;
-
-							if (error) {
-								reject(error);
-							} else {
-								this._finalized = true;
-								this._logEvent("finalize");
-
-								resolve();
-							}
-						}, requestOptions);
-					});
-
-					return this._finalizing;
-				}
-
-				this._finalized = true;
-				this._logEvent("finalize");
-
-				return Promise.resolve();
-			}
-
+		if (this._finalizing) {
 			return this._finalizing;
 		}
 
-		return Promise.resolve();
+		if (this._refreshInterval !== undefined) {
+			clearInterval(this._refreshInterval);
+			delete this._refreshInterval;
+		}
+
+		// `pending() === 0` alone is not sufficient: `_flush` resets `_pending`
+		// synchronously before its publish settles, so a flush can be in flight
+		// while the queue already looks empty. Only take the synchronous fast
+		// path when nothing is pending AND no flush is in progress; otherwise
+		// fall through to `_flush`, which itself waits for any in-flight attempt.
+		if (this._pending === 0 && !this._flushPromise) {
+			this._finalized = true;
+			this._logEvent("finalize");
+
+			return Promise.resolve();
+		}
+
+		// Assign `this._finalizing` BEFORE calling `_flush`, using a manually
+		// created deferred rather than passing a callback into a `new
+		// Promise(executor)`. `_flush`'s callback can fire synchronously (e.g.
+		// from a synchronously throwing custom publisher, or the already-failed
+		// fast path), and if it ran inside a `new Promise((resolve, reject) => {
+		// this._flush(callback...) })` executor, it would run — and clear
+		// `this._finalizing` — before that `new Promise(...)` expression itself
+		// finished evaluating; the outer `this._finalizing = ...` assignment
+		// would then immediately clobber the clear back to a non-null value,
+		// leaving `isFinalizing()` stuck `true` forever. Setting `_finalizing`
+		// up front, before `_flush` is even called, avoids that ordering
+		// entirely: whether the callback fires synchronously or asynchronously,
+		// `this._finalizing` is already the promise being resolved below.
+		let resolveFinalizing!: () => void;
+		let rejectFinalizing!: (error: Error) => void;
+		const finalizing = new Promise<void>((resolve, reject) => {
+			resolveFinalizing = resolve;
+			rejectFinalizing = reject;
+		});
+
+		this._finalizing = finalizing;
+
+		this._flush((error) => {
+			if (this._finalizing === finalizing) {
+				this._finalizing = null;
+			}
+
+			if (error) {
+				rejectFinalizing(error);
+			} else {
+				this._finalized = true;
+
+				// Settle the finalize promise before logging the event: even though
+				// `_logEvent()` isolates a throwing custom eventLogger internally
+				// (it never throws), resolving first means `finalizing` settles
+				// exactly when the state it reflects (`_finalized`/`isFinalizing()`)
+				// becomes true, rather than depending on the logger call completing.
+				resolveFinalizing();
+				this._logEvent("finalize");
+			}
+		}, requestOptions);
+
+		return finalizing;
 	}
 }

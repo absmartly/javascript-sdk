@@ -8,6 +8,7 @@ import {
 	isObject,
 	isPromise,
 	stringToUint8Array,
+	toWellFormedString,
 } from "../utils";
 
 class SomeClass {}
@@ -235,6 +236,17 @@ describe("hashUnit()", () => {
 
 		done();
 	});
+
+	it("should hash astral/multibyte characters correctly", (done) => {
+		// Characters outside the BMP are stored as UTF-16 surrogate pairs and must
+		// encode to 4-byte UTF-8; these canonical hashes are shared across all SDKs.
+		expect(hashUnit("😀")).toBe("KgLqw51xanDs83V5GFkntg");
+		expect(hashUnit("😀😁")).toBe("ZJuDalvUWRJnVtkspj-2bQ");
+		expect(hashUnit("世界你好")).toBe("v2CJG7YcjjWncKOSCzF2GA");
+		expect(hashUnit("user_世界_123")).toBe("SCgk4OzXlFMvo1UMsP88fA");
+
+		done();
+	});
 });
 
 describe("chooseVariant()", () => {
@@ -303,6 +315,74 @@ describe("stringToUint8Array()", () => {
 		}
 		done();
 	});
+
+	describe("unmatched surrogates", () => {
+		// Unmatched surrogate code units are not valid UTF-8 code points; both TextEncoder
+		// and the manual fallback must emit U+FFFD (ef bf bd) for each one, matching the
+		// canonical UTF-8 replacement-character behavior.
+		const testCases = [
+			["lone high surrogate at end of string", "\uD800", Uint8Array.from([0xef, 0xbf, 0xbd])],
+			["lone low surrogate", "\uDC00", Uint8Array.from([0xef, 0xbf, 0xbd])],
+			["high surrogate followed by non-surrogate", "\uD800X", Uint8Array.from([0xef, 0xbf, 0xbd, 0x58])],
+			[
+				"two consecutive lone high surrogates",
+				"\uD800\uD800",
+				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
+			],
+			[
+				"two consecutive lone low surrogates",
+				"\uDC00\uDC00",
+				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
+			],
+			[
+				"low surrogate followed by high surrogate (wrong order)",
+				"\uDC00\uD800",
+				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
+			],
+			["lone high surrogate after ascii", "a\uD800", Uint8Array.from([0x61, 0xef, 0xbf, 0xbd])],
+			["lone low surrogate before ascii", "\uDC00b", Uint8Array.from([0xef, 0xbf, 0xbd, 0x62])],
+		];
+
+		it("should emit U+FFFD for unmatched surrogates via the built-in TextEncoder", (done) => {
+			for (const [, input, expected] of testCases) {
+				const array = stringToUint8Array(input);
+				expect(Array.from(array)).toEqual(Array.from(expected));
+			}
+			done();
+		});
+
+		it("should emit U+FFFD for unmatched surrogates via the manual fallback", (done) => {
+			const OriginalTextEncoder = global.TextEncoder;
+			// eslint-disable-next-line no-global-assign
+			delete global.TextEncoder;
+
+			try {
+				for (const [, input, expected] of testCases) {
+					const array = stringToUint8Array(input);
+					expect(Array.from(array)).toEqual(Array.from(expected));
+				}
+			} finally {
+				global.TextEncoder = OriginalTextEncoder;
+			}
+			done();
+		});
+
+		it("should produce identical hashUnit results for both code paths", (done) => {
+			const OriginalTextEncoder = global.TextEncoder;
+
+			for (const [, input] of testCases) {
+				const nativeHash = hashUnit(input);
+
+				// eslint-disable-next-line no-global-assign
+				delete global.TextEncoder;
+				const fallbackHash = hashUnit(input);
+				global.TextEncoder = OriginalTextEncoder;
+
+				expect(fallbackHash).toBe(nativeHash);
+			}
+			done();
+		});
+	});
 });
 
 describe("base64UrlNoPadding()", () => {
@@ -337,6 +417,39 @@ describe("base64UrlNoPadding()", () => {
 			const bytes = stringToUint8Array(testCase[0]);
 			expect(base64UrlNoPadding(bytes)).toEqual(testCase[1]);
 		});
+
+		done();
+	});
+});
+
+describe("toWellFormedString()", () => {
+	it("should leave well-formed strings unchanged", (done) => {
+		expect(toWellFormedString("")).toBe("");
+		expect(toWellFormedString("normal string")).toBe("normal string");
+		expect(toWellFormedString("açb↓c")).toBe("açb↓c");
+		expect(toWellFormedString("😀")).toBe("😀");
+		expect(toWellFormedString("a😀b")).toBe("a😀b");
+
+		done();
+	});
+
+	it("should replace unmatched surrogates with U+FFFD", (done) => {
+		expect(toWellFormedString("\uD800")).toBe("�");
+		expect(toWellFormedString("\uDC00")).toBe("�");
+		expect(toWellFormedString("\uD800X")).toBe("�X");
+		expect(toWellFormedString("a\uD800b")).toBe("a�b");
+		expect(toWellFormedString("\uD800\uD800")).toBe("��");
+		expect(toWellFormedString("\uDC00\uD800")).toBe("��");
+
+		done();
+	});
+
+	it("should always be safe to pass to encodeURIComponent()", (done) => {
+		const inputs = ["\uD800", "\uDC00", "\uD800X", "a\uD800b", "\uD800\uD800", "\uDC00\uD800", "normal", "😀"];
+
+		for (const input of inputs) {
+			expect(() => encodeURIComponent(toWellFormedString(input))).not.toThrow();
+		}
 
 		done();
 	});
