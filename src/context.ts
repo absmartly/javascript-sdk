@@ -76,7 +76,7 @@ type Assignment = {
 	// the exposure-firing gate (`_triggerExposures`) must special-case `overridden` explicitly to
 	// reproduce the same firing outcome (an override always fires its own exposure).
 	suppressed?: boolean;
-	holdouts?: Experiment[];
+	holdouts?: HoldoutExperiment[];
 	holdoutAssignments?: (Assignment | null)[];
 	// Only set on a holdout's own resolved Assignment (as returned by _getHoldoutAssignment): the
 	// arm count (`split.length`) the holdout's definition had at the moment `variant` was
@@ -86,10 +86,25 @@ type Assignment = {
 	holdoutArmCount?: number;
 };
 
+export type HoldoutData = {
+	id: number;
+	name: string;
+	unitType: string | null;
+	iteration: number;
+	seedHi: number;
+	seedLo: number;
+	split: number[];
+	holdoutType?: string;
+};
+
+type HoldoutExperiment = {
+	data: HoldoutData;
+};
+
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
-	holdouts?: Experiment[] | null;
+	holdouts?: HoldoutExperiment[] | null;
 };
 
 export type Unit = {
@@ -143,7 +158,7 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
-	holdouts?: ExperimentData[];
+	holdouts?: HoldoutData[];
 };
 
 // Ported verbatim from java-sdk's Context.isHeldOutBy (Context.java:1319-1330). Decides whether
@@ -181,7 +196,7 @@ export default class Context {
 	private _goals: Goal[];
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
-	private _holdoutsById: Record<number, ExperimentData>;
+	private _holdoutsById: Record<number, HoldoutData>;
 	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
@@ -1383,7 +1398,7 @@ export default class Context {
 	// reference only if the id is no longer present, e.g. the holdout was removed by the latest
 	// refresh) — this mirrors java-sdk's resolveLiveHoldout and ensures the cache is keyed and
 	// validated against the currently-installed definition rather than a possibly-dead one.
-	private _getHoldoutAssignment(holdout: Experiment, unitType: string): Assignment | null {
+	private _getHoldoutAssignment(holdout: HoldoutExperiment, unitType: string): Assignment | null {
 		const liveHoldoutData = this._holdoutsById[holdout.data.id] ?? holdout.data;
 
 		const cacheKey = `${liveHoldoutData.id}:${unitType}`;
@@ -1433,10 +1448,10 @@ export default class Context {
 
 		// Live index of holdout definitions by id, skipping holdouts with no/empty
 		// split (they can never be assigned to, so they are treated as non-existent).
-		// Kept as raw ExperimentData (not a resolved Experiment/Assignment) so later
+		// Kept as raw HoldoutData (not a resolved HoldoutExperiment/Assignment) so later
 		// lookups (e.g. resolving a holdout's own assignment) always read against the
 		// currently-installed data rather than a possibly-stale cached reference.
-		const holdoutsById: Record<number, ExperimentData> = {};
+		const holdoutsById: Record<number, HoldoutData> = {};
 
 		(data.holdouts || []).forEach((holdout) => {
 			if (holdout.split && holdout.split.length > 0) {
@@ -1446,12 +1461,12 @@ export default class Context {
 
 		this._holdoutsById = holdoutsById;
 
-		// Experiment wrappers (data + parsed variables) for holdouts, built lazily and
+		// Experiment wrappers (data only) for holdouts, built lazily and
 		// memoized per _init() call so a holdout referenced by multiple experiments is
 		// only parsed once.
-		const holdoutExperiments: Record<number, Experiment> = {};
+		const holdoutExperiments: Record<number, HoldoutExperiment> = {};
 
-		const resolveHoldoutExperiment = (holdoutId: number): Experiment | undefined => {
+		const resolveHoldoutExperiment = (holdoutId: number): HoldoutExperiment | undefined => {
 			if (holdoutExperiments[holdoutId]) {
 				return holdoutExperiments[holdoutId];
 			}
@@ -1463,9 +1478,8 @@ export default class Context {
 				return undefined;
 			}
 
-			const holdoutEntry: Experiment = {
+			const holdoutEntry: HoldoutExperiment = {
 				data: holdoutData,
-				variables: [],
 			};
 
 			holdoutExperiments[holdoutId] = holdoutEntry;
@@ -1475,9 +1489,9 @@ export default class Context {
 		(data.experiments || []).forEach((experiment) => {
 			const variables: Record<string, unknown>[] = [];
 
-			let holdouts: Experiment[] | null = null;
+			let holdouts: HoldoutExperiment[] | null = null;
 			if (experiment.holdoutIds && experiment.holdoutIds.length > 0) {
-				const resolved: Experiment[] = [];
+				const resolved: HoldoutExperiment[] = [];
 
 				experiment.holdoutIds.forEach((holdoutId) => {
 					const holdoutExperiment = resolveHoldoutExperiment(holdoutId);
