@@ -4830,7 +4830,7 @@ describe("Context", () => {
 			});
 		});
 
-		it("should reschedule the automatic publish timer after a scheduled flush fails", (done) => {
+		it("should keep a failed scheduled batch pending until another event schedules a flush", (done) => {
 			jest.useFakeTimers("legacy");
 			jest.spyOn(global, "setTimeout");
 
@@ -4850,28 +4850,27 @@ describe("Context", () => {
 
 			jest.advanceTimersByTime(publishDelay);
 
-			// Flush the microtask queue so the rejection handler (which restores the
-			// queue and reschedules) has run before we assert on it.
 			Promise.resolve()
 				.then(() => Promise.resolve())
 				.then(() => {
 					expect(context.pending()).toEqual(1);
-					// A new automatic-publish timer must have been scheduled for the
-					// restored batch, otherwise it is silently dropped forever.
+					expect(setTimeout).toHaveBeenCalledTimes(1);
+					expect(publisher.publish).toHaveBeenCalledTimes(1);
+
+					context.track("goal1");
+					expect(context.pending()).toEqual(2);
 					expect(setTimeout).toHaveBeenCalledTimes(2);
 
 					publisher.publish.mockReturnValueOnce(Promise.resolve());
-
 					jest.advanceTimersByTime(publishDelay);
 
-					Promise.resolve()
-						.then(() => Promise.resolve())
-						.then(() => {
-							expect(context.pending()).toEqual(0);
-							expect(publisher.publish).toHaveBeenCalledTimes(2);
+					return Promise.resolve().then(() => Promise.resolve());
+				})
+				.then(() => {
+					expect(context.pending()).toEqual(0);
+					expect(publisher.publish).toHaveBeenCalledTimes(2);
 
-							done();
-						});
+					done();
 				});
 		});
 	});

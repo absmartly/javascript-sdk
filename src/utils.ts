@@ -177,7 +177,7 @@ export function toWellFormedString(value: string): string {
 
 export function stringToUint8Array(value: string) {
 	if (typeof TextEncoder !== "undefined") {
-		return new TextEncoder().encode(value);
+		return new Uint8Array(new TextEncoder().encode(value));
 	}
 
 	const utf8: number[] = [];

@@ -1046,7 +1046,7 @@ export default class Context {
 		// The data is already copied into `request` via .map(), so clearing
 		// immediately is safe and allows new events to accumulate during the
 		// in-flight publish. On failure, we restore the snapshot so the events
-		// are retried on the next flush cycle. `_flushPromise` tracks this in-flight
+		// remain pending for a later flush. `_flushPromise` tracks this in-flight
 		// attempt so concurrent callers (e.g. `finalize()`) can wait on it instead of
 		// racing the synchronous reset above.
 		const pendingCount = this._pending;
@@ -1081,10 +1081,6 @@ export default class Context {
 			this._goals = pendingGoals.concat(this._goals);
 
 			this._logError(e);
-
-			// Reschedule automatic delivery for the restored batch; this is a no-op
-			// unless publishDelay >= 0 and no timer is already pending.
-			this._setTimeout();
 
 			// `callback` is internal glue (from `publish()`/`finalize()`); it only
 			// calls resolve/reject and _logEvent()/_logError() (both of which

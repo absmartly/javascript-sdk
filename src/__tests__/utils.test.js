@@ -367,6 +367,35 @@ describe("stringToUint8Array()", () => {
 			done();
 		});
 
+		it("should copy bytes from a TextEncoder view with an oversized backing buffer", (done) => {
+			const OriginalTextEncoder = global.TextEncoder;
+			const expected = hashUnit("session_abc123");
+
+			// eslint-disable-next-line no-global-assign
+			global.TextEncoder = class {
+				encode(value) {
+					const bytes = OriginalTextEncoder
+						? new OriginalTextEncoder().encode(value)
+						: Uint8Array.from([115, 101, 115, 115, 105, 111, 110, 95, 97, 98, 99, 49, 50, 51]);
+					const buffer = new ArrayBuffer(bytes.byteLength + 16);
+					const view = new Uint8Array(buffer, 8, bytes.byteLength);
+					view.set(bytes);
+					return view;
+				}
+			};
+
+			try {
+				const bytes = stringToUint8Array("session_abc123");
+				expect(bytes.byteOffset).toBe(0);
+				expect(bytes.byteLength).toBe(bytes.buffer.byteLength);
+				expect(hashUnit("session_abc123")).toBe(expected);
+			} finally {
+				global.TextEncoder = OriginalTextEncoder;
+			}
+
+			done();
+		});
+
 		it("should produce identical hashUnit results for both code paths", (done) => {
 			const OriginalTextEncoder = global.TextEncoder;
 
