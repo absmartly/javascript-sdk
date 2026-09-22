@@ -89,7 +89,7 @@ type Assignment = {
 export type HoldoutData = {
 	id: number;
 	name: string;
-	unitType: string | null;
+	unitType?: string | null;
 	iteration: number;
 	seedHi: number;
 	seedLo: number;
@@ -97,7 +97,7 @@ export type HoldoutData = {
 	holdoutType?: string;
 };
 
-type HoldoutExperiment = {
+export type HoldoutExperiment = {
 	data: HoldoutData;
 };
 
