@@ -6,5 +6,5 @@ import { ContextPublisher } from "./publisher";
 // eslint-disable-next-line no-shadow
 import { AbortController } from "./abort";
 
-export { mergeConfig, AbortController, Context, ContextDataProvider, ContextPublisher, SDK };
-export default { mergeConfig, AbortController, Context, ContextDataProvider, ContextPublisher, SDK };
+export { mergeConfig, AbortController, Context, ContextDataProvider, ContextPublisher, SDK, SDK as ABsmartly };
+export default { mergeConfig, AbortController, Context, ContextDataProvider, ContextPublisher, SDK, ABsmartly: SDK };

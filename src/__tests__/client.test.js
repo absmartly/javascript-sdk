@@ -687,6 +687,29 @@ describe("Client", () => {
 			});
 	});
 
+	it("request() should not throw on unmatched surrogates in query parameters", () => {
+		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+		const client = new Client(clientOptions);
+
+		// A lone UTF-16 surrogate is accepted JavaScript string content but is not
+		// valid UTF-8; unlike URLSearchParams (which substitutes U+FFFD),
+		// encodeURIComponent() throws URIError on it directly, so it must be
+		// normalized to well-formed UTF-16 first.
+		return client
+			.request({
+				method: "GET",
+				path: "/context",
+				query: { application: "\uD800" },
+			})
+			.then((response) => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=%EF%BF%BD`, expect.any(Object));
+
+				expect(response).toEqual(defaultMockResponse);
+			});
+	});
+
 	it("request() should omit query parameters if dict empty", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
@@ -1187,5 +1210,42 @@ describe("Client", () => {
 
 				done();
 			});
+	});
+
+	describe("timeout option", () => {
+		it("should accept an explicit timeout of 0 (nullish coalescing, not falsy)", () => {
+			const client = new Client({
+				endpoint,
+				agent,
+				environment,
+				apiKey,
+				application,
+				timeout: 0,
+			});
+
+			expect(client).toBeInstanceOf(Client);
+		});
+
+		it("should still retry a failing-then-succeeding request when timeout is 0 (no deadline)", (done) => {
+			fetch
+				.mockResolvedValueOnce(responseMock(500, "server error", "server error text"))
+				.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
+			const client = new Client(Object.assign({}, clientOptions, { timeout: 0, retries: 5 }));
+
+			client
+				.request({
+					method: "GET",
+					path: "/context",
+				})
+				.then((response) => {
+					expect(fetch).toHaveBeenCalledTimes(2);
+					expect(response).toEqual(defaultMockResponse);
+
+					done();
+				});
+
+			advanceFakeTimers();
+		});
 	});
 });

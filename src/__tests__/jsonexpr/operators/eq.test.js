@@ -106,5 +106,9 @@ describe("EqOperator", () => {
 			evaluator.evaluate.mockClear();
 			evaluator.compare.mockClear();
 		});
+
+		it("should return null for empty args", () => {
+			expect(operator.evaluate(evaluator, [])).toBe(null);
+		});
 	});
 });

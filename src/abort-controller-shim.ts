@@ -5,6 +5,8 @@ export type AbortControllerEvents = {
 // eslint-disable-next-line no-shadow
 export class AbortSignal {
 	aborted = false;
+	reason: unknown = undefined;
+	onabort?: ((evt: { type: string }) => void) | null;
 	private readonly _events: AbortControllerEvents;
 
 	constructor() {
@@ -34,9 +36,9 @@ export class AbortSignal {
 	}
 
 	dispatchEvent(evt: { type: string }) {
-		// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-		// @ts-ignore
-		this[`on${evt.type}`] && this[`on${evt.type}`](evt);
+		if (evt.type === "abort" && this.onabort) {
+			this.onabort(evt);
+		}
 		const listeners = this._events[evt.type];
 		if (listeners) {
 			for (const listener of listeners) {
@@ -50,15 +52,45 @@ export class AbortSignal {
 	}
 }
 
+// Native AbortController defaults `signal.reason` to a `DOMException` named
+// "AbortError" (not a plain `Error`), and callers classify cancellation via
+// `signal.reason.name`. `DOMException` isn't guaranteed to exist in the older
+// environments this shim targets, so fall back to a same-named `Error`. Some
+// legacy environments (e.g. IE 10, the browser build's floor) expose
+// `DOMException` as a global but don't support constructing it with `new` —
+// a `typeof` check alone would select this branch and then throw, so the
+// construction itself must be guarded too.
+function createDefaultAbortReason(): Error {
+	if (typeof DOMException !== "undefined") {
+		try {
+			return new DOMException("The operation was aborted.", "AbortError") as unknown as Error;
+		} catch (error) {
+			// Fall through to the Error-based fallback below.
+		}
+	}
+	const error = new Error("The operation was aborted.");
+	error.name = "AbortError";
+	return error;
+}
+
 // eslint-disable-next-line no-shadow
 export class AbortController {
 	signal = new AbortSignal();
 
-	abort() {
+	abort(reason?: unknown) {
+		// Match native AbortController: a second call is a no-op (the first
+		// reason is latched, and the "abort" event fires at most once), and an
+		// explicit `null` reason is preserved as-is — only an omitted/undefined
+		// reason falls back to the default error. `??` would incorrectly replace
+		// an explicit `null` with the default.
+		if (this.signal.aborted) {
+			return;
+		}
+
 		let evt: Event | { type: string; bubbles: boolean; cancelable: boolean };
 		try {
 			evt = new Event("abort");
-		} catch (e) {
+		} catch (error) {
 			evt = {
 				type: "abort",
 				bubbles: false,
@@ -67,6 +99,7 @@ export class AbortController {
 		}
 
 		this.signal.aborted = true;
+		this.signal.reason = reason === undefined ? createDefaultAbortReason() : reason;
 		this.signal.dispatchEvent(evt);
 	}
 

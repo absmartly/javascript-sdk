@@ -4,9 +4,10 @@ import { AbortController } from "./abort";
 // eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
-import { ContextOptions, ContextParams } from "./context";
-import { PublishParams } from "./publisher";
+import { type AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
+import { type ContextOptions, type ContextParams } from "./context";
+import { type PublishParams } from "./publisher";
+import { toWellFormedString } from "./utils";
 
 export type FetchResponse = {
 	status: number;
@@ -28,6 +29,10 @@ export type ClientRequestOptions = {
 };
 
 export type ApplicationObject = { name: string; version: number | string };
+
+const DEFAULT_RETRIES = 5;
+const DEFAULT_TIMEOUT_MS = 3000;
+const RETRY_DELAY_MS = 50;
 
 export type ClientOptions = {
 	agent?: string;
@@ -52,8 +57,8 @@ export default class Client {
 		const merged: Record<string, unknown> = Object.assign(
 			{
 				agent: "javascript-client",
-				retries: 5,
-				timeout: 3000,
+				retries: DEFAULT_RETRIES,
+				timeout: DEFAULT_TIMEOUT_MS,
 				keepalive: true,
 			},
 			opts
@@ -83,7 +88,7 @@ export default class Client {
 		}
 
 		this._opts = merged as unknown as NormalizedClientOptions;
-		this._delay = 50;
+		this._delay = RETRY_DELAY_MS;
 	}
 
 	getEnvironment(): string {
@@ -143,12 +148,19 @@ export default class Client {
 	request(options: ClientRequestOptions) {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
-			const keys = Object.keys(options.query);
-			if (keys.length > 0) {
-				const encoded = keys
-					.map((k) => (options.query ? `${k}=${encodeURIComponent(options.query[k])}` : null))
-					.join("&");
-				url = `${url}?${encoded}`;
+			// Built manually (not with URLSearchParams) because the declared IE 10
+			// browser target excludes the `web.*` core-js polyfills that would
+			// otherwise provide it (see babel.config.js). Values are normalized to
+			// well-formed UTF-16 first: unlike `URLSearchParams`, `encodeURIComponent`
+			// throws `URIError: URI malformed` on an unpaired surrogate.
+			const queryString = Object.entries(options.query)
+				.map(
+					([key, value]) =>
+						`${encodeURIComponent(toWellFormedString(key))}=${encodeURIComponent(toWellFormedString(String(value)))}`
+				)
+				.join("&");
+			if (queryString) {
+				url = `${url}?${queryString}`;
 			}
 		}
 
@@ -225,11 +237,15 @@ export default class Client {
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
 				console.warn(reason);
 
+				// timeout <= 0 means "no deadline": the retry budget is governed by
+				// `retries` alone, so the elapsed-time check below must not apply.
+				const hasDeadline = timeout > 0;
+
 				if (reason._bail || retries <= 0) {
 					throw new Error(reason.message);
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
-				} else if (waited >= timeout || reason.name === "AbortError") {
+				} else if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
 					if (tryWith.timedout) {
 						throw new TimeoutError(timeout);
 					}
@@ -238,7 +254,7 @@ export default class Client {
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (waited + delay > timeout) {
+				if (hasDeadline && waited + delay > timeout) {
 					delay = timeout - waited;
 				}
 
@@ -258,7 +274,7 @@ export default class Client {
 			options.signal.addEventListener("abort", abort);
 		}
 
-		const timeout = options.timeout || this._opts.timeout || 0;
+		const timeout = options.timeout ?? this._opts.timeout ?? 0;
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
@@ -274,7 +290,7 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? 5, this._opts.timeout ?? 3000)
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout)
 			.then((value: string) => {
 				finalCleanUp();
 				return value;
