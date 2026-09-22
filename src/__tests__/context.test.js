@@ -5269,10 +5269,9 @@ describe("Context", () => {
 
 		describe("holdouts: error handling", () => {
 			// _queueExposure must append to the publish queue and increment pending() BEFORE calling
-			// the (user-supplied) eventLogger, so a throwing logger only fails to report the
-			// exposure, not discard it outright. Regression test for the ordering fix: previously
-			// _logEvent ran first, so a throw there meant the push/increment never happened and the
-			// exposure was lost for the life of the context, not merely unlogged.
+			// the (user-supplied) eventLogger. A throwing eventLogger is isolated by _logEvent itself
+			// (it never propagates — see _logEvent's doc comment), so this only verifies the exposure
+			// is queued regardless of the logger throwing.
 			it("keeps a queued exposure even when the eventLogger throws while reporting it", () => {
 				const throwingEventLogger = jest.fn((ctx, eventName) => {
 					if (eventName === "exposure") {
@@ -5314,25 +5313,19 @@ describe("Context", () => {
 					response
 				);
 
-				expect(() => context.treatment("exp_holdout_throwing_logger")).toThrow("logger boom");
+				expect(() => context.treatment("exp_holdout_throwing_logger")).not.toThrow();
 
-				// The exposure was appended and counted before the logger ran, so the throw only
-				// fails to report it — it is not lost.
+				// The exposure was appended and counted before the logger ran, and the logger's throw
+				// was isolated by _logEvent, so it is not lost.
 				expect(context.pending()).toEqual(1);
 			});
 
-			// With N applicable holdouts there can be up to N+1 independent exposure-firing attempts
-			// per call (the covered experiment's own, plus one per holdout), but only one error can
-			// ever be rethrown to the caller. Every caught error must still be reported via the
-			// eventLogger's "error" event as it's caught, or every failure past the first vanishes
-			// with no trace at all.
-			it("reports every dropped exposure error via the eventLogger, not just the one that is rethrown", () => {
-				const loggedErrors = [];
+			// With N applicable holdouts there are up to N+1 independent exposure-firing attempts per
+			// call (the covered experiment's own, plus one per holdout). A throwing eventLogger on any
+			// of them is isolated by _logEvent (it never propagates), so every attempt must still run
+			// and queue its own exposure regardless of the logger throwing on an earlier one.
+			it("queues every exposure even when the eventLogger throws while reporting each one", () => {
 				const eventLogger = jest.fn((ctx, eventName, data) => {
-					if (eventName === "error") {
-						loggedErrors.push(data);
-						return;
-					}
 					if (eventName === "exposure") {
 						throw new Error(`boom for ${data.name}`);
 					}
@@ -5413,28 +5406,22 @@ describe("Context", () => {
 
 				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
 
-				expect(() => context.treatment("exp_holdout_multi_error")).toThrow(/boom for/);
+				expect(() => context.treatment("exp_holdout_multi_error")).not.toThrow();
 
-				// All three exposure attempts (the covered experiment + both holdouts) threw, so all
-				// three must have been reported — not just the one whose error was rethrown.
-				expect(loggedErrors).toHaveLength(3);
-				expect(loggedErrors.map((e) => e.message).sort()).toEqual(
-					[
-						"boom for exp_holdout_multi_error",
-						"boom for holdout_multi_error_a",
-						"boom for holdout_multi_error_b",
-					].sort()
+				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
+				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
+					["exp_holdout_multi_error", "holdout_multi_error_a", "holdout_multi_error_b"].sort()
 				);
 
-				// All three exposures were queued despite all three throwing while reporting —
-				// the ordering fix applies independently to each attempt, not just the first.
+				// All three exposures were queued despite all three throwing while reporting.
 				expect(context.pending()).toEqual(3);
 			});
 
-			// A throwing error-event logger must not itself interrupt exposure processing: it must
-			// not prevent the holdout loop from running when it's reporting the covered experiment's
-			// own exposure failure, and it must not stop the holdout loop partway through when it's
-			// reporting one holdout's exposure failure. Regression test for _logErrorSafely.
+			// A throwing eventLogger (for both "exposure" and "error" events) is isolated by
+			// _logEvent/_logError themselves (neither ever propagates — see their doc comments), so it
+			// must not interrupt exposure processing: it must not prevent the holdout loop from running
+			// after the covered experiment's own exposure is reported, and both exposures must still
+			// be queued.
 			it("does not let a throwing error-event logger interrupt exposure processing", () => {
 				const eventLogger = jest.fn((ctx, eventName, data) => {
 					if (eventName === "exposure") {
@@ -5498,24 +5485,14 @@ describe("Context", () => {
 
 				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
 
-				let caught;
-				try {
-					context.treatment("exp_holdout_throwing_error_logger");
-				} catch (e) {
-					caught = e;
-				}
-
-				// The covered experiment's exposure attempt threw, and reporting that error via the
-				// (also throwing) error-event logger must not have prevented the holdout loop from
-				// running: the holdout's own exposure attempt must still have been made (and its
-				// error, in turn, safely reported without escaping).
-				expect(caught).toBeDefined();
-				expect(caught.message).toEqual("exposure boom for exp_holdout_throwing_error_logger");
+				expect(() => context.treatment("exp_holdout_throwing_error_logger")).not.toThrow();
 
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
 				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
 					["exp_holdout_throwing_error_logger", "holdout_throwing_error_logger"].sort()
 				);
+
+				expect(context.pending()).toEqual(2);
 			});
 		});
 
@@ -5668,10 +5645,9 @@ describe("Context", () => {
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 			});
 
-			// A throwing eventLogger for one candidate's exposure must not stop the loop from
-			// visiting (and firing exposures for) the remaining candidates sharing the key — the
-			// same "collect first error, keep going" guarantee _triggerExposures already provides
-			// within a single experiment's own exposure set must also hold across the candidate loop.
+			// A throwing eventLogger for one candidate's exposure is isolated by _logEvent (it never
+			// propagates), so it must not stop the loop from visiting (and firing exposures for) the
+			// remaining candidates sharing the key.
 			it("a throwing eventLogger for one candidate does not stop later candidates in the loop from being visited and exposed", () => {
 				const firstExperiment = holdoutVarExperiment({
 					id: 1,
@@ -5699,7 +5675,7 @@ describe("Context", () => {
 				);
 				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
 
-				expect(() => context.variableValue("button.color", "APP_FALLBACK")).toThrow("boom");
+				expect(() => context.variableValue("button.color", "APP_FALLBACK")).not.toThrow();
 
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
 				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
@@ -5736,13 +5712,10 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(0);
 			});
 
-			// The doc comment on _variableValue states the collected error is thrown "once resolution
-			// is otherwise complete (a winning candidate found, or the loop exhausted)" -- including
-			// when a LATER candidate wins after an EARLIER candidate's exposure-firing already threw.
-			// That immediate-rethrow-on-winner branch must not be bypassed just because resolution
-			// otherwise succeeded: the caller needs to know an exposure was dropped, even though a
-			// value could technically still be returned.
-			it("still throws the first collected error even when a later candidate in the loop is a genuine winner", () => {
+			// A throwing eventLogger for an earlier candidate's exposure is isolated by _logEvent, so
+			// a later candidate that genuinely wins must still resolve normally and still fire its own
+			// exposure.
+			it("resolves to a later winning candidate's value even after an earlier candidate's exposure logger throws", () => {
 				const suppressedFirst = holdoutVarExperiment({
 					id: 1,
 					name: "exp_holdout_var_winner_after_throw",
@@ -5780,7 +5753,7 @@ describe("Context", () => {
 				const response = buildHoldoutResponse([suppressedFirst, winningSecond], [alwaysHoldsOut({})]);
 				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
 
-				expect(() => context.variableValue("button.color", "APP_FALLBACK")).toThrow("boom");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_THROW");
 
 				// The winning candidate's own exposure still fired despite the earlier throw.
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");

@@ -169,12 +169,6 @@ function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVari
 	return false;
 }
 
-// Wraps a caught error so "no error occurred" (undefined) can be distinguished from "an error of
-// value `undefined` was thrown" when collecting the first error across multiple try/catch sites
-// (the covered experiment's own exposure attempt and the holdout-firing loop) that must share one
-// "first error wins" outcome, mirroring java-sdk's triggerExposure (Context.java:481-503).
-type CaughtError = { value: unknown } | undefined;
-
 export default class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _attrs: Attribute[];
@@ -925,20 +919,9 @@ export default class Context {
 		return assignment;
 	}
 
-	// Ported from java-sdk's triggerExposure (Context.java:481-503): the own-exposure attempt
-	// and the holdout-firing loop share one "first error wins" outcome — a throwing eventLogger
-	// on the OWN exposure must not prevent the holdout loop from running (and vice versa), and
-	// whichever throws first is what ultimately propagates to the caller, only after both have
-	// had a chance to fire. Shared by `_treatment` and `_variableValue`, whose exposure-firing
-	// behavior is otherwise identical once the one-shot `exposed` gate has been checked.
-	//
-	// Every caught error is reported via `_logErrorSafely` as it's caught (unlike java-sdk, which
-	// only ever surfaces the first): with N applicable holdouts there can be up to N+1 independent
-	// exposure-firing attempts, and only one error can be rethrown to the caller, so without this
-	// every failure past the first would otherwise vanish with no trace at all.
+	// Shared by `_treatment` and `_variableValue`, whose exposure-firing behavior is otherwise
+	// identical once the one-shot `exposed` gate has been checked.
 	private _triggerExposures(experimentName: string, assignment: Assignment): void {
-		let firstError: CaughtError;
-
 		// An override always fires its own exposure, even when the covered experiment is also
 		// suppressed by a holdout: overriding replaces the resolved variant outright (the override's
 		// value wins, not the holdout's), so its own exposure must still be observable. This mirrors
@@ -949,22 +932,10 @@ export default class Context {
 		// divergence, see Assignment.suppressed doc comment), so the exposure gate here must
 		// special-case `overridden` explicitly to reproduce the same firing outcome.
 		if (!assignment.suppressed || assignment.overridden) {
-			try {
-				this._queueExposure(experimentName, assignment);
-			} catch (error) {
-				this._logErrorSafely(error as Error);
-				firstError = { value: error };
-			}
+			this._queueExposure(experimentName, assignment);
 		}
 
-		const holdoutError = this._triggerApplicableHoldoutExposures(assignment);
-		if (!firstError) {
-			firstError = holdoutError;
-		}
-
-		if (firstError) {
-			throw firstError.value;
-		}
+		this._triggerApplicableHoldoutExposures(assignment);
 	}
 
 	// Ported from java-sdk's triggerApplicableHoldoutExposures/triggerHoldoutExposure
@@ -972,15 +943,10 @@ export default class Context {
 	// using the pinned `assignment.holdoutAssignments` snapshot (not a live re-resolution),
 	// so a data refresh landing between the suppression decision and the exposure trigger
 	// can't publish a holdout exposure from a different epoch (Context.java:505-514).
-	// A throwing eventLogger for one holdout must not prevent siblings from firing: collect
-	// the first error and return it (rather than throwing here) so the caller can combine it
-	// with its own try/catch's outcome and issue a single final throw after everything has fired.
-	private _triggerApplicableHoldoutExposures(assignment: Assignment): CaughtError {
+	private _triggerApplicableHoldoutExposures(assignment: Assignment): void {
 		const holdouts = assignment.holdouts;
 		const holdoutAssignments = assignment.holdoutAssignments;
-		if (!holdouts || !holdoutAssignments) return undefined;
-
-		let firstError: CaughtError;
+		if (!holdouts || !holdoutAssignments) return;
 
 		holdoutAssignments.forEach((holdoutAssignment, i) => {
 			if (holdoutAssignment == null) return;
@@ -988,18 +954,9 @@ export default class Context {
 			if (!holdoutAssignment.exposed) {
 				holdoutAssignment.exposed = true;
 
-				try {
-					this._queueExposure(holdouts[i].data.name, holdoutAssignment);
-				} catch (error) {
-					this._logErrorSafely(error as Error);
-					if (!firstError) {
-						firstError = { value: error };
-					}
-				}
+				this._queueExposure(holdouts[i].data.name, holdoutAssignment);
 			}
 		});
-
-		return firstError;
 	}
 
 	private _queueExposure(experimentName: string, assignment: Assignment) {
@@ -1131,15 +1088,8 @@ export default class Context {
 	// Overridden assignments are excluded from the capture even if `suppressed` is set: java's
 	// override path never sets `suppressed` at all (see Assignment.suppressed doc comment for why
 	// the JS port's override path pins it anyway), so an override can never become java's fallback.
-	//
-	// A throwing eventLogger for one candidate must not stop the loop from visiting (and firing
-	// exposures for) the remaining candidates, mirroring java's collect-first-failure-then-rethrow
-	// (Context.java:1350-1368): every candidate's exposures still fire, and the first error is
-	// thrown only once resolution is otherwise complete (a winning candidate found, or the loop
-	// exhausted).
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
 		let suppressedFallback: Record<string, unknown> | undefined;
-		let firstError: CaughtError;
 
 		for (const experiment of this._indexVariables[key] ?? []) {
 			const experimentName = experiment.data.name;
@@ -1148,20 +1098,10 @@ export default class Context {
 				if (shouldQueueExposure && !assignment.exposed) {
 					assignment.exposed = true;
 
-					try {
-						this._triggerExposures(experimentName, assignment);
-					} catch (error) {
-						if (!firstError) {
-							firstError = { value: error };
-						}
-					}
+					this._triggerExposures(experimentName, assignment);
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					if (firstError) {
-						throw firstError.value;
-					}
-
 					return assignment.variables[key] as string;
 				}
 
@@ -1169,10 +1109,6 @@ export default class Context {
 					suppressedFallback = assignment.variables;
 				}
 			}
-		}
-
-		if (firstError) {
-			throw firstError.value;
 		}
 
 		if (suppressedFallback !== undefined && key in suppressedFallback) {
@@ -1515,17 +1451,6 @@ export default class Context {
 			} catch (observerError) {
 				console.error(observerError);
 			}
-		}
-	}
-
-	// Like `_logError`, but swallows a throw from the (user-supplied) eventLogger itself. Used at
-	// exposure-firing call sites where reporting one failure must never prevent the remaining
-	// exposure attempts (sibling holdouts, or the covered experiment's own) from still running.
-	private _logErrorSafely(error: Error) {
-		try {
-			this._logError(error);
-		} catch {
-			// Deliberately ignored — see comment above.
 		}
 	}
 
