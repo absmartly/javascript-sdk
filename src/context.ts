@@ -702,22 +702,11 @@ export default class Context {
 			assignment.holdouts = holdouts;
 			assignment.holdoutAssignments = holdoutAssignments;
 
-			let suppressed = false;
-			holdoutAssignments.forEach((holdoutAssignment) => {
-				if (holdoutAssignment != null) {
-					if (
-						isHeldOutBy(
-							holdoutAssignment.variant,
-							holdoutAssignment.holdoutArmCount ?? 0,
-							experiment.data.fullOnVariant
-						)
-					) {
-						suppressed = true;
-					}
-				}
-			});
-
-			assignment.suppressed = suppressed;
+			assignment.suppressed = holdoutAssignments.some(
+				(holdoutAssignment) =>
+					holdoutAssignment != null &&
+					isHeldOutBy(holdoutAssignment.variant, holdoutAssignment.holdoutArmCount ?? 0, experiment.data.fullOnVariant)
+			);
 		}
 
 		if (hasOverride) {
