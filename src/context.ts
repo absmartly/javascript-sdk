@@ -727,81 +727,80 @@ export default class Context {
 					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
-				// Suppression wins over assignment rules (only override() is exempt). The exposure gate
-				// does not exempt `ruleOverride`, so a rule getting through here would treat the unit
-				// while suppressing its exposure.
-				if (assignment.suppressed) {
+				let ruleVariant: number | null = null;
+
+				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
+					ruleVariant = this._computeRuleVariant(
+						experiment.data.assignmentRules,
+						experiment.data.variants.length,
+						attrs
+					);
+				}
+
+				assignment.ruleVariant = ruleVariant;
+
+				// A matching assignment rule wins over holdout suppression, the same way override()
+				// does: it's an explicit, author-specified assignment (flagged `ruleOverride`,
+				// excluded from stats) rather than the experiment's own randomized/custom path, so
+				// suppression only applies when no rule matched.
+				if (ruleVariant !== null) {
+					assignment.variant = ruleVariant;
+					assignment.ruleOverride = true;
+				} else if (assignment.suppressed) {
 					assignment.assigned = false;
 					assignment.variant = 0;
 				} else {
-					let ruleVariant: number | null = null;
+					if (experiment.data.audience && experiment.data.audience.length > 0) {
+						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
-					if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-						ruleVariant = this._computeRuleVariant(
-							experiment.data.assignmentRules,
-							experiment.data.variants.length,
-							attrs
-						);
+						if (typeof result === "boolean") {
+							assignment.audienceMismatch = !result;
+						}
 					}
 
-					assignment.ruleVariant = ruleVariant;
+					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
+						assignment.variant = 0;
+					} else if (experiment.data.fullOnVariant === 0) {
+						if (unitType !== null) {
+							if (unitType in this._units) {
+								const unit = this._unitHash(unitType);
+								if (unit !== null) {
+									const assigner =
+										unitType in this._assigners
+											? this._assigners[unitType]
+											: (this._assigners[unitType] = new VariantAssigner(unit));
+									const eligible =
+										assigner.assign(
+											experiment.data.trafficSplit,
+											experiment.data.trafficSeedHi,
+											experiment.data.trafficSeedLo
+										) === 1;
 
-					if (ruleVariant !== null) {
-						assignment.variant = ruleVariant;
-						assignment.ruleOverride = true;
-					} else {
-						if (experiment.data.audience && experiment.data.audience.length > 0) {
-							const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+									assignment.assigned = true;
+									assignment.eligible = eligible;
 
-							if (typeof result === "boolean") {
-								assignment.audienceMismatch = !result;
-							}
-						}
-
-						if (experiment.data.audienceStrict && assignment.audienceMismatch) {
-							assignment.variant = 0;
-						} else if (experiment.data.fullOnVariant === 0) {
-							if (unitType !== null) {
-								if (unitType in this._units) {
-									const unit = this._unitHash(unitType);
-									if (unit !== null) {
-										const assigner =
-											unitType in this._assigners
-												? this._assigners[unitType]
-												: (this._assigners[unitType] = new VariantAssigner(unit));
-										const eligible =
-											assigner.assign(
-												experiment.data.trafficSplit,
-												experiment.data.trafficSeedHi,
-												experiment.data.trafficSeedLo
-											) === 1;
-
-										assignment.assigned = true;
-										assignment.eligible = eligible;
-
-										if (eligible) {
-											if (hasCustom) {
-												assignment.variant = this._cassignments[experimentName];
-												assignment.custom = true;
-											} else {
-												assignment.variant = assigner.assign(
-													experiment.data.split,
-													experiment.data.seedHi,
-													experiment.data.seedLo
-												);
-											}
+									if (eligible) {
+										if (hasCustom) {
+											assignment.variant = this._cassignments[experimentName];
+											assignment.custom = true;
 										} else {
-											assignment.variant = 0;
+											assignment.variant = assigner.assign(
+												experiment.data.split,
+												experiment.data.seedHi,
+												experiment.data.seedLo
+											);
 										}
+									} else {
+										assignment.variant = 0;
 									}
 								}
 							}
-						} else {
-							assignment.assigned = true;
-							assignment.eligible = true;
-							assignment.variant = experiment.data.fullOnVariant;
-							assignment.fullOn = true;
 						}
+					} else {
+						assignment.assigned = true;
+						assignment.eligible = true;
+						assignment.variant = experiment.data.fullOnVariant;
+						assignment.fullOn = true;
 					}
 				}
 
@@ -839,7 +838,7 @@ export default class Context {
 	}
 
 	private _triggerExposures(experimentName: string, assignment: Assignment): void {
-		if (!assignment.suppressed || assignment.overridden) {
+		if (!assignment.suppressed || assignment.overridden || assignment.ruleOverride) {
 			this._queueExposure(experimentName, assignment);
 		}
 
@@ -1001,7 +1000,12 @@ export default class Context {
 					return assignment.variables[key] as string;
 				}
 
-				if (assignment.suppressed && !assignment.overridden && suppressedFallback === undefined) {
+				if (
+					assignment.suppressed &&
+					!assignment.overridden &&
+					!assignment.ruleOverride &&
+					suppressedFallback === undefined
+				) {
 					suppressedFallback = assignment.variables;
 				}
 			}

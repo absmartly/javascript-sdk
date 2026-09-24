@@ -4714,20 +4714,14 @@ describe("Context", () => {
 			});
 		});
 
-		// Final-review Finding I-1: a matching assignmentRules rule (a JS-SDK-only feature) must
-		// NOT bypass holdout suppression. Rules are a deterministic-per-attribute assignment
-		// mechanism — structurally the same category as a custom assignment (scenario 211: custom
-		// assignment yields to suppression) — not an override in the sense scenario 210
-		// establishes (only an explicit override() call is exempt from suppression). Before the
-		// fix, `ruleVariant !== null` set `assignment.variant`/`ruleOverride` unconditionally,
-		// bypassing the `if (assignment.suppressed)` branch entirely: a held-out unit would be
-		// silently TREATED with the rule's variant while its own exposure stayed suppressed (the
-		// exposure gate does not special-case `ruleOverride`) — measured nothing, but received
-		// real treatment. Ported shape from scenario 211 (custom-assignment path) applied to the
-		// rules path instead; the holdout fixture (id 11, seedHi 13, seedLo 111, split [0.1, 0.9])
-		// is identical to scenario 203's holdout_a, which is already proven to hold out the
-		// default `contextParams` unit (variant 0).
-		it("suppresses a matching assignment rule's variant, mirroring scenario 211 for the rules path (Finding I-1)", (done) => {
+		// A matching assignmentRules rule (a JS-SDK-only feature) wins over holdout suppression,
+		// the same way an explicit override() does: it's an author-specified assignment (flagged
+		// `ruleOverride`, excluded from stats), not the experiment's own randomized/custom path
+		// that suppression is meant to gate. The holdout fixture (id 11, seedHi 13, seedLo 111,
+		// split [0.1, 0.9]) is identical to scenario 203's holdout_a, which is already proven to
+		// hold out the default `contextParams` unit — proving suppression is genuinely in play
+		// here and the rule is what overrides it, not merely the holdout never applying.
+		it("lets a matching assignment rule's variant win over holdout suppression", (done) => {
 			const response = buildHoldoutResponse(
 				[
 					{
@@ -4793,27 +4787,36 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, response);
 			context.attribute("country", "US");
 
-			// Without the fix: the matching rule (variant 1) is applied unconditionally, bypassing
-			// suppression entirely, so this would return 1 instead of 0.
-			expect(context.treatment("exp_holdout_rules")).toEqual(0);
+			// The rule wins: variant 1 is returned even though this unit is held out by
+			// holdout_rules_suppression.
+			expect(context.treatment("exp_holdout_rules")).toEqual(1);
 
-			// White-box check (the exposure that would carry these fields never fires, since the
-			// experiment's own exposure is correctly suppressed below — see the publish assertion)
-			// to confirm the rule-variant computation branch did not run at all when suppressed:
-			// `ruleOverride` must stay false (never set to true and then have `variant`
-			// overwritten to 0 afterward) and `assigned` must be false, matching every other
-			// suppression case.
+			// `ruleOverride` is set and `assigned` stays false (a rule match is not a randomized
+			// assignment), matching the semantics of every other rule-matched assignment.
 			const assignment = context._assignments["exp_holdout_rules"];
-			expect(assignment.ruleOverride).toBeFalsy();
+			expect(assignment.ruleOverride).toEqual(true);
 			expect(assignment.assigned).toEqual(false);
 
 			publisher.publish.mockReturnValue(Promise.resolve());
 
 			context.publish().then(() => {
-				// Only the holdout's own exposure fires — the experiment's own exposure must NOT
-				// fire, exactly like scenario 211 (custom assignment yields to suppression), just
-				// via the rules path instead of the custom-assignment path.
+				// Both the experiment's own exposure (via the rule) and the holdout's own exposure
+				// fire — a rule match is exempt from suppression the same way override() is.
 				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
+					{
+						id: 1,
+						name: "exp_holdout_rules",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: false,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: true,
+					},
 					{
 						id: 11,
 						name: "holdout_rules_suppression",
