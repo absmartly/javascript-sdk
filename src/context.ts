@@ -47,6 +47,7 @@ export type ExperimentData = {
 	custom: boolean;
 	audienceMismatch: boolean;
 	customFieldValues: CustomFieldValue[] | null;
+	holdoutIds?: number[];
 };
 
 type Assignment = {
@@ -68,11 +69,33 @@ type Assignment = {
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
 	attrsSeq?: number;
+	suppressed?: boolean;
+	holdouts?: HoldoutExperiment[];
+	holdoutAssignments?: (Assignment | null)[];
+	// `split.length` at the time `variant` was resolved; a same-iteration refresh can change
+	// the live value without invalidating the cache.
+	holdoutArmCount?: number;
+};
+
+export type HoldoutData = {
+	id: number;
+	name: string;
+	unitType?: string | null;
+	iteration: number;
+	seedHi: number;
+	seedLo: number;
+	split: number[];
+	holdoutType?: string;
+};
+
+export type HoldoutExperiment = {
+	data: HoldoutData;
 };
 
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
+	holdouts?: HoldoutExperiment[] | null;
 };
 
 export type Unit = {
@@ -126,7 +149,14 @@ export type ContextOptions = {
 
 export type ContextData = {
 	experiments?: ExperimentData[];
+	holdouts?: HoldoutData[];
 };
+
+function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVariant: number): boolean {
+	if (holdoutVariant === 0) return true;
+	if (holdoutArmCount === 3 && holdoutVariant === 1) return fullOnVariant === 0;
+	return false;
+}
 
 export default class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
@@ -150,6 +180,8 @@ export default class Context {
 	private _goals: Goal[];
 	private _index: Record<string, Experiment>;
 	private _indexVariables: Record<string, Experiment[]>;
+	private _holdoutsById: Record<number, HoldoutData>;
+	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
@@ -178,6 +210,7 @@ export default class Context {
 		this._cassignments = {};
 		this._units = {};
 		this._assigners = {};
+		this._holdoutAssignments = {};
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
 		this._attrsSeq = 0;
@@ -319,6 +352,26 @@ export default class Context {
 		}
 
 		this._units[unitType] = uid;
+
+		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
+	}
+
+	// A null holdout entry means the unit was missing when the assignment was resolved. Evict so
+	// `_assign()` rebuilds it; already-exposed ones are kept since re-resolving would queue a
+	// second, conflicting exposure.
+	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
+		for (const experimentName in this._assignments) {
+			const assignment = this._assignments[experimentName];
+			const holdoutAssignments = assignment.holdoutAssignments;
+
+			if (holdoutAssignments && assignment.unitType === unitType && !assignment.exposed) {
+				const hasMissingEntry = holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null);
+
+				if (hasMissingEntry) {
+					delete this._assignments[experimentName];
+				}
+			}
+		}
 	}
 
 	getUnits() {
@@ -565,6 +618,27 @@ export default class Context {
 			return true;
 		};
 
+		// (id, iteration) only: seed/split edits must not force a duplicate exposure.
+		const holdoutSetMatches = (experiment: Experiment, assignment: Assignment) => {
+			const freshHoldouts = experiment.holdouts ?? [];
+			const pinnedHoldouts = assignment.holdouts ?? [];
+
+			if (freshHoldouts.length !== pinnedHoldouts.length) {
+				return false;
+			}
+
+			for (let i = 0; i < freshHoldouts.length; i++) {
+				if (freshHoldouts[i].data.id !== pinnedHoldouts[i].data.id) {
+					return false;
+				}
+				if (freshHoldouts[i].data.iteration !== pinnedHoldouts[i].data.iteration) {
+					return false;
+				}
+			}
+
+			return true;
+		};
+
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
@@ -572,7 +646,11 @@ export default class Context {
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
 			if (hasOverride) {
-				if (assignment.overridden && assignment.variant === this._overrides[experimentName]) {
+				if (
+					assignment.overridden &&
+					assignment.variant === this._overrides[experimentName] &&
+					(experiment == null || holdoutSetMatches(experiment, assignment))
+				) {
 					// override up-to-date
 					return assignment;
 				}
@@ -581,8 +659,13 @@ export default class Context {
 					// previously not-running experiment
 					return assignment;
 				}
-			} else if (!hasCustom || this._cassignments[experimentName] === assignment.variant) {
-				if (experimentMatches(experiment.data, assignment) && audienceMatches(experiment.data, assignment)) {
+			} else if (assignment.suppressed || !hasCustom || this._cassignments[experimentName] === assignment.variant) {
+				// Suppressed assignments are forced to variant 0, so a custom mismatch is not staleness.
+				if (
+					experimentMatches(experiment.data, assignment) &&
+					audienceMatches(experiment.data, assignment) &&
+					holdoutSetMatches(experiment, assignment)
+				) {
 					// assignment up-to-date
 					return assignment;
 				}
@@ -607,6 +690,25 @@ export default class Context {
 
 		this._assignments[experimentName] = assignment;
 
+		// Resolved for overrides too: holdout exposures fire from `holdoutAssignments` regardless.
+		if (experiment != null && experiment.holdouts != null && experiment.holdouts.length > 0) {
+			const holdouts = experiment.holdouts;
+			const holdoutUnitType = experiment.data.unitType;
+
+			const holdoutAssignments: (Assignment | null)[] = holdouts.map((holdout) =>
+				holdoutUnitType !== null ? this._getHoldoutAssignment(holdout, holdoutUnitType) : null
+			);
+
+			assignment.holdouts = holdouts;
+			assignment.holdoutAssignments = holdoutAssignments;
+
+			assignment.suppressed = holdoutAssignments.some(
+				(holdoutAssignment) =>
+					holdoutAssignment != null &&
+					isHeldOutBy(holdoutAssignment.variant, holdoutAssignment.holdoutArmCount ?? 0, experiment.data.fullOnVariant)
+			);
+		}
+
 		if (hasOverride) {
 			if (experiment != null) {
 				assignment.id = experiment.data.id;
@@ -618,9 +720,14 @@ export default class Context {
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
+				const attrs = this._getAttributesMap();
+
+				// Set even when suppressed, or `audienceMatches` rebuilds (losing `exposed`) on every call.
+				assignment.ruleKey = experiment.data.assignmentRules
+					? `${experiment.data.assignmentRules}:${this._environmentName}`
+					: "";
 
 				let ruleVariant: number | null = null;
-				const attrs = this._getAttributesMap();
 
 				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
 					ruleVariant = this._computeRuleVariant(
@@ -631,22 +738,22 @@ export default class Context {
 				}
 
 				assignment.ruleVariant = ruleVariant;
-				assignment.ruleKey = experiment.data.assignmentRules
-					? `${experiment.data.assignmentRules}:${this._environmentName}`
-					: "";
 
+				// A matching assignment rule wins over holdout suppression, the same way override()
+				// does: it's an explicit, author-specified assignment (flagged `ruleOverride`,
+				// excluded from stats) rather than the experiment's own randomized/custom path, so
+				// suppression only applies when no rule matched.
 				if (ruleVariant !== null) {
 					assignment.variant = ruleVariant;
 					assignment.ruleOverride = true;
+				} else if (assignment.suppressed) {
+					assignment.assigned = false;
+					assignment.variant = 0;
 				} else {
 					if (experiment.data.audience && experiment.data.audience.length > 0) {
-						const result = this._evaluateAudience(experiment.data.audience);
+						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
 
-						// Only flag a mismatch when the audience actually evaluated
-						// to a boolean. A null result (e.g. an audience with no
-						// usable filter like `{}`) leaves audienceMismatch false,
-						// matching the collector (ContextAPI: `if (result != null)`).
-						if (result !== null) {
+						if (typeof result === "boolean") {
 							assignment.audienceMismatch = !result;
 						}
 					}
@@ -724,10 +831,36 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			this._queueExposure(experimentName, assignment);
+			this._triggerExposures(experimentName, assignment);
 		}
 
 		return assignment;
+	}
+
+	private _triggerExposures(experimentName: string, assignment: Assignment): void {
+		if (!assignment.suppressed || assignment.overridden || assignment.ruleOverride) {
+			this._queueExposure(experimentName, assignment);
+		}
+
+		this._triggerApplicableHoldoutExposures(assignment);
+	}
+
+	// Uses the pinned snapshot, not a live re-resolution, so a refresh between the suppression
+	// decision and here can't publish a holdout exposure from a different epoch.
+	private _triggerApplicableHoldoutExposures(assignment: Assignment): void {
+		const holdouts = assignment.holdouts;
+		const holdoutAssignments = assignment.holdoutAssignments;
+		if (!holdouts || !holdoutAssignments) return;
+
+		holdoutAssignments.forEach((holdoutAssignment, i) => {
+			if (holdoutAssignment == null) return;
+
+			if (!holdoutAssignment.exposed) {
+				holdoutAssignment.exposed = true;
+
+				this._queueExposure(holdouts[i].data.name, holdoutAssignment);
+			}
+		});
 	}
 
 	private _queueExposure(experimentName: string, assignment: Assignment) {
@@ -745,12 +878,17 @@ export default class Context {
 			audienceMismatch: assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride,
 		};
-		this._logEvent("exposure", exposureEvent);
-
+		// The exposure is appended and counted BEFORE the (user-supplied) eventLogger runs: a
+		// throwing logger must not discard the exposure itself, only fail to report it. _setTimeout
+		// is scheduled in a finally so a throwing logger still flushes what's already queued.
 		this._exposures.push(exposureEvent);
 		this._pending++;
 
-		this._setTimeout();
+		try {
+			this._logEvent("exposure", exposureEvent);
+		} finally {
+			this._setTimeout();
+		}
 	}
 
 	private _customFieldKeys() {
@@ -843,20 +981,38 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
+	// A held-out unit reads the control value, not the caller's default, when nothing else wins.
+	// The first suppressed candidate is captured even if it lacks the key, so a later one can't win.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
+		let suppressedFallback: Record<string, unknown> | undefined;
+
 		for (const experiment of this._indexVariables[key] ?? []) {
 			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
 			if (assignment.variables !== undefined) {
 				if (shouldQueueExposure && !assignment.exposed) {
 					assignment.exposed = true;
-					this._queueExposure(experimentName, assignment);
+
+					this._triggerExposures(experimentName, assignment);
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
 					return assignment.variables[key] as string;
 				}
+
+				if (
+					assignment.suppressed &&
+					!assignment.overridden &&
+					!assignment.ruleOverride &&
+					suppressedFallback === undefined
+				) {
+					suppressedFallback = assignment.variables;
+				}
 			}
+		}
+
+		if (suppressedFallback !== undefined && key in suppressedFallback) {
+			return suppressedFallback[key] as string;
 		}
 
 		return defaultValue;
@@ -1204,12 +1360,57 @@ export default class Context {
 		}
 
 		if (!(unitType in this._hashes)) {
-			const hash = unitType in this._units ? hashUnit(this._units[unitType]) : null;
+			// Never cache `null`: the unit can still be set later (see `_getHoldoutAssignment`).
+			if (!(unitType in this._units)) {
+				return null;
+			}
+
+			const hash = hashUnit(this._units[unitType]);
 			this._hashes[unitType] = hash;
 			return hash;
 		}
 
 		return this._hashes[unitType];
+	}
+
+	private _getHoldoutAssignment(holdout: HoldoutExperiment, unitType: string): Assignment | null {
+		// `holdout` may predate a refresh; prefer the live definition.
+		const liveHoldoutData = this._holdoutsById[holdout.data.id] ?? holdout.data;
+
+		const cacheKey = `${liveHoldoutData.id}:${unitType}`;
+		const cached = this._holdoutAssignments[cacheKey];
+		if (cached && cached.id === liveHoldoutData.id && cached.iteration === liveHoldoutData.iteration) {
+			return cached;
+		}
+
+		const unit = this._unitHash(unitType);
+		if (unit === null) {
+			return null;
+		}
+
+		const assigner =
+			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+
+		const assignment: Assignment = {
+			id: liveHoldoutData.id,
+			iteration: liveHoldoutData.iteration,
+			fullOnVariant: 0,
+			unitType,
+			variant: assigner.assign(liveHoldoutData.split, liveHoldoutData.seedHi, liveHoldoutData.seedLo),
+			overridden: false,
+			assigned: true,
+			exposed: false,
+			eligible: true,
+			fullOn: false,
+			custom: false,
+			audienceMismatch: false,
+			ruleOverride: false,
+			holdoutArmCount: liveHoldoutData.split.length,
+		};
+
+		this._holdoutAssignments[cacheKey] = assignment;
+
+		return assignment;
 	}
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
@@ -1219,11 +1420,57 @@ export default class Context {
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
 
-		for (const experiment of data.experiments || []) {
+		const holdoutsById: Record<number, HoldoutData> = {};
+
+		(data.holdouts || []).forEach((holdout) => {
+			if (holdout.split && holdout.split.length > 0) {
+				holdoutsById[holdout.id] = holdout;
+			}
+		});
+
+		this._holdoutsById = holdoutsById;
+
+		const holdoutExperiments: Record<number, HoldoutExperiment> = {};
+
+		const resolveHoldoutExperiment = (holdoutId: number): HoldoutExperiment | undefined => {
+			if (holdoutExperiments[holdoutId]) {
+				return holdoutExperiments[holdoutId];
+			}
+
+			const holdoutData = this._holdoutsById[holdoutId];
+			if (!holdoutData) {
+				return undefined;
+			}
+
+			const holdoutEntry: HoldoutExperiment = {
+				data: holdoutData,
+			};
+
+			holdoutExperiments[holdoutId] = holdoutEntry;
+			return holdoutEntry;
+		};
+
+		(data.experiments || []).forEach((experiment) => {
 			const variables: Record<string, unknown>[] = [];
-			const entry = {
+
+			let holdouts: HoldoutExperiment[] | null = null;
+			if (experiment.holdoutIds && experiment.holdoutIds.length > 0) {
+				const resolved: HoldoutExperiment[] = [];
+
+				experiment.holdoutIds.forEach((holdoutId) => {
+					const holdoutExperiment = resolveHoldoutExperiment(holdoutId);
+					if (holdoutExperiment) {
+						insertUniqueSorted(resolved, holdoutExperiment, (a, b) => a.data.id < b.data.id);
+					}
+				});
+
+				holdouts = resolved.length > 0 ? resolved : null;
+			}
+
+			const entry: Experiment = {
 				data: experiment,
 				variables,
+				holdouts,
 			};
 
 			index[experiment.name] = entry;
@@ -1261,7 +1508,7 @@ export default class Context {
 
 				variables[i] = parsed;
 			}
-		}
+		});
 
 		this._index = index;
 		this._indexVariables = indexVariables;
