@@ -4787,8 +4787,6 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, response);
 			context.attribute("country", "US");
 
-			// The rule wins: variant 1 is returned even though this unit is held out by
-			// holdout_rules_suppression.
 			expect(context.treatment("exp_holdout_rules")).toEqual(1);
 
 			// `ruleOverride` is set and `assigned` stays false (a rule match is not a randomized
@@ -4800,8 +4798,6 @@ describe("Context", () => {
 			publisher.publish.mockReturnValue(Promise.resolve());
 
 			context.publish().then(() => {
-				// Both the experiment's own exposure (via the rule) and the holdout's own exposure
-				// fire — a rule match is exempt from suppression the same way override() is.
 				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
 					{
 						id: 1,
