@@ -65,6 +65,7 @@ type Assignment = {
 	audienceMismatch: boolean;
 	ruleOverride: boolean;
 	ruleVariant?: number | null;
+	isRuleMissingUnit?: boolean;
 	ruleKey?: string;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
@@ -356,9 +357,9 @@ export default class Context {
 		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
 	}
 
-	// A null holdout entry, or a split rule override, may mean the unit was missing when the
-	// assignment was resolved. Evict so `_assign()` rebuilds it; already-exposed ones are kept since
-	// re-resolving would queue a second, conflicting exposure.
+	// A null holdout entry or a split rule resolved without its unit means the unit was missing when
+	// the assignment was resolved. Evict so `_assign()` rebuilds it; already-exposed ones are kept
+	// since re-resolving would queue a second, conflicting exposure.
 	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
 		for (const experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
@@ -368,7 +369,7 @@ export default class Context {
 				(holdoutAssignment) => holdoutAssignment === null
 			);
 
-			if (hasMissingHoldoutEntry || assignment.ruleOverride) {
+			if (hasMissingHoldoutEntry || assignment.isRuleMissingUnit) {
 				delete this._assignments[experimentName];
 			}
 		}
@@ -509,21 +510,24 @@ export default class Context {
 		}
 	}
 
-	private _computeRuleVariant(experiment: ExperimentData, attrs: Record<string, unknown>): number | null {
+	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>) {
 		const variantCount = experiment.variants.length;
 		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
 		if (action == null) return null;
 
-		if ("variant" in action) return action.variant >= 0 && action.variant < variantCount ? action.variant : null;
+		if ("variant" in action) {
+			const isInBounds = action.variant >= 0 && action.variant < variantCount;
+			return isInBounds ? { variant: action.variant, isMissingUnit: false } : null;
+		}
 		if (action.split.length !== variantCount) return null;
 
 		const unitType = experiment.unitType;
 		const unit = unitType != null ? this._unitHash(unitType) : null;
-		if (unitType == null || unit === null) return 0;
+		if (unitType == null || unit === null) return { variant: 0, isMissingUnit: true };
 
 		const assigner =
 			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
-		return assigner.assign(action.split, experiment.seedHi, experiment.seedLo);
+		return { variant: assigner.assign(action.split, experiment.seedHi, experiment.seedLo), isMissingUnit: false };
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
@@ -598,7 +602,7 @@ export default class Context {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
-					const ruleVariant = this._computeRuleVariant(experiment, attrs);
+					const ruleVariant = this._resolveRule(experiment, attrs)?.variant ?? null;
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
@@ -735,13 +739,14 @@ export default class Context {
 					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
-				let ruleVariant: number | null = null;
-
-				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._computeRuleVariant(experiment.data, attrs);
-				}
+				const rule =
+					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
+						? this._resolveRule(experiment.data, attrs)
+						: null;
+				const ruleVariant = rule?.variant ?? null;
 
 				assignment.ruleVariant = ruleVariant;
+				assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
 
 				// A matching assignment rule wins over holdout suppression, the same way override()
 				// does: it's an explicit, author-specified assignment (flagged `ruleOverride`,

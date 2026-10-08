@@ -2998,6 +2998,20 @@ describe("Context", () => {
 				context.unit("session_id", contextParams.units.session_id);
 				expect(context.peek("exp_test_abc")).toEqual(1);
 			});
+
+			it("should keep an assign rule's cached assignment when the unit is set later", () => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					rulesContextResponse
+				);
+				context.attribute("country", "US");
+				const assignment = context._assign("exp_test_abc");
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context._assign("exp_test_abc")).toBe(assignment);
+			});
 		});
 	});
 
