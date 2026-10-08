@@ -1,6 +1,30 @@
 import { isObject } from "./utils";
 import { JsonExpr } from "./jsonexpr/jsonexpr";
 
+export type RuleAction = { variant: number } | { split: number[] };
+
+const SPLIT_PERCENTAGES_SUM_TOLERANCE = 0.01;
+
+const parseSplitPercentages = (percentages: unknown) => {
+	if (typeof percentages !== "string") return null;
+
+	const values = percentages.split("/").map((value) => parseFloat(value));
+	if (values.some((value) => isNaN(value) || value < 0)) return null;
+
+	const total = values.reduce((sum, value) => sum + value, 0);
+	if (parseFloat(Math.abs(100 - total).toFixed(2)) > SPLIT_PERCENTAGES_SUM_TOLERANCE) return null;
+
+	return values.map((value) => value / 100);
+};
+
+const parseRuleAction = (rule: Record<string, unknown>): RuleAction | null => {
+	if (rule.type === "assign") return Number.isInteger(rule.variant) ? { variant: rule.variant as number } : null;
+	if (rule.type !== "split") return null;
+
+	const split = parseSplitPercentages(rule.percentages);
+	return split != null ? { split } : null;
+};
+
 export class AudienceMatcher {
 	evaluate(audienceString: string, vars: Record<string, unknown>) {
 		let audience;
@@ -23,7 +47,7 @@ export class AudienceMatcher {
 		assignmentRulesString: string,
 		environmentName: string | null,
 		vars: Record<string, unknown>
-	): number | null {
+	): RuleAction | null {
 		let assignmentRules;
 		try {
 			assignmentRules = JSON.parse(assignmentRulesString);
@@ -37,7 +61,8 @@ export class AudienceMatcher {
 		for (const rule of assignmentRules.rules) {
 			if (!rule) continue;
 
-			if (rule.type !== "assign") continue;
+			const action = parseRuleAction(rule);
+			if (action == null) continue;
 
 			if (rule.environments != null) {
 				if (!Array.isArray(rule.environments)) continue;
@@ -49,13 +74,10 @@ export class AudienceMatcher {
 				}
 			}
 
-			if (typeof rule.variant !== "number") continue;
-			if (rule.variant !== Math.floor(rule.variant)) continue;
-
 			const conditions = rule.conditions;
 
 			if (conditions == null) {
-				return rule.variant;
+				return action;
 			}
 
 			if (!isObject(conditions)) continue;
@@ -63,10 +85,10 @@ export class AudienceMatcher {
 			try {
 				const result = this._jsonExpr.evaluateBooleanExpr(conditions, vars);
 				if (result === true) {
-					return rule.variant;
+					return action;
 				}
 			} catch (e) {
-				console.warn(`Failed to evaluate assignment rule conditions for variant ${rule.variant}: ${e}`);
+				console.warn(`Failed to evaluate assignment rule conditions for rule ${rule.name}: ${e}`);
 			}
 		}
 

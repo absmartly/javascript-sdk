@@ -356,20 +356,20 @@ export default class Context {
 		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
 	}
 
-	// A null holdout entry means the unit was missing when the assignment was resolved. Evict so
-	// `_assign()` rebuilds it; already-exposed ones are kept since re-resolving would queue a
-	// second, conflicting exposure.
+	// A null holdout entry, or a split rule override, may mean the unit was missing when the
+	// assignment was resolved. Evict so `_assign()` rebuilds it; already-exposed ones are kept since
+	// re-resolving would queue a second, conflicting exposure.
 	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
 		for (const experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
-			const holdoutAssignments = assignment.holdoutAssignments;
+			if (assignment.unitType !== unitType || assignment.exposed) continue;
 
-			if (holdoutAssignments && assignment.unitType === unitType && !assignment.exposed) {
-				const hasMissingEntry = holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null);
+			const hasMissingHoldoutEntry = assignment.holdoutAssignments?.some(
+				(holdoutAssignment) => holdoutAssignment === null
+			);
 
-				if (hasMissingEntry) {
-					delete this._assignments[experimentName];
-				}
+			if (hasMissingHoldoutEntry || assignment.ruleOverride) {
+				delete this._assignments[experimentName];
 			}
 		}
 	}
@@ -509,13 +509,21 @@ export default class Context {
 		}
 	}
 
-	private _computeRuleVariant(
-		assignmentRules: string,
-		variantCount: number,
-		attrs: Record<string, unknown>
-	): number | null {
-		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentName, attrs);
-		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount ? rawRuleVariant : null;
+	private _computeRuleVariant(experiment: ExperimentData, attrs: Record<string, unknown>): number | null {
+		const variantCount = experiment.variants.length;
+		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
+		if (action == null) return null;
+
+		if ("variant" in action) return action.variant >= 0 && action.variant < variantCount ? action.variant : null;
+		if (action.split.length !== variantCount) return null;
+
+		const unitType = experiment.unitType;
+		const unit = unitType != null ? this._unitHash(unitType) : null;
+		if (unitType == null || unit === null) return 0;
+
+		const assigner =
+			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+		return assigner.assign(action.split, experiment.seedHi, experiment.seedLo);
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
@@ -590,7 +598,7 @@ export default class Context {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
-					const ruleVariant = this._computeRuleVariant(experiment.assignmentRules, experiment.variants.length, attrs);
+					const ruleVariant = this._computeRuleVariant(experiment, attrs);
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
@@ -730,11 +738,7 @@ export default class Context {
 				let ruleVariant: number | null = null;
 
 				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._computeRuleVariant(
-						experiment.data.assignmentRules,
-						experiment.data.variants.length,
-						attrs
-					);
+					ruleVariant = this._computeRuleVariant(experiment.data, attrs);
 				}
 
 				assignment.ruleVariant = ruleVariant;
