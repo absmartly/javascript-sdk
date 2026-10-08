@@ -751,7 +751,7 @@ export default class Context {
 					assignment.variant = 0;
 				} else {
 					if (experiment.data.audience && experiment.data.audience.length > 0) {
-						const result = this._audienceMatcher.evaluate(experiment.data.audience, attrs);
+						const result = this._evaluateAudience(experiment.data.audience);
 
 						if (typeof result === "boolean") {
 							assignment.audienceMismatch = !result;

@@ -2197,6 +2197,19 @@ describe("Context", () => {
 			done();
 		});
 
+		it("should log, not throw, when audience evaluation throws during assignment", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			const error = new Error("audience boom");
+			jest.spyOn(context._audienceMatcher, "evaluate").mockImplementation(() => {
+				throw error;
+			});
+
+			expect(() => context.treatment("exp_test_ab")).not.toThrow();
+			expect(SDK.defaultEventLogger).toHaveBeenCalledWith(context, "error", error);
+
+			done();
+		});
+
 		it("should throw when not ready", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
