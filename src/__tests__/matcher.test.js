@@ -473,6 +473,21 @@ describe("AudienceMatcher", () => {
 			it("should skip a split rule whose percentages do not sum to 100 and continue to the next rule", () => {
 				expect(evaluate([splitRule("50/49"), fallbackRule])).toEqual({ variant: 2 });
 			});
+
+			// Same check as the backend's experiment split: the gap from 100 is rounded to two
+			// decimals before being compared with 0.01, so gaps up to 0.0149... are accepted.
+			it.each(["50/50.014", "50/49.986"])(
+				"should accept %s, whose gap from 100 rounds to 0.01",
+				(percentages) => {
+					expect(evaluate([splitRule(percentages), fallbackRule])).toEqual({
+						split: percentages.split("/").map((value) => parseFloat(value) / 100),
+					});
+				}
+			);
+
+			it.each(["50/50.015", "50/49.985"])("should skip %s, whose gap from 100 rounds to 0.02", (percentages) => {
+				expect(evaluate([splitRule(percentages), fallbackRule])).toEqual({ variant: 2 });
+			});
 		});
 	});
 });
