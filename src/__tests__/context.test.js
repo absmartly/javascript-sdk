@@ -3066,6 +3066,33 @@ describe("Context", () => {
 					done();
 				});
 			});
+
+			it("should give the full-on variant while the unit is missing on a full-on experiment", () => {
+				const fullOnResponse = buildRulesResponse({
+					fullOnVariant: 2,
+					assignmentRules: JSON.stringify({
+						rules: [
+							{
+								name: "Everyone",
+								type: "split",
+								conditions: null,
+								environments: [],
+								percentages: "0/100/0",
+							},
+						],
+					}),
+				});
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					fullOnResponse
+				);
+				expect(context.peek("exp_test_abc")).toEqual(2);
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context.peek("exp_test_abc")).toEqual(1);
+			});
 		});
 	});
 

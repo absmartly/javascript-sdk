@@ -523,7 +523,7 @@ export default class Context {
 
 		const unitType = experiment.unitType;
 		const unit = unitType != null && !isUnitPinnedMissing ? this._unitHash(unitType) : null;
-		if (unitType == null || unit === null) return { variant: 0, isMissingUnit: true };
+		if (unitType == null || unit === null) return { variant: experiment.fullOnVariant, isMissingUnit: true };
 
 		const assigner =
 			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
