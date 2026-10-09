@@ -2322,6 +2322,18 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
+		it("should expose a rule that wins over a custom assignment only once", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			context.customAssignment("exp_test_abc", 2);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+		});
+
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
@@ -2898,6 +2910,223 @@ describe("Context", () => {
 				const exposure = publishCall.exposures.find((e) => e.name === "exp_test_abc");
 				expect(exposure.ruleOverride).toBe(false);
 				done();
+			});
+		});
+
+		describe("split rules", () => {
+			const splitRulesResponse = (percentages, otherRules = []) =>
+				buildRulesResponse({
+					assignmentRules: JSON.stringify({
+						rules: [
+							{
+								name: "US Users",
+								type: "split",
+								conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+								environments: [],
+								percentages,
+							},
+							...otherRules,
+						],
+					}),
+				});
+
+			// With these seeds the unit hashes to ~0.748 (experiment seed) and ~0.682 (traffic seed), and
+			// normal assignment gives variant 2, so each way of resolving the split lands on a different variant.
+			it("should hash the unit with the experiment seed", () => {
+				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("70/10/20"));
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+			});
+
+			it("should assign the only variant with a non-zero share", () => {
+				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("0/100/0"));
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+			});
+
+			it("should set the same exposure flags as an assign rule", (done) => {
+				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("0/100/0"));
+				context.attribute("country", "US");
+				context.treatment("exp_test_abc");
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposure = publisher.publish.mock.calls[0][0].exposures.find(
+						(e) => e.name === "exp_test_abc"
+					);
+					expect(exposure).toEqual({
+						id: 2,
+						name: "exp_test_abc",
+						unit: "session_id",
+						exposedAt: timeOrigin,
+						variant: 1,
+						assigned: false,
+						eligible: true,
+						overridden: false,
+						fullOn: false,
+						custom: false,
+						audienceMismatch: false,
+						ruleOverride: true,
+					});
+					done();
+				});
+			});
+
+			it("should take priority over a custom assignment", () => {
+				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("0/100/0"));
+				context.attribute("country", "US");
+				context.customAssignment("exp_test_abc", 2);
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+			});
+
+			it("should fall back to normal assignment without trying later rules when the split does not cover every variant", () => {
+				const laterAssignRule = {
+					name: "Everyone",
+					type: "assign",
+					conditions: null,
+					environments: [],
+					variant: 1,
+				};
+				const context = new Context(
+					sdk,
+					contextOptions,
+					contextParams,
+					splitRulesResponse("0/100", [laterAssignRule])
+				);
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			});
+
+			it("should assign variant 0 and stop at the split rule while the unit is missing, then re-resolve once it is set", () => {
+				const laterAssignRule = {
+					name: "Everyone",
+					type: "assign",
+					conditions: null,
+					environments: [],
+					variant: 2,
+				};
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0", [laterAssignRule])
+				);
+				context.attribute("country", "US");
+				expect(context.peek("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context.peek("exp_test_abc")).toEqual(1);
+			});
+
+			it("should keep an assign rule's cached assignment when the unit is set later", () => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					rulesContextResponse
+				);
+				context.attribute("country", "US");
+				const assignment = context._assign("exp_test_abc");
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context._assign("exp_test_abc")).toBe(assignment);
+			});
+
+			it("should re-resolve once the unit is set when a split rule starts matching on the same variant as the previous rule", () => {
+				const fallbackRule = {
+					name: "Everyone",
+					type: "assign",
+					conditions: null,
+					environments: [],
+					variant: 0,
+				};
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0", [fallbackRule])
+				);
+				expect(context.peek("exp_test_abc")).toEqual(0);
+
+				context.attribute("country", "US");
+				expect(context.peek("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context.peek("exp_test_abc")).toEqual(1);
+			});
+
+			it("should keep an exposed split on variant 0 after its unit is set, and expose it only once", (done) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0")
+				);
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
+				context.attribute("unrelated", true);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					expect(exposures.filter((e) => e.name === "exp_test_abc").map((e) => e.variant)).toEqual([0]);
+					done();
+				});
+			});
+
+			it("should keep an exposed split on variant 0 after its unit is set when a custom assignment lost to it", (done) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0")
+				);
+				context.attribute("country", "US");
+				context.customAssignment("exp_test_abc", 2);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					expect(exposures.filter((e) => e.name === "exp_test_abc").map((e) => e.variant)).toEqual([0]);
+					done();
+				});
+			});
+
+			it("should give the full-on variant while the unit is missing on a full-on experiment", () => {
+				const fullOnResponse = buildRulesResponse({
+					fullOnVariant: 2,
+					assignmentRules: JSON.stringify({
+						rules: [
+							{
+								name: "Everyone",
+								type: "split",
+								conditions: null,
+								environments: [],
+								percentages: "0/100/0",
+							},
+						],
+					}),
+				});
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					fullOnResponse
+				);
+				expect(context.peek("exp_test_abc")).toEqual(2);
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context.peek("exp_test_abc")).toEqual(1);
 			});
 		});
 	});
@@ -4843,6 +5072,76 @@ describe("Context", () => {
 				]);
 				done();
 			});
+		});
+
+		it("lets a matching split rule win over holdout suppression", () => {
+			const response = buildHoldoutResponse(
+				[
+					{
+						id: 1,
+						name: "exp_holdout_split_rule",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 100,
+						seedLo: 200,
+						split: [0.5, 0.5],
+						trafficSeedHi: 1,
+						trafficSeedLo: 2,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "website" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						assignmentRules: JSON.stringify({
+							rules: [
+								{
+									name: "US Users",
+									type: "split",
+									conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+									environments: [],
+									percentages: "0/100",
+								},
+							],
+						}),
+						customFieldValues: null,
+						holdoutIds: [11],
+					},
+				],
+				[
+					{
+						id: 11,
+						name: "holdout_split_rule_suppression",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 13,
+						seedLo: 111,
+						split: [0.1, 0.9],
+						trafficSeedHi: 0,
+						trafficSeedLo: 0,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: null,
+						audienceStrict: false,
+						customFieldValues: null,
+						holdoutType: "full",
+					},
+				]
+			);
+
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			context.attribute("country", "US");
+
+			expect(context.treatment("exp_holdout_split_rule")).toEqual(1);
+			expect(context._assignments["exp_holdout_split_rule"].suppressed).toEqual(true);
 		});
 
 		// Final-review Finding I-2, Test A: regression coverage for Task 5's override-fast-path

@@ -48,7 +48,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(1);
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toEqual({ variant: 1 });
 		});
 
 		it("should return null when conditions do not match", () => {
@@ -93,8 +93,8 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
-			expect(matcher.evaluateRules(audience, "staging", { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toEqual({ variant: 2 });
+			expect(matcher.evaluateRules(audience, "staging", { country: "US" })).toEqual({ variant: 2 });
 		});
 
 		it("should match all environments when environments is empty", () => {
@@ -109,9 +109,9 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(1);
-			expect(matcher.evaluateRules(audience, "staging", {})).toBe(1);
-			expect(matcher.evaluateRules(audience, null, {})).toBe(1);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 1 });
+			expect(matcher.evaluateRules(audience, "staging", {})).toEqual({ variant: 1 });
+			expect(matcher.evaluateRules(audience, null, {})).toEqual({ variant: 1 });
 		});
 
 		it("should skip rules when environments is non-empty and environment name is null", () => {
@@ -148,7 +148,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(1);
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toEqual({ variant: 1 });
 		});
 
 		it("should return variant when conditions is null (matches all)", () => {
@@ -163,7 +163,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(3);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 3 });
 		});
 
 		it("should return variant when conditions field is absent (matches all)", () => {
@@ -177,7 +177,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(3);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 3 });
 		});
 
 		it("should handle malformed audience JSON gracefully", () => {
@@ -229,7 +229,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 2 });
 		});
 
 		it("should skip rule with missing variant and continue to next valid rule", () => {
@@ -248,7 +248,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(1);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 1 });
 		});
 
 		it("should handle malformed rules gracefully", () => {
@@ -273,7 +273,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 2 });
 		});
 
 		it("should skip rules with missing type", () => {
@@ -308,7 +308,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", { country: "US" })).toEqual({ variant: 2 });
 		});
 
 		it("should support variant 0", () => {
@@ -323,7 +323,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(0);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 0 });
 		});
 
 		it("should skip rule with fractional variant", () => {
@@ -343,7 +343,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 2 });
 		});
 
 		it("should skip rule with non-object conditions", () => {
@@ -364,7 +364,7 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 2 });
 		});
 
 		it("should skip rule when environments is not an array", () => {
@@ -398,12 +398,17 @@ describe("AudienceMatcher", () => {
 		});
 
 		it("should skip rule when conditions evaluation throws and continue to next rule", () => {
+			const evaluateBooleanExpr = jest
+				.spyOn(matcher._jsonExpr, "evaluateBooleanExpr")
+				.mockImplementationOnce(() => {
+					throw new Error("condition failed");
+				});
 			const audience = JSON.stringify({
 				rules: [
 					{
 						name: "throws",
 						type: "assign",
-						conditions: { badOperator: [1, 2] },
+						conditions: { and: [{ value: true }] },
 						environments: [],
 						variant: 1,
 					},
@@ -415,7 +420,9 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(2);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 2 });
+			expect(evaluateBooleanExpr).toHaveBeenCalledTimes(1);
+			evaluateBooleanExpr.mockRestore();
 		});
 
 		it("should return negative variant (bounds checking is caller responsibility)", () => {
@@ -430,7 +437,64 @@ describe("AudienceMatcher", () => {
 					},
 				],
 			});
-			expect(matcher.evaluateRules(audience, "production", {})).toBe(-1);
+			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: -1 });
+		});
+
+		describe("split rules", () => {
+			const splitRule = (percentages) => ({
+				name: "split",
+				type: "split",
+				conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
+				environments: [],
+				percentages,
+			});
+			const fallbackRule = { name: "fallback", type: "assign", environments: [], variant: 2 };
+			const evaluate = (rules) =>
+				matcher.evaluateRules(JSON.stringify({ rules }), "production", { country: "US" });
+
+			it("should return the split as fractions when conditions match", () => {
+				expect(evaluate([splitRule("20/30/50")])).toEqual({ split: [0.2, 0.3, 0.5] });
+			});
+
+			it("should accept a split whose sum is within the backend tolerance of 100", () => {
+				expect(evaluate([splitRule("33.33/33.33/33.33")])).toEqual({ split: [0.3333, 0.3333, 0.3333] });
+			});
+
+			it("should return null when split conditions do not match", () => {
+				const audience = JSON.stringify({ rules: [splitRule("50/50")] });
+				expect(matcher.evaluateRules(audience, "production", { country: "GB" })).toBe(null);
+			});
+
+			it("should skip a split rule with non-string percentages and continue to the next rule", () => {
+				expect(evaluate([splitRule([50, 50]), fallbackRule])).toEqual({ variant: 2 });
+			});
+
+			it("should skip a split rule with non-numeric percentages and continue to the next rule", () => {
+				expect(evaluate([splitRule("50/abc"), fallbackRule])).toEqual({ variant: 2 });
+			});
+
+			it("should skip a split rule with negative percentages and continue to the next rule", () => {
+				expect(evaluate([splitRule("150/-50"), fallbackRule])).toEqual({ variant: 2 });
+			});
+
+			it("should skip a split rule whose percentages do not sum to 100 and continue to the next rule", () => {
+				expect(evaluate([splitRule("50/49"), fallbackRule])).toEqual({ variant: 2 });
+			});
+
+			// Same check as the backend's experiment split: the gap from 100 is rounded to two
+			// decimals before being compared with 0.01, so gaps up to 0.0149... are accepted.
+			it.each(["50/50.014", "50/49.986"])(
+				"should accept %s, whose gap from 100 rounds to 0.01",
+				(percentages) => {
+					expect(evaluate([splitRule(percentages), fallbackRule])).toEqual({
+						split: percentages.split("/").map((value) => parseFloat(value) / 100),
+					});
+				}
+			);
+
+			it.each(["50/50.015", "50/49.985"])("should skip %s, whose gap from 100 rounds to 0.02", (percentages) => {
+				expect(evaluate([splitRule(percentages), fallbackRule])).toEqual({ variant: 2 });
+			});
 		});
 	});
 });
