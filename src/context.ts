@@ -676,8 +676,14 @@ export default class Context {
 					// previously not-running experiment
 					return assignment;
 				}
-			} else if (assignment.suppressed || !hasCustom || this._cassignments[experimentName] === assignment.variant) {
-				// Suppressed assignments are forced to variant 0, so a custom mismatch is not staleness.
+			} else if (
+				assignment.suppressed ||
+				assignment.ruleOverride ||
+				!hasCustom ||
+				this._cassignments[experimentName] === assignment.variant
+			) {
+				// Suppressed assignments are forced to variant 0 and a matching rule wins over a custom
+				// assignment, so a custom mismatch is not staleness.
 				if (
 					experimentMatches(experiment.data, assignment) &&
 					audienceMatches(experiment.data, assignment) &&

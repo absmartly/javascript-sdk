@@ -2322,6 +2322,18 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
+		it("should expose a rule that wins over a custom assignment only once", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			context.customAssignment("exp_test_abc", 2);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			context.attribute("country", "GB");
+			expect(context.treatment("exp_test_abc")).toEqual(2);
+		});
+
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
@@ -3056,6 +3068,29 @@ describe("Context", () => {
 
 				context.unit("session_id", contextParams.units.session_id);
 				context.attribute("unrelated", true);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					expect(exposures.filter((e) => e.name === "exp_test_abc").map((e) => e.variant)).toEqual([0]);
+					done();
+				});
+			});
+
+			it("should keep an exposed split on variant 0 after its unit is set when a custom assignment lost to it", (done) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0")
+				);
+				context.attribute("country", "US");
+				context.customAssignment("exp_test_abc", 2);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
 				expect(context.treatment("exp_test_abc")).toEqual(0);
 
 				publisher.publish.mockReturnValue(Promise.resolve());
