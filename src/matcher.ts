@@ -18,11 +18,16 @@ const parseSplitPercentages = (percentages: unknown) => {
 };
 
 const parseRuleAction = (rule: Record<string, unknown>): RuleAction | null => {
-	if (rule.type === "assign") return Number.isInteger(rule.variant) ? { variant: rule.variant as number } : null;
-	if (rule.type !== "split") return null;
-
-	const split = parseSplitPercentages(rule.percentages);
-	return split != null ? { split } : null;
+	switch (rule.type) {
+		case "assign":
+			return Number.isInteger(rule.variant) ? { variant: rule.variant as number } : null;
+		case "split": {
+			const split = parseSplitPercentages(rule.percentages);
+			return split != null ? { split } : null;
+		}
+		default:
+			return null;
+	}
 };
 
 export class AudienceMatcher {
