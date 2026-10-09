@@ -510,7 +510,7 @@ export default class Context {
 		}
 	}
 
-	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>) {
+	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
 		const variantCount = experiment.variants.length;
 		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
 		if (action == null) return null;
@@ -522,7 +522,7 @@ export default class Context {
 		if (action.split.length !== variantCount) return null;
 
 		const unitType = experiment.unitType;
-		const unit = unitType != null ? this._unitHash(unitType) : null;
+		const unit = unitType != null && !isUnitPinnedMissing ? this._unitHash(unitType) : null;
 		if (unitType == null || unit === null) return { variant: 0, isMissingUnit: true };
 
 		const assigner =
@@ -602,12 +602,17 @@ export default class Context {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
-					const ruleVariant = this._resolveRule(experiment, attrs)?.variant ?? null;
+					// An exposed split resolved without its unit keeps resolving as if the unit were still
+					// missing, so a unit set afterwards cannot switch the variant the user already saw.
+					const isUnitPinnedMissing = assignment.exposed && assignment.isRuleMissingUnit === true;
+					const rule = this._resolveRule(experiment, attrs, isUnitPinnedMissing);
+					const ruleVariant = rule?.variant ?? null;
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
 
 					assignment.ruleVariant = ruleVariant;
+					assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
 				}
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
@@ -741,7 +746,7 @@ export default class Context {
 
 				const rule =
 					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
-						? this._resolveRule(experiment.data, attrs)
+						? this._resolveRule(experiment.data, attrs, false)
 						: null;
 				const ruleVariant = rule?.variant ?? null;
 

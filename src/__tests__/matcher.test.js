@@ -398,12 +398,17 @@ describe("AudienceMatcher", () => {
 		});
 
 		it("should skip rule when conditions evaluation throws and continue to next rule", () => {
+			const evaluateBooleanExpr = jest
+				.spyOn(matcher._jsonExpr, "evaluateBooleanExpr")
+				.mockImplementationOnce(() => {
+					throw new Error("condition failed");
+				});
 			const audience = JSON.stringify({
 				rules: [
 					{
 						name: "throws",
 						type: "assign",
-						conditions: { badOperator: [1, 2] },
+						conditions: { and: [{ value: true }] },
 						environments: [],
 						variant: 1,
 					},
@@ -416,6 +421,8 @@ describe("AudienceMatcher", () => {
 				],
 			});
 			expect(matcher.evaluateRules(audience, "production", {})).toEqual({ variant: 2 });
+			expect(evaluateBooleanExpr).toHaveBeenCalledTimes(1);
+			evaluateBooleanExpr.mockRestore();
 		});
 
 		it("should return negative variant (bounds checking is caller responsibility)", () => {

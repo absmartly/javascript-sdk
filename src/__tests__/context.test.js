@@ -2918,16 +2918,12 @@ describe("Context", () => {
 					}),
 				});
 
-			it("should hash the unit with the experiment seed, so the experiment's own split keeps its variant", () => {
-				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("34/33/33"));
+			// With these seeds the unit hashes to ~0.748 (experiment seed) and ~0.682 (traffic seed), and
+			// normal assignment gives variant 2, so each way of resolving the split lands on a different variant.
+			it("should hash the unit with the experiment seed", () => {
+				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("70/10/20"));
 				context.attribute("country", "US");
-				expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
-			});
-
-			it("should not hash the unit with the traffic seed", () => {
-				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("0/70/30"));
-				context.attribute("country", "US");
-				expect(context.treatment("exp_test_abc")).toEqual(2);
+				expect(context.treatment("exp_test_abc")).toEqual(1);
 			});
 
 			it("should assign the only variant with a non-zero share", () => {
@@ -2972,8 +2968,20 @@ describe("Context", () => {
 				expect(context.treatment("exp_test_abc")).toEqual(1);
 			});
 
-			it("should fall back to normal assignment when the split does not cover every variant", () => {
-				const context = new Context(sdk, contextOptions, contextParams, splitRulesResponse("0/100"));
+			it("should fall back to normal assignment without trying later rules when the split does not cover every variant", () => {
+				const laterAssignRule = {
+					name: "Everyone",
+					type: "assign",
+					conditions: null,
+					environments: [],
+					variant: 1,
+				};
+				const context = new Context(
+					sdk,
+					contextOptions,
+					contextParams,
+					splitRulesResponse("0/100", [laterAssignRule])
+				);
 				context.attribute("country", "US");
 				expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 			});
@@ -3011,6 +3019,52 @@ describe("Context", () => {
 
 				context.unit("session_id", contextParams.units.session_id);
 				expect(context._assign("exp_test_abc")).toBe(assignment);
+			});
+
+			it("should re-resolve once the unit is set when a split rule starts matching on the same variant as the previous rule", () => {
+				const fallbackRule = {
+					name: "Everyone",
+					type: "assign",
+					conditions: null,
+					environments: [],
+					variant: 0,
+				};
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0", [fallbackRule])
+				);
+				expect(context.peek("exp_test_abc")).toEqual(0);
+
+				context.attribute("country", "US");
+				expect(context.peek("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
+				expect(context.peek("exp_test_abc")).toEqual(1);
+			});
+
+			it("should keep an exposed split on variant 0 after its unit is set, and expose it only once", (done) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: { user_id: contextParams.units.user_id } },
+					splitRulesResponse("0/100/0")
+				);
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				context.unit("session_id", contextParams.units.session_id);
+				context.attribute("unrelated", true);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+
+				publisher.publish.mockReturnValue(Promise.resolve());
+
+				context.publish().then(() => {
+					const exposures = publisher.publish.mock.calls[0][0].exposures;
+					expect(exposures.filter((e) => e.name === "exp_test_abc").map((e) => e.variant)).toEqual([0]);
+					done();
+				});
 			});
 		});
 	});
