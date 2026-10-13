@@ -65,6 +65,7 @@ type Assignment = {
 	audienceMismatch: boolean;
 	ruleOverride: boolean;
 	ruleVariant?: number | null;
+	isRuleMissingUnit?: boolean;
 	ruleKey?: string;
 	trafficSplit?: number[];
 	variables?: Record<string, unknown>;
@@ -356,20 +357,20 @@ export default class Context {
 		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
 	}
 
-	// A null holdout entry means the unit was missing when the assignment was resolved. Evict so
-	// `_assign()` rebuilds it; already-exposed ones are kept since re-resolving would queue a
-	// second, conflicting exposure.
+	// A null holdout entry or a split rule resolved without its unit means the unit was missing when
+	// the assignment was resolved. Evict so `_assign()` rebuilds it; already-exposed ones are kept
+	// since re-resolving would queue a second, conflicting exposure.
 	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
 		for (const experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
-			const holdoutAssignments = assignment.holdoutAssignments;
+			if (assignment.unitType !== unitType || assignment.exposed) continue;
 
-			if (holdoutAssignments && assignment.unitType === unitType && !assignment.exposed) {
-				const hasMissingEntry = holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null);
+			const hasMissingHoldoutEntry = assignment.holdoutAssignments?.some(
+				(holdoutAssignment) => holdoutAssignment === null
+			);
 
-				if (hasMissingEntry) {
-					delete this._assignments[experimentName];
-				}
+			if (hasMissingHoldoutEntry || assignment.isRuleMissingUnit) {
+				delete this._assignments[experimentName];
 			}
 		}
 	}
@@ -509,13 +510,24 @@ export default class Context {
 		}
 	}
 
-	private _computeRuleVariant(
-		assignmentRules: string,
-		variantCount: number,
-		attrs: Record<string, unknown>
-	): number | null {
-		const rawRuleVariant = this._audienceMatcher.evaluateRules(assignmentRules, this._environmentName, attrs);
-		return rawRuleVariant !== null && rawRuleVariant >= 0 && rawRuleVariant < variantCount ? rawRuleVariant : null;
+	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+		const variantCount = experiment.variants.length;
+		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
+		if (action == null) return null;
+
+		if ("variant" in action) {
+			const isInBounds = action.variant >= 0 && action.variant < variantCount;
+			return isInBounds ? { variant: action.variant, isMissingUnit: false } : null;
+		}
+		if (action.split.length !== variantCount) return null;
+
+		const unitType = experiment.unitType;
+		const unit = unitType != null && !isUnitPinnedMissing ? this._unitHash(unitType) : null;
+		if (unitType == null || unit === null) return { variant: experiment.fullOnVariant, isMissingUnit: true };
+
+		const assigner =
+			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+		return { variant: assigner.assign(action.split, experiment.seedHi, experiment.seedLo), isMissingUnit: false };
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
@@ -590,12 +602,17 @@ export default class Context {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
-					const ruleVariant = this._computeRuleVariant(experiment.assignmentRules, experiment.variants.length, attrs);
+					// An exposed split resolved without its unit keeps resolving as if the unit were still
+					// missing, so a unit set afterwards cannot switch the variant the user already saw.
+					const isUnitPinnedMissing = assignment.exposed && assignment.isRuleMissingUnit === true;
+					const rule = this._resolveRule(experiment, attrs, isUnitPinnedMissing);
+					const ruleVariant = rule?.variant ?? null;
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
 					}
 
 					assignment.ruleVariant = ruleVariant;
+					assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
 				}
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
@@ -659,8 +676,14 @@ export default class Context {
 					// previously not-running experiment
 					return assignment;
 				}
-			} else if (assignment.suppressed || !hasCustom || this._cassignments[experimentName] === assignment.variant) {
-				// Suppressed assignments are forced to variant 0, so a custom mismatch is not staleness.
+			} else if (
+				assignment.suppressed ||
+				assignment.ruleOverride ||
+				!hasCustom ||
+				this._cassignments[experimentName] === assignment.variant
+			) {
+				// Suppressed assignments are forced to variant 0 and a matching rule wins over a custom
+				// assignment, so a custom mismatch is not staleness.
 				if (
 					experimentMatches(experiment.data, assignment) &&
 					audienceMatches(experiment.data, assignment) &&
@@ -727,17 +750,14 @@ export default class Context {
 					? `${experiment.data.assignmentRules}:${this._environmentName}`
 					: "";
 
-				let ruleVariant: number | null = null;
-
-				if (experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0) {
-					ruleVariant = this._computeRuleVariant(
-						experiment.data.assignmentRules,
-						experiment.data.variants.length,
-						attrs
-					);
-				}
+				const rule =
+					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
+						? this._resolveRule(experiment.data, attrs, false)
+						: null;
+				const ruleVariant = rule?.variant ?? null;
 
 				assignment.ruleVariant = ruleVariant;
+				assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
 
 				// A matching assignment rule wins over holdout suppression, the same way override()
 				// does: it's an explicit, author-specified assignment (flagged `ruleOverride`,
