@@ -7,7 +7,6 @@ export default defineConfig([
 		globalName: "absmartly",
 		dts: true,
 		sourcemap: true,
-		clean: true,
 		minify: true,
 		target: "es2022",
 		outExtension({ format }) {
