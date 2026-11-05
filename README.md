@@ -395,7 +395,12 @@ const type = context.customFieldValueType("exp_test_experiment", "country");
 ```
 
 #### Error handling
-The SDK provides typed error classes for programmatic error handling:
+The SDK provides typed error classes for programmatic error handling. All of them extend `Error`, and the context lifecycle errors keep the messages of earlier SDK versions:
+
+- `ContextNotReadyError` (`"ABsmartly Context is not yet ready."`) is thrown when a method that needs experiment data is called before the context is ready.
+- `ContextFinalizedError` (`"ABsmartly Context is finalizing."` or `"ABsmartly Context is finalized."`) is thrown when a method that changes or reads context state is called after `finalize()` has been called.
+
+Both extend `ABSmartlyError`.
 
 ```typescript
 import {
