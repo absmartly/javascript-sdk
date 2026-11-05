@@ -377,6 +377,15 @@ context.customAssignments({
 });
 ```
 
+A custom assignment replaces only the randomized variant selection, so it is not applied unconditionally. The SDK ignores it, and returns the variant shown below, when:
+- an `override()` is set for the experiment (the override variant wins)
+- one of the experiment's assignment rules matches (the rule's variant wins)
+- the unit is held out by a holdout (variant `0`)
+- the experiment has a strict audience that the context attributes do not match (variant `0`)
+- the experiment is full-on (the full-on variant)
+- the context has no unit of the experiment's unit type (variant `0`)
+- the unit falls outside the experiment's traffic allocation (variant `0`)
+
 #### Custom fields
 Experiments can have custom field values configured in the A/B Smartly web console.
 ```typescript
