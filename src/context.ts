@@ -116,12 +116,18 @@ export class Context {
 		this._audienceMatcher = new AudienceMatcher();
 		this._attrsSeq = 0;
 
-		if (params.units) {
-			this.units(params.units);
-		}
+		try {
+			if (params.units) {
+				this.units(params.units);
+			}
 
-		if (params.attributes) {
-			this.attributes(params.attributes);
+			if (params.attributes) {
+				this.attributes(params.attributes);
+			}
+		} catch (error) {
+			// The caller gets the validation error; don't leave an already-started fetch as an unhandled rejection.
+			if (isPromise(promise)) (promise as Promise<ContextData>).catch(() => {});
+			throw error;
 		}
 
 		if (isPromise(promise)) {

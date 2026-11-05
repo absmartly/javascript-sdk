@@ -93,6 +93,29 @@ describe("SDK", () => {
 		expect(context.getAttributes()).toEqual({ user_type: "returning", age: 21 });
 	});
 
+	test("createContext does not leave the started fetch unhandled when initial params throw", async () => {
+		const unhandled = vi.fn();
+		process.on("unhandledRejection", unhandled);
+		try {
+			const sdk = new SDK(defaultOpts);
+			sdk.setContextDataProvider({
+				getContextData: () => Promise.reject(new Error("transport error")),
+			} as never);
+
+			expect(() => sdk.createContext({ units: { session_id: "abc" }, attributes: { "": true } })).toThrow(
+				"Attribute name must be a non-empty string"
+			);
+			expect(() => sdk.createContext({ units: { session_id: " " } })).toThrow(
+				"Unit 'session_id' UID must not be blank."
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(unhandled).not.toHaveBeenCalled();
+		} finally {
+			process.off("unhandledRejection", unhandled);
+		}
+	});
+
 	test("createContext rejects non-object attributes in context params", () => {
 		const sdk = new SDK(defaultOpts);
 		for (const attributes of ["x", 1, [["a", 1]]]) {
