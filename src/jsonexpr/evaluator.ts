@@ -119,6 +119,7 @@ export class Evaluator {
 		for (const frag of frags) {
 			if (target !== null && typeof target === "object" && frag in (target as Record<string, unknown>)) {
 				target = (target as Record<string, unknown>)[frag];
+				if (target === undefined) return null;
 				continue;
 			}
 			return null;

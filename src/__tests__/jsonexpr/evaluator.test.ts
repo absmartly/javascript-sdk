@@ -98,6 +98,13 @@ describe("Evaluator", () => {
 			const evaluator = createEvaluator({ name: "John" });
 			expect(evaluator.extractVar("missing")).toBe(null);
 		});
+
+		test("returns null for explicitly undefined values, like missing ones", () => {
+			const evaluator = createEvaluator({ country: undefined, user: { name: undefined } });
+			expect(evaluator.extractVar("country")).toBe(null);
+			expect(evaluator.extractVar("user/name")).toBe(null);
+			expect(evaluator.extractVar("user/name/first")).toBe(null);
+		});
 	});
 
 	describe("compare", () => {

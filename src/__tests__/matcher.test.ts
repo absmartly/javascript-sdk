@@ -13,6 +13,12 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluate("", {})).toBe(null);
 		});
 
+		test("explicitly undefined attribute matches a null filter like a missing one", () => {
+			const audience = JSON.stringify({ filter: { null: { var: "country" } } });
+			expect(matcher.evaluate(audience, {})).toBe(true);
+			expect(matcher.evaluate(audience, { country: undefined })).toBe(true);
+		});
+
 		test("returns null for invalid JSON", () => {
 			expect(matcher.evaluate("invalid json", {})).toBe(null);
 		});
