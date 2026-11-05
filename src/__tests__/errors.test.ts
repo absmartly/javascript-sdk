@@ -70,6 +70,7 @@ describe("AbortError", () => {
 		expect(error).toBeInstanceOf(Error);
 		expect(error).toBeInstanceOf(AbortError);
 		expect(error.name).toBe("AbortError");
+		expect(error.message).toBe("");
 	});
 
 	test("accepts custom message", () => {
