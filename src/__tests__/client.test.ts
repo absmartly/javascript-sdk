@@ -11,6 +11,8 @@ const defaultOpts: ClientOptions = {
 };
 
 describe("Client", () => {
+	let fetchImpl: ReturnType<typeof vi.fn>;
+
 	describe("constructor validation", () => {
 		test("throws for missing apiKey", () => {
 			const opts = { ...defaultOpts, apiKey: undefined } as unknown as ClientOptions;
@@ -88,23 +90,22 @@ describe("Client", () => {
 
 	describe("getContext", () => {
 		beforeEach(() => {
-			vi.stubGlobal("fetch", vi.fn());
+			fetchImpl = vi.fn();
 		});
 
 		afterEach(() => {
-			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
 		});
 
 		test("makes GET request to /context", async () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({ experiments: [] }) };
-			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+			fetchImpl.mockResolvedValue(mockResponse);
 
-			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, fetchImpl, retries: 0, timeout: 1000 });
 			await client.getContext();
 
-			expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-			const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+			expect(fetchImpl).toHaveBeenCalledTimes(1);
+			const [url] = fetchImpl.mock.calls[0]!;
 			expect(url).toContain("/context");
 			expect(url).toContain("application=test-app");
 			expect(url).toContain("environment=test");
@@ -112,12 +113,12 @@ describe("Client", () => {
 
 		test("GET /context includes auth headers", async () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({ experiments: [] }) };
-			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+			fetchImpl.mockResolvedValue(mockResponse);
 
-			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, fetchImpl, retries: 0, timeout: 1000 });
 			await client.getContext();
 
-			const [, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+			const [, opts] = fetchImpl.mock.calls[0]!;
 			expect(opts.headers["X-API-Key"]).toBe(defaultOpts.apiKey);
 			expect(opts.headers["X-Environment"]).toBe(defaultOpts.environment);
 		});
@@ -125,19 +126,18 @@ describe("Client", () => {
 
 	describe("publish", () => {
 		beforeEach(() => {
-			vi.stubGlobal("fetch", vi.fn());
+			fetchImpl = vi.fn();
 		});
 
 		afterEach(() => {
-			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
 		});
 
 		test("makes PUT request to /context with auth headers", async () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({}) };
-			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+			fetchImpl.mockResolvedValue(mockResponse);
 
-			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, fetchImpl, retries: 0, timeout: 1000 });
 			await client.publish({
 				units: [{ type: "session_id", uid: "abc" }],
 				publishedAt: 1000,
@@ -145,7 +145,7 @@ describe("Client", () => {
 				sdkVersion: "2.0.0",
 			});
 
-			const [, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+			const [, opts] = fetchImpl.mock.calls[0]!;
 			expect(opts.method).toBe("PUT");
 			expect(opts.headers["X-API-Key"]).toBe("test-api-key");
 			expect(opts.headers["X-Agent"]).toBe("test-agent");
@@ -154,9 +154,9 @@ describe("Client", () => {
 
 		test("omits empty goals and exposures arrays", async () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({}) };
-			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
+			fetchImpl.mockResolvedValue(mockResponse);
 
-			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000 });
+			const client = new DefaultClient({ ...defaultOpts, fetchImpl, retries: 0, timeout: 1000 });
 			await client.publish({
 				units: [{ type: "session_id", uid: "abc" }],
 				publishedAt: 1000,
@@ -166,7 +166,7 @@ describe("Client", () => {
 				exposures: [],
 			});
 
-			const [, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
+			const [, opts] = fetchImpl.mock.calls[0]!;
 			const body = JSON.parse(opts.body);
 			expect(body.goals).toBeUndefined();
 			expect(body.exposures).toBeUndefined();
@@ -176,12 +176,11 @@ describe("Client", () => {
 	describe("retry logic", () => {
 		beforeEach(() => {
 			vi.useFakeTimers();
-			vi.stubGlobal("fetch", vi.fn());
+			fetchImpl = vi.fn();
 		});
 
 		afterEach(() => {
 			vi.useRealTimers();
-			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
 		});
 
@@ -189,18 +188,16 @@ describe("Client", () => {
 			const failResponse = { ok: false, status: 500, statusText: "Server Error", text: () => Promise.resolve("") };
 			const successResponse = { ok: true, json: () => Promise.resolve({ data: "ok" }) };
 
-			(globalThis.fetch as ReturnType<typeof vi.fn>)
-				.mockResolvedValueOnce(failResponse)
-				.mockResolvedValueOnce(successResponse);
+			fetchImpl.mockResolvedValueOnce(failResponse).mockResolvedValueOnce(successResponse);
 
-			const client = new DefaultClient({ ...defaultOpts, retries: 3, timeout: 10000 });
+			const client = new DefaultClient({ ...defaultOpts, fetchImpl, retries: 3, timeout: 10000 });
 			const promise = client.getContext();
 
 			await vi.runAllTimersAsync();
 			const result = await promise;
 
 			expect(result).toEqual({ data: "ok" });
-			expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+			expect(fetchImpl).toHaveBeenCalledTimes(2);
 		});
 
 		test("does not retry on 4xx error", async () => {
@@ -211,13 +208,13 @@ describe("Client", () => {
 				text: () => Promise.resolve("bad request"),
 			};
 
-			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(failResponse);
+			fetchImpl.mockResolvedValue(failResponse);
 
-			const client = new DefaultClient({ ...defaultOpts, retries: 3, timeout: 10000 });
+			const client = new DefaultClient({ ...defaultOpts, fetchImpl, retries: 3, timeout: 10000 });
 			const promise = client.getContext();
 
 			await expect(promise).rejects.toThrow("bad request");
-			expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+			expect(fetchImpl).toHaveBeenCalledTimes(1);
 
 			await vi.runAllTimersAsync();
 		});
