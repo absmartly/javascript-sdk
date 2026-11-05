@@ -21,8 +21,10 @@ import type {
 	CustomFieldValue,
 } from "./models";
 import type {
+	Client,
 	ClientRequestOptions,
 	ContextDataProvider,
+	ContextOptions,
 	ContextPublisher,
 	EventLogger,
 	EventName,
@@ -30,13 +32,7 @@ import type {
 } from "./interfaces";
 
 interface SDKLike {
-	getClient(): {
-		getAgent(): string;
-		getApplication(): { name: string; version: number | string };
-		getEnvironment(): string;
-		publish(request: PublishParams, options?: ClientRequestOptions): Promise<unknown>;
-		getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData>;
-	};
+	getClient(): Client;
 	getContextPublisher(): ContextPublisher;
 	getContextDataProvider(): ContextDataProvider;
 	getEventLogger(): EventLogger;
@@ -48,15 +44,6 @@ function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVari
 	return false;
 }
 
-type ContextOptionsInternal = {
-	publisher?: ContextPublisher;
-	dataProvider?: ContextDataProvider;
-	eventLogger?: EventLogger;
-	refreshPeriod: number;
-	publishDelay: number;
-	includeSystemAttributes?: boolean;
-};
-
 export class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _attrs: Attribute[];
@@ -65,7 +52,7 @@ export class Context {
 	private readonly _dataProvider: ContextDataProvider;
 	private _environmentName: string | null = null;
 	private readonly _eventLogger: EventLogger;
-	private readonly _opts: ContextOptionsInternal;
+	private readonly _opts: ContextOptions;
 	private readonly _publisher: ContextPublisher;
 	private readonly _sdk: SDKLike;
 	private readonly _units: Units;
@@ -94,7 +81,7 @@ export class Context {
 
 	constructor(
 		sdk: SDKLike,
-		options: ContextOptionsInternal,
+		options: ContextOptions,
 		params: ContextParams,
 		promise: ContextData | Promise<ContextData>
 	) {
@@ -182,9 +169,10 @@ export class Context {
 			return Promise.resolve(true);
 		}
 
-		return new Promise((resolve) => {
-			this._promise?.then(() => resolve(true)).catch(() => resolve(true));
-		});
+		return (this._promise as Promise<unknown>).then(
+			() => true as const,
+			() => true as const
+		);
 	}
 
 	pending() {
@@ -212,7 +200,7 @@ export class Context {
 		return this._sdk;
 	}
 
-	getOptions(): ContextOptionsInternal {
+	getOptions(): ContextOptions {
 		return { ...this._opts };
 	}
 

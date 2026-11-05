@@ -12,6 +12,9 @@ export type ContextParams = {
 };
 
 export type ContextOptions = {
+	publisher?: ContextPublisher;
+	dataProvider?: ContextDataProvider;
+	eventLogger?: EventLogger;
 	publishDelay: number;
 	refreshPeriod: number;
 	includeSystemAttributes?: boolean;

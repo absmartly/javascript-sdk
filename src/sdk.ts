@@ -7,6 +7,7 @@ import type {
 	ClientOptions,
 	ClientRequestOptions,
 	ContextDataProvider,
+	ContextOptions,
 	ContextParams,
 	ContextPublisher,
 	EventLogger,
@@ -14,18 +15,6 @@ import type {
 	SDKConstructorOptions,
 } from "./interfaces";
 import type { ContextData } from "./models";
-
-type ContextOptionsInput = {
-	publisher?: ContextPublisher;
-	dataProvider?: ContextDataProvider;
-	eventLogger?: EventLogger;
-	refreshPeriod?: number;
-	publishDelay?: number;
-	includeSystemAttributes?: boolean;
-};
-
-type ContextOptionsFull = Required<Pick<ContextOptionsInput, "refreshPeriod" | "publishDelay">> &
-	Omit<ContextOptionsInput, "refreshPeriod" | "publishDelay">;
 
 function isLongLivedApp(): boolean {
 	return (
@@ -82,7 +71,7 @@ export class SDK {
 
 	createContext(
 		params: ContextParams,
-		options?: Partial<ContextOptionsInput>,
+		options?: Partial<ContextOptions>,
 		requestOptions?: Partial<ClientRequestOptions>
 	): Context {
 		SDK._validateParams(params);
@@ -94,7 +83,7 @@ export class SDK {
 	createContextWith(
 		params: ContextParams,
 		data: ContextData | Promise<ContextData>,
-		options?: Partial<ContextOptionsInput>
+		options?: Partial<ContextOptions>
 	): Context {
 		SDK._validateParams(params);
 		const fullOptions = SDK._contextOptions(options);
@@ -129,11 +118,11 @@ export class SDK {
 		return this._client;
 	}
 
-	private static _contextOptions(options?: Partial<ContextOptionsInput>): ContextOptionsFull {
+	private static _contextOptions(options?: Partial<ContextOptions>): ContextOptions {
 		return Object.assign(
 			{ publishDelay: isLongLivedApp() ? 100 : -1, refreshPeriod: 0 },
 			options || {}
-		) as ContextOptionsFull;
+		) as ContextOptions;
 	}
 
 	private static _validateParams(params: ContextParams): void {
