@@ -1,15 +1,27 @@
 import { md5 } from "./md5";
 
 export function stringToUint8Array(value: string): Uint8Array {
+	if (typeof TextEncoder !== "undefined") {
+		// Copy into a fresh array so `.buffer` is exactly the encoded bytes, even if
+		// an encoder returns a view over a larger backing buffer.
+		return new Uint8Array(new TextEncoder().encode(value));
+	}
+
 	const utf8: number[] = [];
 	for (let i = 0; i < value.length; i++) {
 		let c = value.charCodeAt(i);
-		if (c >= 0xd800 && c <= 0xdbff && i + 1 < value.length) {
-			const next = value.charCodeAt(i + 1);
+		if (c >= 0xd800 && c <= 0xdbff) {
+			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
 			if (next >= 0xdc00 && next <= 0xdfff) {
 				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
 				i++;
+			} else {
+				// Unmatched high surrogate: not a valid UTF-8 code point, encode as U+FFFD (like TextEncoder).
+				c = 0xfffd;
 			}
+		} else if (c >= 0xdc00 && c <= 0xdfff) {
+			// Unmatched low surrogate: not a valid UTF-8 code point, encode as U+FFFD (like TextEncoder).
+			c = 0xfffd;
 		}
 		if (c < 0x80) {
 			utf8.push(c);

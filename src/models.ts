@@ -30,6 +30,7 @@ export interface ExperimentData {
 	trafficSeedHi: number;
 	trafficSeedLo: number;
 	audience: string;
+	assignmentRules?: string;
 	audienceStrict: boolean;
 	split: number[];
 	seedHi: number;
@@ -37,7 +38,23 @@ export interface ExperimentData {
 	variants: ExperimentVariant[];
 	applications: ExperimentApplication[];
 	customFieldValues: CustomFieldValue[] | null;
+	holdoutIds?: number[];
 }
+
+export interface HoldoutData {
+	id: number;
+	name: string;
+	unitType?: string | null;
+	iteration: number;
+	seedHi: number;
+	seedLo: number;
+	split: number[];
+	holdoutType?: string;
+}
+
+export type HoldoutExperiment = {
+	data: HoldoutData;
+};
 
 export interface Assignment {
 	id: number;
@@ -52,14 +69,25 @@ export interface Assignment {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	ruleOverride: boolean;
+	ruleVariant?: number | null;
+	isRuleMissingUnit?: boolean;
+	ruleKey?: string;
 	trafficSplit: number[] | null;
 	variables: Record<string, unknown> | null;
 	attrsSeq: number;
+	suppressed?: boolean;
+	holdouts?: HoldoutExperiment[];
+	holdoutAssignments?: (Assignment | null)[];
+	// `split.length` at the time `variant` was resolved; a same-iteration refresh can change
+	// the live value without invalidating the cache.
+	holdoutArmCount?: number;
 }
 
 export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
+	holdouts?: HoldoutExperiment[] | null;
 };
 
 export interface Unit {
@@ -79,6 +107,7 @@ export interface Exposure {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
+	ruleOverride: boolean;
 }
 
 export interface Attribute {
@@ -97,6 +126,7 @@ export interface GoalAchievement {
 
 export interface ContextData {
 	experiments?: ExperimentData[];
+	holdouts?: HoldoutData[];
 }
 
 export type ApplicationObject = { name: string; version: number | string };

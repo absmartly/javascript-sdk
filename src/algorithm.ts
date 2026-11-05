@@ -1,8 +1,4 @@
-export function insertUniqueSorted<TData>(
-	arr: TData[],
-	value: TData,
-	isSorted: (a: TData, b: TData) => boolean,
-): void {
+export function insertUniqueSorted<TData>(arr: TData[], value: TData, isSorted: (a: TData, b: TData) => boolean): void {
 	let left = 0;
 	let right = arr.length - 1;
 

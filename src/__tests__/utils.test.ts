@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { arrayEqualsShallow, chooseVariant, isEqualsDeep, isObject, isPromise } from "../utils";
+import { describe, expect, it, test } from "vitest";
+import { arrayEqualsShallow, chooseVariant, isEqualsDeep, isObject, isPromise, toWellFormedString } from "../utils";
 
 describe("isObject", () => {
 	test("returns true for plain objects", () => {
@@ -125,5 +125,31 @@ describe("chooseVariant", () => {
 
 	test("zero-weight first variant [0.0, 1.0] with prob=0.0 returns 1", () => {
 		expect(chooseVariant([0.0, 1.0], 0.0)).toBe(1);
+	});
+});
+
+describe("toWellFormedString()", () => {
+	it("should leave well-formed strings unchanged", () => {
+		expect(toWellFormedString("")).toBe("");
+		expect(toWellFormedString("normal string")).toBe("normal string");
+		expect(toWellFormedString("açb↓c")).toBe("açb↓c");
+		expect(toWellFormedString("😀")).toBe("😀");
+		expect(toWellFormedString("a😀b")).toBe("a😀b");
+	});
+
+	it("should replace unmatched surrogates with U+FFFD", () => {
+		expect(toWellFormedString("\uD800")).toBe("�");
+		expect(toWellFormedString("\uDC00")).toBe("�");
+		expect(toWellFormedString("\uD800X")).toBe("�X");
+		expect(toWellFormedString("a\uD800b")).toBe("a�b");
+		expect(toWellFormedString("\uD800\uD800")).toBe("��");
+		expect(toWellFormedString("\uDC00\uD800")).toBe("��");
+	});
+
+	it("should always be safe to pass to encodeURIComponent()", () => {
+		const inputs = ["\uD800", "\uDC00", "\uD800X", "a\uD800b", "\uD800\uD800", "\uDC00\uD800", "normal", "😀"];
+		for (const input of inputs) {
+			expect(() => encodeURIComponent(toWellFormedString(input))).not.toThrow();
+		}
 	});
 });

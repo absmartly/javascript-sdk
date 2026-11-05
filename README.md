@@ -359,6 +359,16 @@ context.overrides({
 });
 ```
 
+#### Custom assignments
+Sometimes it may be necessary to override the automatic selection of a variant. For example, if you wish to have your variant chosen based on data from an API call. This can be accomplished using the `customAssignment()` method.
+```typescript
+context.customAssignment("exp_test_experiment", 1);
+
+context.customAssignments({
+    exp_test_experiment: 1,
+});
+```
+
 #### Custom fields
 Experiments can have custom field values configured in the A/B Smartly web console.
 ```typescript
@@ -454,6 +464,8 @@ clearTimeout(timeoutId);
 - **IE10 and IE11 are not supported by the shipped bundles** - `index.legacy.js` is ES2015, not ES5. Supporting IE10/IE11 would require an additional ES5 build plus polyfills.
 - **No bundled polyfills** - `core-js`, `node-fetch`, and `rfdc` are no longer bundled. Legacy environments must provide polyfills explicitly.
 - **Browser bundle renamed** - `dist/absmartly.min.js` is now `dist/index.global.js` (modern) or `dist/index.legacy.js` (ES2015 legacy build)
+- **API key sent on every request** - `GET /context` now sends the same `X-API-Key`/`X-Agent`/`X-Environment`/`X-Application*` headers as `PUT`/`POST`. The `auth` request option is deprecated; pass `auth: false` to suppress the headers.
+- **Unit IDs containing astral characters now hash to canonical UTF-8** - characters outside the BMP (e.g. emoji) are encoded as 4-byte UTF-8 and unpaired surrogates as U+FFFD, matching `TextEncoder` and the collector. Unit IDs made only of BMP characters (essentially all session IDs, UUIDs and user IDs) are unaffected.
 
 ### New features
 - Full TypeScript support with type declarations
@@ -465,6 +477,7 @@ clearTimeout(timeoutId);
 - Domain error classes (`ABSmartlyError`, `ContextNotReadyError`, `ContextFinalizedError`)
 - `readyError()` method to inspect initialization failures
 - Input validation on all public methods
+- `ABsmartly` named export as an alias for `SDK`
 
 ### Removed exports
 - `AbortController` is no longer exported by the SDK package.
@@ -477,8 +490,15 @@ clearTimeout(timeoutId);
 A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.
 
 ### Have a look at our growing list of clients and SDKs:
-- [Java SDK](https://www.github.com/absmartly/java-sdk)
-- [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk)
-- [PHP SDK](https://www.github.com/absmartly/php-sdk)
-- [Swift SDK](https://www.github.com/absmartly/swift-sdk)
+- [JavaScript SDK](https://www.github.com/absmartly/javascript-sdk) (this package)
+- [React SDK](https://www.github.com/absmartly/react-sdk)
 - [Vue2 SDK](https://www.github.com/absmartly/vue2-sdk)
+- [Vue3 SDK](https://www.github.com/absmartly/vue3-sdk)
+- [Java SDK](https://www.github.com/absmartly/java-sdk)
+- [Swift SDK](https://www.github.com/absmartly/swift-sdk)
+- [Flutter SDK](https://www.github.com/absmartly/flutter-sdk)
+- [PHP SDK](https://www.github.com/absmartly/php-sdk)
+- [Python3 SDK](https://www.github.com/absmartly/python3-sdk)
+- [Go SDK](https://www.github.com/absmartly/go-sdk)
+- [Ruby SDK](https://www.github.com/absmartly/ruby-sdk)
+- [.NET SDK](https://www.github.com/absmartly/dotnet-sdk)

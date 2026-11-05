@@ -36,7 +36,9 @@ export function mergeConfig(context: ConfigContext, previousConfig: Record<strin
 
 			if (`_${frag}_setter` in target) {
 				console.error(
-					`Config key '${frags.slice(0, index + 1).join(".")}' already set by experiment '${target[`_${frag}_setter`]}'.`,
+					`Config key '${frags.slice(0, index + 1).join(".")}' already set by experiment '${
+						target[`_${frag}_setter`]
+					}'.`
 				);
 				target = undefined;
 				break;
@@ -46,7 +48,9 @@ export function mergeConfig(context: ConfigContext, previousConfig: Record<strin
 				if (index < frags.length - 1) {
 					if (!isObject(target[frag])) {
 						console.warn(
-							`Config key '${variableKey}' for experiment '${experimentName}' is overriding non-object value at '${frags.slice(0, index + 1).join(".")}' with an object.`,
+							`Config key '${variableKey}' for experiment '${experimentName}' is overriding non-object value at '${frags
+								.slice(0, index + 1)
+								.join(".")}' with an object.`
 						);
 						target[frag] = {};
 						target = target[frag] as Record<string, unknown>;

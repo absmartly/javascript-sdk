@@ -33,7 +33,7 @@ function objectEqualsDeep(
 	b: Record<string | number | symbol, unknown>,
 	keys: string[],
 	astack?: unknown[],
-	bstack?: unknown[],
+	bstack?: unknown[]
 ): boolean {
 	let len = astack?.length ?? 0;
 	while (len--) {
@@ -87,13 +87,7 @@ export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?
 			} else if (a && b) {
 				const keys = Object.keys(a);
 				if (keys.length === Object.keys(b as Record<string, unknown>).length) {
-					return objectEqualsDeep(
-						a as Record<string, unknown>,
-						b as Record<string, unknown>,
-						keys,
-						astack,
-						bstack,
-					);
+					return objectEqualsDeep(a as Record<string, unknown>, b as Record<string, unknown>, keys, astack, bstack);
 				}
 			}
 			break;
@@ -115,4 +109,31 @@ export function chooseVariant(split: number[], prob: number): number {
 		if (prob < cumSum) return i;
 	}
 	return split.length - 1;
+}
+
+// Replaces unmatched UTF-16 surrogates with U+FFFD, matching
+// `String.prototype.toWellFormed()` (ES2024, not assumed available in every
+// supported runtime) so `encodeURIComponent` — which throws
+// `URIError: URI malformed` on a lone surrogate — never sees one.
+export function toWellFormedString(value: string): string {
+	let result = "";
+
+	for (let i = 0; i < value.length; i++) {
+		const c = value.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff) {
+			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				result += value[i]! + value[i + 1]!;
+				i++;
+			} else {
+				result += "�";
+			}
+		} else if (c >= 0xdc00 && c <= 0xdfff) {
+			result += "�";
+		} else {
+			result += value[i]!;
+		}
+	}
+
+	return result;
 }

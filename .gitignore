@@ -8,3 +8,6 @@ src/js/*
 !src/js/__tests__
 types
 js
+.claude/
+.DS_Store
+src/version.ts

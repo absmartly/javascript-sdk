@@ -1,10 +1,4 @@
-import type {
-	ApplicationObject,
-	ContextData,
-	Exposure,
-	GoalAchievement,
-	PublishParams,
-} from "./models";
+import type { ApplicationObject, ContextData, Exposure, GoalAchievement, PublishParams } from "./models";
 
 export type EventName = "error" | "ready" | "refresh" | "publish" | "exposure" | "goal" | "finalize";
 
@@ -27,6 +21,7 @@ export interface ClientRequestOptions {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
+	/** @deprecated The API key is sent by default; set to false to suppress auth headers. */
 	auth?: boolean;
 	signal?: AbortSignal;
 	timeout?: number;
@@ -69,6 +64,6 @@ export interface ContextPublisher {
 		request: PublishParams,
 		sdk: unknown,
 		context: unknown,
-		requestOptions?: ClientRequestOptions,
+		requestOptions?: ClientRequestOptions
 	): Promise<unknown>;
 }

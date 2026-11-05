@@ -39,22 +39,17 @@ describe("SDK", () => {
 	test("createContext validates unit types", () => {
 		const sdk = new SDK(defaultOpts);
 		expect(() => sdk.createContext({ units: { session_id: true as unknown as string } })).toThrow(
-			"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']",
+			"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
 		);
 	});
 
 	test("createContext validates empty string units", () => {
 		const sdk = new SDK(defaultOpts);
-		expect(() => sdk.createContext({ units: { session_id: "" } })).toThrow(
-			"Unit 'session_id' UID length must be >= 1",
-		);
+		expect(() => sdk.createContext({ units: { session_id: "" } })).toThrow("Unit 'session_id' UID length must be >= 1");
 	});
 
 	test("createContext returns Context instance", () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) }),
-		);
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) }));
 		const sdk = new SDK(defaultOpts);
 		const context = sdk.createContext({ units: { session_id: "abc" } });
 		expect(context).toBeDefined();
@@ -124,4 +119,3 @@ describe("SDK", () => {
 		expect(abortControllerInstances).toBe(1);
 	});
 });
-

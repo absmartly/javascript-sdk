@@ -6,7 +6,12 @@ interface SDKLike {
 }
 
 export class DefaultContextPublisher implements ContextPublisher {
-	publish(request: PublishParams, sdk: SDKLike, _context: unknown, requestOptions?: ClientRequestOptions): Promise<unknown> {
+	publish(
+		request: PublishParams,
+		sdk: SDKLike,
+		_context: unknown,
+		requestOptions?: ClientRequestOptions
+	): Promise<unknown> {
 		return sdk.getClient().publish(request, requestOptions);
 	}
 }

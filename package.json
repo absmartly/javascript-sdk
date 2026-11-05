@@ -1,65 +1,81 @@
 {
-  "name": "@absmartly/javascript-sdk",
-  "version": "2.0.0",
-  "description": "A/B Smartly Javascript SDK",
-  "homepage": "https://github.com/absmartly/javascript-sdk#README.md",
-  "bugs": "https://github.com/absmartly/javascript-sdk/issues",
-  "keywords": [
-    "absmartly",
-    "ab-smartly",
-    "a/b-smartly",
-    "ab-testing",
-    "a/b-testing",
-    "split-testing",
-    "ab",
-    "a/b",
-    "cro"
-  ],
-  "license": "Apache-2.0",
-  "type": "module",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "browser": "dist/index.global.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.cts",
-        "default": "./dist/index.cjs"
-      }
-    }
-  },
-  "engines": {
-    "node": ">=14"
-  },
-  "scripts": {
-    "build": "npm run generate-version && tsup",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit",
-    "generate-version": "tsx scripts/generate-version.ts",
-    "prepack": "npm run build"
-  },
-  "devDependencies": {
-    "tsup": "^8.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^3.0.0",
-    "tsx": "^4.0.0",
-    "@vitest/coverage-v8": "^3.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "README.md",
-    "LICENSE",
-    "package.json",
-    "dist/"
-  ]
+	"name": "@absmartly/javascript-sdk",
+	"version": "2.0.0",
+	"description": "A/B Smartly Javascript SDK",
+	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
+	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
+	"keywords": [
+		"absmartly",
+		"ab-smartly",
+		"a/b-smartly",
+		"ab-testing",
+		"a/b-testing",
+		"split-testing",
+		"ab",
+		"a/b",
+		"cro"
+	],
+	"license": "Apache-2.0",
+	"type": "module",
+	"main": "dist/index.cjs",
+	"module": "dist/index.js",
+	"browser": "dist/index.global.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		}
+	},
+	"engines": {
+		"node": ">=14"
+	},
+	"scripts": {
+		"build": "npm run generate-version && tsup",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"typecheck": "tsc --noEmit",
+		"lint": "tsc --noEmit",
+		"generate-version": "tsx scripts/generate-version.ts",
+		"prepack": "npm run build",
+		"pretest": "npm run -s generate-version",
+		"pretest:coverage": "npm run -s generate-version",
+		"pretypecheck": "npm run -s generate-version",
+		"format": "prettier --write '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
+		"format:check": "prettier --check '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
+		"prepare": "husky",
+		"prelint": "npm run -s generate-version"
+	},
+	"devDependencies": {
+		"@vitest/coverage-v8": "^3.0.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.4.0",
+		"prettier": "^2.8.1",
+		"tsup": "^8.0.0",
+		"tsx": "^4.0.0",
+		"typescript": "^5.4.0",
+		"vitest": "^3.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"files": [
+		"README.md",
+		"LICENSE",
+		"package.json",
+		"dist/"
+	],
+	"lint-staged": {
+		"*.{js,mjs,jsx,ts,mts,tsx}": [
+			"prettier --write"
+		],
+		"*.json": "prettier --write"
+	}
 }

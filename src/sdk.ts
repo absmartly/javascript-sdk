@@ -65,7 +65,7 @@ export class SDK {
 				{ agent: "absmartly-javascript-sdk" },
 				...Object.entries(options || {})
 					.filter((x) => CLIENT_OPTION_KEYS.indexOf(x[0]) !== -1)
-					.map((x) => ({ [x[0]]: x[1] })),
+					.map((x) => ({ [x[0]]: x[1] }))
 			) as ClientOptions;
 
 			this._client = new DefaultClient(clientOptions);
@@ -83,7 +83,7 @@ export class SDK {
 	createContext(
 		params: ContextParams,
 		options?: Partial<ContextOptionsInput>,
-		requestOptions?: Partial<ClientRequestOptions>,
+		requestOptions?: Partial<ClientRequestOptions>
 	): Context {
 		SDK._validateParams(params);
 		const fullOptions = SDK._contextOptions(options);
@@ -94,7 +94,7 @@ export class SDK {
 	createContextWith(
 		params: ContextParams,
 		data: ContextData | Promise<ContextData>,
-		options?: Partial<ContextOptionsInput>,
+		options?: Partial<ContextOptionsInput>
 	): Context {
 		SDK._validateParams(params);
 		const fullOptions = SDK._contextOptions(options);
@@ -132,7 +132,7 @@ export class SDK {
 	private static _contextOptions(options?: Partial<ContextOptionsInput>): ContextOptionsFull {
 		return Object.assign(
 			{ publishDelay: isLongLivedApp() ? 100 : -1, refreshPeriod: 0 },
-			options || {},
+			options || {}
 		) as ContextOptionsFull;
 	}
 
@@ -140,9 +140,7 @@ export class SDK {
 		for (const [key, value] of Object.entries(params.units)) {
 			const type = typeof value;
 			if (type !== "string" && type !== "number") {
-				throw new Error(
-					`Unit '${key}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`,
-				);
+				throw new Error(`Unit '${key}' UID is of unsupported type '${type}'. UID must be one of ['string', 'number']`);
 			}
 			if (typeof value === "string" && value.length === 0) {
 				throw new Error(`Unit '${key}' UID length must be >= 1`);

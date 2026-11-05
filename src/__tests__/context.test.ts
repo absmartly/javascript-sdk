@@ -433,7 +433,12 @@ describe("Context", () => {
 		});
 
 		it("ready() should resolve true even when context fails", async () => {
-			const context = new Context(sdk, contextOptions, contextParams, Promise.reject(new Error("network error")) as any);
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				Promise.reject(new Error("network error")) as any
+			);
 			const result = await context.ready();
 			expect(result).toBe(true);
 			expect(context.isFailed()).toBe(true);
@@ -546,7 +551,12 @@ describe("Context", () => {
 		});
 
 		it("should be callable before ready()", async () => {
-			const context = new Context(sdk, contextOptions, { units: {} } as any, Promise.resolve(getContextResponse as any));
+			const context = new Context(
+				sdk,
+				contextOptions,
+				{ units: {} } as any,
+				Promise.resolve(getContextResponse as any)
+			);
 
 			context.units(contextParams.units);
 
@@ -580,6 +590,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -686,6 +697,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 					attributes: [
@@ -737,7 +749,9 @@ describe("Context", () => {
 		it("should reject promise on error", async () => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValueOnce(Promise.reject(new Error("test error")));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+				Promise.reject(new Error("test error"))
+			);
 
 			await expect(context.refresh()).rejects.toThrow("test error");
 		});
@@ -778,7 +792,9 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_ab")).toEqual(0);
 			expect(context.pending()).toEqual(1);
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(audienceStrictContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(audienceStrictContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment("exp_test_ab")).toEqual(0);
@@ -792,7 +808,9 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_ab")).toEqual(3);
 			expect(context.pending()).toEqual(1);
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(audienceStrictContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(audienceStrictContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment("exp_test_ab")).toEqual(3);
@@ -810,7 +828,9 @@ describe("Context", () => {
 		it("should call event logger when failed", async () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse as any));
 			await context.ready();
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValueOnce(Promise.reject(new Error("test error")));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+				Promise.reject(new Error("test error"))
+			);
 
 			defaultEventLogger.mockClear();
 			await expect(context.refresh()).rejects.toThrow("test error");
@@ -821,7 +841,9 @@ describe("Context", () => {
 		it("should call event logger on success", async () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse as any));
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValueOnce(Promise.resolve(refreshContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+				Promise.resolve(refreshContextResponse)
+			);
 
 			await context.ready();
 			defaultEventLogger.mockClear();
@@ -884,7 +906,9 @@ describe("Context", () => {
 				(x) => x.name !== experimentName
 			);
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(stoppedRefreshContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(stoppedRefreshContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment(experimentName)).toEqual(0);
@@ -921,7 +945,9 @@ describe("Context", () => {
 				}
 			}
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(fullOnRefreshContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(fullOnRefreshContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment(experimentName)).toEqual(1);
@@ -942,7 +968,9 @@ describe("Context", () => {
 				}
 			}
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(scaledUpRefreshContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(scaledUpRefreshContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment(experimentName)).toEqual(2);
@@ -965,7 +993,9 @@ describe("Context", () => {
 				}
 			}
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(iteratedRefreshContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(iteratedRefreshContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment(experimentName)).toEqual(1);
@@ -988,7 +1018,9 @@ describe("Context", () => {
 				}
 			}
 
-			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve(iteratedRefreshContextResponse));
+			(provider.getContextData as ReturnType<typeof vi.fn>).mockReturnValue(
+				Promise.resolve(iteratedRefreshContextResponse)
+			);
 
 			await context.refresh();
 			expect(context.treatment(experimentName)).toEqual(1);
@@ -1107,6 +1139,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 2,
@@ -1120,6 +1153,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 3,
@@ -1133,6 +1167,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 						{
 							id: 4,
@@ -1146,6 +1181,7 @@ describe("Context", () => {
 							fullOn: true,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 						{
 							id: 5,
@@ -1159,6 +1195,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1203,6 +1240,7 @@ describe("Context", () => {
 					fullOn: experiment.name === "exp_test_fullon",
 					custom: false,
 					audienceMismatch: experiment.name === "exp_test_not_eligible" || experiment.name === "exp_test_fullon",
+					ruleOverride: false,
 				});
 			}
 
@@ -1242,6 +1280,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1281,6 +1320,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1318,6 +1358,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1355,6 +1396,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1408,6 +1450,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 0,
@@ -1421,6 +1464,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1572,6 +1616,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 2,
@@ -1585,6 +1630,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 3,
@@ -1598,6 +1644,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 						{
 							id: 4,
@@ -1611,6 +1658,7 @@ describe("Context", () => {
 							fullOn: true,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 						{
 							id: 5,
@@ -1624,6 +1672,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -1787,9 +1836,13 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
 			expect(context.pending()).toEqual(0);
 
-			expect(() => context.track("goal1", 125.0 as any)).toThrowError("Goal 'goal1' properties must be of type object.");
+			expect(() => context.track("goal1", 125.0 as any)).toThrowError(
+				"Goal 'goal1' properties must be of type object."
+			);
 			expect(() => context.track("goal1", true as any)).toThrowError("Goal 'goal1' properties must be of type object.");
-			expect(() => context.track("goal1", "testy" as any)).toThrowError("Goal 'goal1' properties must be of type object.");
+			expect(() => context.track("goal1", "testy" as any)).toThrowError(
+				"Goal 'goal1' properties must be of type object."
+			);
 			expect(() => context.track("goal1", [] as any)).toThrowError("Goal 'goal1' properties must be of type object.");
 		});
 
@@ -1901,6 +1954,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 3,
@@ -1914,6 +1968,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 					],
 					goals: [
@@ -2073,6 +2128,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 0,
@@ -2086,6 +2142,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 2,
@@ -2099,6 +2156,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: true,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 					goals: [
@@ -2108,9 +2166,7 @@ describe("Context", () => {
 							properties: { amount: 125, hours: 245 },
 						},
 					],
-					attributes: [
-						{ name: "attr1", setAt: 1611141535729, value: "value1" },
-					],
+					attributes: [{ name: "attr1", setAt: 1611141535729, value: "value1" }],
 				},
 				sdk,
 				context,
@@ -2138,9 +2194,7 @@ describe("Context", () => {
 							properties: { test: 999 },
 						},
 					],
-					attributes: [
-						{ name: "attr1", setAt: 1611141535729, value: "value1" },
-					],
+					attributes: [{ name: "attr1", setAt: 1611141535729, value: "value1" }],
 				},
 				sdk,
 				context,
@@ -2244,6 +2298,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -2294,6 +2349,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -2445,6 +2501,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 2,
@@ -2458,6 +2515,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -2503,6 +2561,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: true,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -2548,6 +2607,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 						{
 							id: 4,
@@ -2561,6 +2621,7 @@ describe("Context", () => {
 							fullOn: true,
 							custom: false,
 							audienceMismatch: true,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -2615,6 +2676,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: true,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 						{
 							id: 2,
@@ -2628,6 +2690,7 @@ describe("Context", () => {
 							fullOn: false,
 							custom: true,
 							audienceMismatch: false,
+							ruleOverride: false,
 						},
 					],
 				},
@@ -2737,7 +2800,9 @@ describe("Context", () => {
 				context,
 				"error",
 				expect.objectContaining({
-					message: expect.stringContaining("Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'")
+					message: expect.stringContaining(
+						"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
+					),
 				})
 			);
 		});
@@ -2751,7 +2816,8 @@ describe("Context", () => {
 				context,
 				"error",
 				expect.objectContaining({
-					message: "Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
+					message:
+						"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
 				})
 			);
 		});
@@ -2851,7 +2917,7 @@ describe("Context", () => {
 		});
 
 		it("should include app_version when application version is set", async () => {
-			client.getApplication.mockReturnValueOnce({ name: "website", version: 3 });
+			client.getApplication.mockReturnValue({ name: "website", version: 3 });
 
 			const optionsWithSystemAttrs = {
 				publishDelay: -1,
@@ -2894,7 +2960,7 @@ describe("Context", () => {
 		});
 
 		it("should include app_version when application version is a semver string", async () => {
-			client.getApplication.mockReturnValueOnce({ name: "website", version: "1.2.3" });
+			client.getApplication.mockReturnValue({ name: "website", version: "1.2.3" });
 
 			const optionsWithSystemAttrs = {
 				publishDelay: -1,
@@ -2929,9 +2995,7 @@ describe("Context", () => {
 			const call = (publisher.publish as ReturnType<typeof vi.fn>).mock.calls[0];
 			const request = call[0];
 
-			expect(request.attributes).toEqual([
-				{ name: "custom_attr", value: "custom_value", setAt: expect.any(Number) },
-			]);
+			expect(request.attributes).toEqual([{ name: "custom_attr", value: "custom_value", setAt: expect.any(Number) }]);
 		});
 	});
 
@@ -2987,7 +3051,9 @@ describe("Context", () => {
 			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
 
 			let resolveData: (data: any) => void;
-			const dataPromise = new Promise<any>((resolve) => { resolveData = resolve; });
+			const dataPromise = new Promise<any>((resolve) => {
+				resolveData = resolve;
+			});
 
 			const context = new Context(sdk, options, contextParams, dataPromise);
 			expect(context.isReady()).toBe(false);
@@ -3052,21 +3118,42 @@ describe("Context", () => {
 
 	describe("event logger resilience", () => {
 		it("should not crash when event logger throws on treatment", () => {
-			const throwingLogger = vi.fn().mockImplementation(() => { throw new Error("logger broken"); });
-			const context = new Context(sdk, { ...contextOptions, eventLogger: throwingLogger }, contextParams, getContextResponse as any);
+			const throwingLogger = vi.fn().mockImplementation(() => {
+				throw new Error("logger broken");
+			});
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingLogger },
+				contextParams,
+				getContextResponse as any
+			);
 			expect(() => context.treatment("exp_test_ab")).not.toThrow();
 		});
 
 		it("should not crash when event logger throws on track", () => {
-			const throwingLogger = vi.fn().mockImplementation(() => { throw new Error("logger broken"); });
-			const context = new Context(sdk, { ...contextOptions, eventLogger: throwingLogger }, contextParams, getContextResponse as any);
+			const throwingLogger = vi.fn().mockImplementation(() => {
+				throw new Error("logger broken");
+			});
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingLogger },
+				contextParams,
+				getContextResponse as any
+			);
 			expect(() => context.track("goal1", { amount: 1 })).not.toThrow();
 		});
 
 		it("should not crash when event logger throws on publish", async () => {
-			const throwingLogger = vi.fn().mockImplementation(() => { throw new Error("logger broken"); });
+			const throwingLogger = vi.fn().mockImplementation(() => {
+				throw new Error("logger broken");
+			});
 			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
-			const context = new Context(sdk, { ...contextOptions, eventLogger: throwingLogger }, contextParams, getContextResponse as any);
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, eventLogger: throwingLogger },
+				contextParams,
+				getContextResponse as any
+			);
 			context.treatment("exp_test_ab");
 			await expect(context.publish()).resolves.toBeUndefined();
 		});
@@ -3095,7 +3182,11 @@ describe("Context", () => {
 
 		it("should not lose new events queued during in-flight publish", async () => {
 			let resolvePublish: () => void;
-			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(new Promise<void>((resolve) => { resolvePublish = resolve; }));
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(
+				new Promise<void>((resolve) => {
+					resolvePublish = resolve;
+				})
+			);
 
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
 			context.treatment("exp_test_ab");

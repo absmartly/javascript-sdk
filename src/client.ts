@@ -1,7 +1,12 @@
 import { AbortError, RetryError, TimeoutError } from "./errors";
 import type { ApplicationObject, ContextData, PublishParams } from "./models";
 import type { ContextParams } from "./interfaces";
+import { toWellFormedString } from "./utils";
 import type { Client, ClientOptions, ClientRequestOptions } from "./interfaces";
+
+const DEFAULT_RETRIES = 5;
+const DEFAULT_TIMEOUT_MS = 3000;
+const RETRY_DELAY_MS = 50;
 
 type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
 	application: ApplicationObject;
@@ -15,8 +20,8 @@ export class DefaultClient implements Client {
 
 	constructor(opts: ClientOptions) {
 		const merged: Record<string, unknown> = Object.assign(
-			{ agent: "javascript-client", retries: 5, timeout: 3000, keepalive: true },
-			opts,
+			{ agent: "javascript-client", retries: DEFAULT_RETRIES, timeout: DEFAULT_TIMEOUT_MS, keepalive: true },
+			opts
 		);
 
 		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"]) {
@@ -38,14 +43,13 @@ export class DefaultClient implements Client {
 		}
 
 		this._opts = merged as unknown as NormalizedClientOptions;
-		this._delay = 50;
+		this._delay = RETRY_DELAY_MS;
 		this._fetchImpl = (opts.fetchImpl ?? globalThis.fetch).bind(globalThis) as typeof fetch;
 		this._AbortControllerImpl = opts.AbortControllerImpl ?? AbortController;
 	}
 
-
 	getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData> {
-		return this.getUnauthed({
+		return this.get({
 			...options,
 			path: "/context",
 			query: {
@@ -83,12 +87,16 @@ export class DefaultClient implements Client {
 	request(options: ClientRequestOptions): Promise<unknown> {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
-			const keys = Object.keys(options.query);
-			if (keys.length > 0) {
-				const encoded = keys
-					.map((k) => (options.query ? `${k}=${encodeURIComponent(options.query[k]!)}` : null))
-					.join("&");
-				url = `${url}?${encoded}`;
+			// Values are normalized to well-formed UTF-16 first: unlike `URLSearchParams`,
+			// `encodeURIComponent` throws `URIError: URI malformed` on an unpaired surrogate.
+			const queryString = Object.entries(options.query)
+				.map(
+					([key, value]) =>
+						`${encodeURIComponent(toWellFormedString(key))}=${encodeURIComponent(toWellFormedString(String(value)))}`
+				)
+				.join("&");
+			if (queryString) {
+				url = `${url}?${queryString}`;
 			}
 		}
 
@@ -102,7 +110,13 @@ export class DefaultClient implements Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			if (options.auth) {
+			if (options.auth === true) {
+				console.warn(
+					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
+				);
+			}
+
+			if (options.auth !== false) {
 				opts.headers = {
 					"Content-Type": "application/json",
 					"X-API-Key": this._opts.apiKey,
@@ -118,7 +132,7 @@ export class DefaultClient implements Client {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text: string) => {
 						const error: Error & { _bail?: boolean } = new Error(
-							text !== null && text.length > 0 ? text : response.statusText,
+							text !== null && text.length > 0 ? text : response.statusText
 						);
 						error._bail = bail;
 						return Promise.reject(error);
@@ -150,15 +164,19 @@ export class DefaultClient implements Client {
 			delete tryWith.timedout;
 
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
+				// timeout <= 0 means "no deadline": the retry budget is governed by
+				// `retries` alone, so the elapsed-time check below must not apply.
+				const hasDeadline = timeout > 0;
+
 				if (reason._bail || retries <= 0) throw new Error(reason.message);
 				if (tries >= retries) throw new RetryError(tries, reason, url);
-				if (waited >= timeout || reason.name === "AbortError") {
+				if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
 					if (tryWith.timedout) throw new TimeoutError(timeout);
 					throw reason;
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (waited + delay > timeout) delay = timeout - waited;
+				if (hasDeadline && waited + delay > timeout) delay = timeout - waited;
 
 				return wait(delay).then(() => tryWith(retries, timeout, tries + 1, waited + delay));
 			});
@@ -176,13 +194,13 @@ export class DefaultClient implements Client {
 			options.signal.addEventListener("abort", abort);
 		}
 
-		const timeout = options.timeout || this._opts.timeout || 0;
+		const timeout = options.timeout ?? this._opts.timeout ?? 0;
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
 						tryWith.timedout = true;
 						abort();
-					}, timeout)
+				  }, timeout)
 				: 0;
 
 		const finalCleanUp = () => {
@@ -192,7 +210,7 @@ export class DefaultClient implements Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? 5, timeout || this._opts.timeout || 3000)
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout)
 			.then((value) => {
 				finalCleanUp();
 				return value;
@@ -204,11 +222,11 @@ export class DefaultClient implements Client {
 	}
 
 	post(options: ClientRequestOptions): Promise<unknown> {
-		return this.request({ ...options, auth: true, method: "POST" });
+		return this.request({ ...options, method: "POST" });
 	}
 
 	put(options: ClientRequestOptions): Promise<unknown> {
-		return this.request({ ...options, auth: true, method: "PUT" });
+		return this.request({ ...options, method: "PUT" });
 	}
 
 	getAgent(): string {
@@ -223,7 +241,12 @@ export class DefaultClient implements Client {
 		return this._opts.environment;
 	}
 
-	getUnauthed(options: ClientRequestOptions): Promise<unknown> {
+	get(options: ClientRequestOptions): Promise<unknown> {
 		return this.request({ ...options, method: "GET" });
+	}
+
+	/** @deprecated Use get() instead. */
+	getUnauthed(options: ClientRequestOptions): Promise<unknown> {
+		return this.get(options);
 	}
 }

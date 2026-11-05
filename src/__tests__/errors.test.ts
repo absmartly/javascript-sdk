@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { ABSmartlyError, AbortError, ContextFinalizedError, ContextNotReadyError, RetryError, TimeoutError } from "../errors";
+import {
+	ABSmartlyError,
+	AbortError,
+	ContextFinalizedError,
+	ContextNotReadyError,
+	RetryError,
+	TimeoutError,
+} from "../errors";
 
 describe("ABSmartlyError", () => {
 	test("has correct name and message", () => {

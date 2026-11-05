@@ -176,10 +176,7 @@ describe("operators", () => {
 	describe("complex expressions", () => {
 		it("nested and/or", () => {
 			const expr = {
-				and: [
-					{ or: [{ value: true }, { value: false }] },
-					{ not: { value: false } },
-				],
+				and: [{ or: [{ value: true }, { value: false }] }, { not: { value: false } }],
 			};
 			expect(evalExpr(expr)).toBe(true);
 		});
@@ -192,10 +189,7 @@ describe("operators", () => {
 
 		it("audience-like filter", () => {
 			const expr = {
-				and: [
-					{ gte: [{ var: "age" }, { value: 18 }] },
-					{ in: [{ value: ["US", "UK", "CA"] }, { var: "country" }] },
-				],
+				and: [{ gte: [{ var: "age" }, { value: 18 }] }, { in: [{ value: ["US", "UK", "CA"] }, { var: "country" }] }],
 			};
 			expect(evalExpr(expr, { age: 25, country: "US" })).toBe(true);
 			expect(evalExpr(expr, { age: 25, country: "FR" })).toBe(false);

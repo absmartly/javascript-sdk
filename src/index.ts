@@ -1,4 +1,4 @@
-export { SDK } from "./sdk";
+export { SDK, SDK as ABsmartly } from "./sdk";
 export { Context } from "./context";
 export { DefaultContextDataProvider } from "./provider";
 export { DefaultContextPublisher } from "./publisher";
@@ -26,6 +26,8 @@ export type {
 	ExperimentVariant,
 	Exposure,
 	GoalAchievement,
+	HoldoutData,
+	HoldoutExperiment,
 	JSONValue,
 	PublishParams,
 	Unit,

@@ -1,14 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import { mergeConfig } from "../config";
 
-function mockContext(
-	variableKeys: Record<string, string[]>,
-	variableValues: Record<string, unknown> = {},
-) {
+function mockContext(variableKeys: Record<string, string[]>, variableValues: Record<string, unknown> = {}) {
 	return {
 		variableKeys: () => variableKeys,
-		variableValue: (key: string, defaultValue: unknown) =>
-			key in variableValues ? variableValues[key] : defaultValue,
+		variableValue: (key: string, defaultValue: unknown) => (key in variableValues ? variableValues[key] : defaultValue),
 	};
 }
 

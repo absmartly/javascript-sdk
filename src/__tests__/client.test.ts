@@ -92,6 +92,7 @@ describe("Client", () => {
 		});
 
 		afterEach(() => {
+			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
 		});
 
@@ -109,7 +110,7 @@ describe("Client", () => {
 			expect(url).toContain("environment=test");
 		});
 
-		test("GET /context does NOT include auth headers", async () => {
+		test("GET /context includes auth headers", async () => {
 			const mockResponse = { ok: true, json: () => Promise.resolve({ experiments: [] }) };
 			(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue(mockResponse);
 
@@ -117,7 +118,8 @@ describe("Client", () => {
 			await client.getContext();
 
 			const [, opts] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!;
-			expect(opts.headers).toBeUndefined();
+			expect(opts.headers["X-API-Key"]).toBe(defaultOpts.apiKey);
+			expect(opts.headers["X-Environment"]).toBe(defaultOpts.environment);
 		});
 	});
 
@@ -127,6 +129,7 @@ describe("Client", () => {
 		});
 
 		afterEach(() => {
+			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
 		});
 
@@ -178,6 +181,7 @@ describe("Client", () => {
 
 		afterEach(() => {
 			vi.useRealTimers();
+			vi.unstubAllGlobals();
 			vi.restoreAllMocks();
 		});
 
@@ -216,6 +220,86 @@ describe("Client", () => {
 			expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 
 			await vi.runAllTimersAsync();
+		});
+	});
+
+	describe("request()", () => {
+		const okResponse = (body: unknown = {}) => ({ ok: true, json: () => Promise.resolve(body) });
+
+		test("does not throw on unmatched surrogates in query parameters", async () => {
+			// encodeURIComponent() throws URIError on a lone surrogate, so it is normalized to U+FFFD first.
+			const fetchImpl = vi.fn().mockResolvedValue(okResponse());
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+
+			await client.request({ method: "GET", path: "/context", query: { application: "\uD800" } });
+
+			expect(fetchImpl).toHaveBeenCalledWith(
+				`${defaultOpts.endpoint}/context?application=%EF%BF%BD`,
+				expect.any(Object)
+			);
+		});
+
+		test("does not send headers when auth is false", async () => {
+			const fetchImpl = vi.fn().mockResolvedValue(okResponse());
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+
+			await client.get({ path: "/context", auth: false });
+
+			expect(fetchImpl.mock.calls[0]![1].headers).toBeUndefined();
+		});
+
+		test("still sends headers and warns when auth is explicitly true (deprecated)", async () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const fetchImpl = vi.fn().mockResolvedValue(okResponse());
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+
+			await client.get({ path: "/context", auth: true });
+
+			expect(fetchImpl.mock.calls[0]![1].headers["X-API-Key"]).toBe(defaultOpts.apiKey);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining("`auth` option is deprecated"));
+			warn.mockRestore();
+		});
+
+		test("get() sends a GET request with headers", async () => {
+			const fetchImpl = vi.fn().mockResolvedValue(okResponse());
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+
+			await client.get({ path: "/context" });
+
+			const [url, opts] = fetchImpl.mock.calls[0]!;
+			expect(url).toBe(`${defaultOpts.endpoint}/context`);
+			expect(opts.method).toBe("GET");
+			expect(opts.headers["X-API-Key"]).toBe(defaultOpts.apiKey);
+		});
+
+		test("getUnauthed() forwards to get()", async () => {
+			const fetchImpl = vi.fn().mockResolvedValue(okResponse());
+			const client = new DefaultClient({ ...defaultOpts, retries: 0, timeout: 1000, fetchImpl });
+			const get = vi.spyOn(client, "get");
+
+			await client.getUnauthed({ path: "/context" });
+
+			expect(get).toHaveBeenCalledWith({ path: "/context" });
+		});
+
+		test("still retries a failing-then-succeeding request when timeout is 0 (no deadline)", async () => {
+			vi.useFakeTimers();
+			try {
+				const failResponse = { ok: false, status: 500, statusText: "Server Error", text: () => Promise.resolve("") };
+				const fetchImpl = vi
+					.fn()
+					.mockResolvedValueOnce(failResponse)
+					.mockResolvedValueOnce(okResponse({ a: 1 }));
+				const client = new DefaultClient({ ...defaultOpts, retries: 5, timeout: 0, fetchImpl });
+
+				const promise = client.get({ path: "/context" });
+				await vi.runAllTimersAsync();
+
+				await expect(promise).resolves.toEqual({ a: 1 });
+				expect(fetchImpl).toHaveBeenCalledTimes(2);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });
