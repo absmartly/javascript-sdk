@@ -50,10 +50,14 @@ describe("SDK", () => {
 
 	test("createContext returns Context instance", () => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) }));
-		const sdk = new SDK(defaultOpts);
-		const context = sdk.createContext({ units: { session_id: "abc" } });
-		expect(context).toBeDefined();
-		vi.restoreAllMocks();
+		try {
+			const sdk = new SDK(defaultOpts);
+			const context = sdk.createContext({ units: { session_id: "abc" } });
+			expect(context).toBeDefined();
+		} finally {
+			vi.unstubAllGlobals();
+			vi.restoreAllMocks();
+		}
 	});
 
 	test("createContextWith accepts pre-fetched data", () => {
