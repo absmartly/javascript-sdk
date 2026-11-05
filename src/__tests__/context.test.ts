@@ -4,6 +4,7 @@ import { DefaultContextPublisher } from "../publisher";
 import { DefaultContextDataProvider } from "../provider";
 import { hashUnit } from "../hashing";
 import { SDK_VERSION } from "../version";
+import { ABSmartlyError, ContextFinalizedError, ContextNotReadyError } from "../errors";
 import type { ContextPublisher, ContextDataProvider } from "../interfaces";
 
 function clone<T>(obj: T): T {
@@ -503,6 +504,96 @@ describe("Context", () => {
 			expect(() => context.variableKeys()).toThrow();
 			expect(() => context.variableValue("a", "17")).toThrow();
 			expect(() => context.peekVariableValue("a", "17")).toThrow();
+		});
+
+		describe("lifecycle errors", () => {
+			const expectThrownError = (
+				fn: () => unknown,
+				type: typeof ContextNotReadyError | typeof ContextFinalizedError,
+				message: string
+			) => {
+				let thrown: unknown;
+				try {
+					fn();
+				} catch (error) {
+					thrown = error;
+				}
+				expect(thrown).toBeInstanceOf(type);
+				expect(thrown).toBeInstanceOf(ABSmartlyError);
+				expect(thrown).toBeInstanceOf(Error);
+				expect((thrown as Error).name).toBe(type.name);
+				expect((thrown as Error).message).toBe(message);
+			};
+
+			const readyGuarded = (context: Context): Array<() => unknown> => [
+				() => context.data(),
+				() => context.treatment("exp_test_ab"),
+				() => context.peek("exp_test_ab"),
+				() => context.experiments(),
+				() => context.variableKeys(),
+				() => context.variableValue("banner.border", "17"),
+				() => context.peekVariableValue("banner.border", "17"),
+				() => context.customFieldKeys(),
+				() => context.customFieldValue("exp_test_ab", "country"),
+				() => context.customFieldValueType("exp_test_ab", "country"),
+			];
+
+			const finalizeGuarded = (context: Context): Array<() => unknown> => [
+				() => context.treatment("exp_test_ab"),
+				() => context.peek("exp_test_ab"),
+				() => context.variableValue("banner.border", "17"),
+				() => context.peekVariableValue("banner.border", "17"),
+				() => context.variableKeys(),
+				() => context.track("goal1"),
+				() => context.unit("new_unit", "new_uid"),
+				() => context.attribute("attr1", "value1"),
+				() => context.override("exp_test_ab", 1),
+				() => context.customAssignment("exp_test_ab", 1),
+				() => context.customFieldKeys(),
+				() => context.customFieldValue("exp_test_ab", "country"),
+				() => context.publish(),
+				() => context.refresh(),
+			];
+
+			it("throws ContextNotReadyError from public methods before ready", () => {
+				const context = new Context(sdk, contextOptions, contextParams, new Promise<never>(() => {}));
+				expect(context.isReady()).toEqual(false);
+
+				for (const fn of readyGuarded(context)) {
+					expectThrownError(fn, ContextNotReadyError, "ABsmartly Context is not yet ready.");
+				}
+			});
+
+			it("throws ContextFinalizedError from public methods while finalizing", async () => {
+				const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+				let resolvePublish!: () => void;
+				(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(
+					new Promise<void>((resolve) => {
+						resolvePublish = resolve;
+					})
+				);
+
+				context.treatment("exp_test_ab");
+				const finalizePromise = context.finalize();
+				expect(context.isFinalizing()).toEqual(true);
+
+				for (const fn of finalizeGuarded(context)) {
+					expectThrownError(fn, ContextFinalizedError, "ABsmartly Context is finalizing.");
+				}
+
+				resolvePublish();
+				await finalizePromise;
+			});
+
+			it("throws ContextFinalizedError from public methods after finalize", async () => {
+				const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
+				await context.finalize();
+				expect(context.isFinalized()).toEqual(true);
+
+				for (const fn of finalizeGuarded(context)) {
+					expectThrownError(fn, ContextFinalizedError, "ABsmartly Context is finalized.");
+				}
+			});
 		});
 
 		it("should load experiment data", () => {
