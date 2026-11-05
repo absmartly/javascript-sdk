@@ -150,5 +150,9 @@ export class SDK {
 				throw new Error(`Unit '${key}' UID length must be >= 1`);
 			}
 		}
+
+		if (params.attributes != null && (typeof params.attributes !== "object" || Array.isArray(params.attributes))) {
+			throw new Error("Context params 'attributes' must be an object");
+		}
 	}
 }

@@ -70,6 +70,24 @@ describe("SDK", () => {
 		expect(() => sdk.createContext({ units: { session_id: "" } })).toThrow("Unit 'session_id' UID length must be >= 1");
 	});
 
+	test("createContext applies attributes from context params", () => {
+		const sdk = new SDK(defaultOpts);
+		const context = sdk.createContextWith(
+			{ units: { session_id: "abc" }, attributes: { user_type: "returning", age: 21 } },
+			{ experiments: [] }
+		);
+		expect(context.getAttributes()).toEqual({ user_type: "returning", age: 21 });
+	});
+
+	test("createContext rejects non-object attributes in context params", () => {
+		const sdk = new SDK(defaultOpts);
+		for (const attributes of ["x", 1, [["a", 1]]]) {
+			expect(() =>
+				sdk.createContextWith({ units: { session_id: "abc" }, attributes } as never, { experiments: [] })
+			).toThrow("Context params 'attributes' must be an object");
+		}
+	});
+
 	test("createContext returns Context instance", () => {
 		const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ experiments: [] }) });
 		const sdk = new SDK({ ...defaultOpts, fetchImpl });

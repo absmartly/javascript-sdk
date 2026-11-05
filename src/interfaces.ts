@@ -8,6 +8,7 @@ export type EventLogger = (context: unknown, eventName: EventName, data?: EventL
 
 export type ContextParams = {
 	units: Record<string, string | number>;
+	attributes?: Record<string, unknown>;
 };
 
 export type ContextOptions = {

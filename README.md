@@ -214,6 +214,14 @@ context.attributes({
 });
 ```
 
+Attributes can also be passed together with the units when creating the context:
+```typescript
+const context = sdk.createContext({
+    units: { session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8" },
+    attributes: { customer_age: "new_customer" },
+});
+```
+
 #### Including system attributes
 You can opt in to automatically include system attributes (SDK name, SDK version, application, environment, and application version) in every publish payload. These are sent as context attributes and can be useful for debugging and filtering in the Web Console.
 

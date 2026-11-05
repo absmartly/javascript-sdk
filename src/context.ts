@@ -120,6 +120,10 @@ export class Context {
 			this.units(params.units);
 		}
 
+		if (params.attributes) {
+			this.attributes(params.attributes);
+		}
+
 		if (isPromise(promise)) {
 			this._promise = (promise as Promise<ContextData>)
 				.then((data) => {
