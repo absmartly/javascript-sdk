@@ -25,7 +25,7 @@ describe("ContextNotReadyError", () => {
 		expect(error).toBeInstanceOf(ABSmartlyError);
 		expect(error).toBeInstanceOf(ContextNotReadyError);
 		expect(error.name).toBe("ContextNotReadyError");
-		expect(error.message).toBe("Context is not yet ready");
+		expect(error.message).toBe("ABsmartly Context is not yet ready.");
 	});
 });
 
@@ -36,7 +36,13 @@ describe("ContextFinalizedError", () => {
 		expect(error).toBeInstanceOf(ABSmartlyError);
 		expect(error).toBeInstanceOf(ContextFinalizedError);
 		expect(error.name).toBe("ContextFinalizedError");
-		expect(error.message).toBe("Context has been finalized");
+		expect(error.message).toBe("ABsmartly Context is finalized.");
+	});
+
+	test("uses the finalizing message while finalization is in progress", () => {
+		const error = new ContextFinalizedError(true);
+		expect(error).toBeInstanceOf(ContextFinalizedError);
+		expect(error.message).toBe("ABsmartly Context is finalizing.");
 	});
 });
 

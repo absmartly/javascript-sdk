@@ -7,14 +7,14 @@ export class ABSmartlyError extends Error {
 
 export class ContextNotReadyError extends ABSmartlyError {
 	constructor() {
-		super("Context is not yet ready");
+		super("ABsmartly Context is not yet ready.");
 		this.name = "ContextNotReadyError";
 	}
 }
 
 export class ContextFinalizedError extends ABSmartlyError {
-	constructor() {
-		super("Context has been finalized");
+	constructor(finalizing = false) {
+		super(finalizing ? "ABsmartly Context is finalizing." : "ABsmartly Context is finalized.");
 		this.name = "ContextFinalizedError";
 	}
 }

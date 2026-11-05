@@ -464,7 +464,7 @@ export class Context {
 		if (this.isFinalized()) {
 			throw new ContextFinalizedError();
 		} else if (this.isFinalizing()) {
-			throw new ContextFinalizedError();
+			throw new ContextFinalizedError(true);
 		}
 	}
 
