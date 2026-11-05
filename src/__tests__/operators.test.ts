@@ -68,7 +68,7 @@ describe("operators", () => {
 		it("all false → false", () => expect(evalExpr({ and: [{ value: false }, { value: 0 }] })).toBe(false));
 	});
 
-	// NOTE: Branch OrCombinator returns true for empty array (vacuous truth), matching AndCombinator
+	// An empty `or` is true, matching the Java/Python SDKs and the previous JS SDK (main); do not "fix" to false.
 	describe("or", () => {
 		it("empty → true (vacuous)", () => expect(evalExpr({ or: [] })).toBe(true));
 		it("any true → true", () => expect(evalExpr({ or: [{ value: false }, { value: true }] })).toBe(true));

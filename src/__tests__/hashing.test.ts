@@ -88,6 +88,17 @@ describe("hashUnit cross-SDK fixtures", () => {
 		expect(hashUnit("世界你好")).toBe("v2CJG7YcjjWncKOSCzF2GA");
 		expect(hashUnit("user_世界_123")).toBe("SCgk4OzXlFMvo1UMsP88fA");
 	});
+
+	test("the manual fallback hashes surrogate pairs to the same canonical values", () => {
+		vi.stubGlobal("TextEncoder", undefined);
+		try {
+			expect(Array.from(stringToUint8Array("😀"))).toEqual([0xf0, 0x9f, 0x98, 0x80]);
+			expect(hashUnit("😀")).toBe("KgLqw51xanDs83V5GFkntg");
+			expect(hashUnit("😀😁")).toBe("ZJuDalvUWRJnVtkspj-2bQ");
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe("stringToUint8Array unmatched surrogates", () => {

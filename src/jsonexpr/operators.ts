@@ -34,6 +34,8 @@ export class OrCombinator {
 			for (const expr of args) {
 				if (evaluator.booleanConvert(evaluator.evaluate(expr))) return true;
 			}
+			// An empty `or` is true, matching the Java (OrCombinator.combine) and Python (OrCombinator.combine)
+			// SDKs so that audience filters evaluate identically across SDKs.
 			return args.length === 0;
 		}
 		return null;
