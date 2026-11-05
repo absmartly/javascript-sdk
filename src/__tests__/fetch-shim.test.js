@@ -133,3 +133,12 @@ describe("fetch", () => {
 		});
 	});
 });
+
+describe("fetch implementation resolver", () => {
+	it("should resolve to a function, never undefined", async () => {
+		const fetchModule = await import("../fetch");
+		const fetchImpl = fetchModule.default;
+		expect(fetchImpl).not.toBeUndefined();
+		expect(typeof fetchImpl).toBe("function");
+	});
+});
