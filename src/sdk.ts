@@ -64,7 +64,7 @@ export class SDK {
 			const clientOptions = Object.assign(
 				{ agent: "absmartly-javascript-sdk" },
 				...Object.entries(options || {})
-					.filter((x) => CLIENT_OPTION_KEYS.indexOf(x[0]) !== -1)
+					.filter((x) => CLIENT_OPTION_KEYS.indexOf(x[0]) !== -1 && x[1] !== undefined)
 					.map((x) => ({ [x[0]]: x[1] }))
 			) as ClientOptions;
 

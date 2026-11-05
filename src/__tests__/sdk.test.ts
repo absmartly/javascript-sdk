@@ -16,6 +16,11 @@ describe("SDK", () => {
 		expect(sdk).toBeInstanceOf(SDK);
 	});
 
+	test("explicitly undefined client options keep their defaults", () => {
+		const sdk = new SDK({ ...defaultOpts, agent: undefined } as never);
+		expect(sdk.getClient().getAgent()).toBe("absmartly-javascript-sdk");
+	});
+
 	test("getClient returns client", () => {
 		const sdk = new SDK(defaultOpts);
 		expect(sdk.getClient()).toBeDefined();
