@@ -526,7 +526,7 @@ describe("AudienceMatcher", () => {
 		});
 
 		describe("split rules", () => {
-			const splitRule = (percentages) => ({
+			const splitRule = (percentages: unknown) => ({
 				name: "split",
 				type: "split",
 				conditions: { and: [{ eq: [{ var: "country" }, { value: "US" }] }] },
@@ -534,7 +534,8 @@ describe("AudienceMatcher", () => {
 				percentages,
 			});
 			const fallbackRule = { name: "fallback", type: "assign", environments: [], variant: 2 };
-			const evaluate = (rules) => matcher.evaluateRules(JSON.stringify({ rules }), "production", { country: "US" });
+			const evaluate = (rules: unknown[]) =>
+				matcher.evaluateRules(JSON.stringify({ rules }), "production", { country: "US" });
 
 			it("should return the split as fractions when conditions match", () => {
 				expect(evaluate([splitRule("20/30/50")])).toEqual({ split: [0.2, 0.3, 0.5] });
