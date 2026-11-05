@@ -45,5 +45,6 @@ export type {
 	EventLogger,
 	EventLoggerData,
 	EventName,
+	SDKConstructorOptions,
 	SDKOptions,
 } from "./interfaces";

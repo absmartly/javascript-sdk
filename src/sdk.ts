@@ -11,7 +11,7 @@ import type {
 	ContextPublisher,
 	EventLogger,
 	EventLoggerData,
-	SDKOptions,
+	SDKConstructorOptions,
 } from "./interfaces";
 import type { ContextData } from "./models";
 
@@ -57,7 +57,7 @@ export class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
-	constructor(options: ClientOptions & SDKOptions) {
+	constructor(options: SDKConstructorOptions) {
 		if (options.client) {
 			this._client = options.client;
 		} else {

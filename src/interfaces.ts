@@ -47,6 +47,14 @@ export type SDKOptions = {
 	provider?: ContextDataProvider;
 };
 
+/**
+ * Options accepted by `new SDK(...)`: either the connection options used to build the
+ * default HTTP client, or a custom `client`, in which case those options are not needed.
+ */
+export type SDKConstructorOptions =
+	| (ClientOptions & SDKOptions)
+	| (Partial<ClientOptions> & SDKOptions & { client: Client });
+
 export interface Client {
 	getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData>;
 	publish(params: PublishParams, options?: ClientRequestOptions): Promise<unknown>;

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { SDK } from "../sdk";
-import type { ClientOptions } from "../interfaces";
+import type { Client, ClientOptions } from "../interfaces";
 
 const defaultOpts: ClientOptions = {
 	agent: "test-agent",
@@ -41,6 +41,20 @@ describe("SDK", () => {
 		expect(() => sdk.createContext({ units: { session_id: true as unknown as string } })).toThrow(
 			"Unit 'session_id' UID is of unsupported type 'boolean'. UID must be one of ['string', 'number']"
 		);
+	});
+
+	test("accepts a custom client without connection options", () => {
+		const client: Client = {
+			getContext: vi.fn().mockResolvedValue({ experiments: [] }),
+			publish: vi.fn().mockResolvedValue({}),
+			getAgent: () => "my-custom-client",
+			getApplication: () => ({ name: "my-app", version: "1.0.0" }),
+			getEnvironment: () => "production",
+		};
+
+		// Must compile without apiKey/application/endpoint/environment (see README "Custom Client").
+		const sdk = new SDK({ client });
+		expect(sdk.getClient()).toBe(client);
 	});
 
 	test("createContext validates empty string units", () => {
