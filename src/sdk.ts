@@ -137,6 +137,10 @@ export class SDK {
 	}
 
 	private static _validateParams(params: ContextParams): void {
+		if (params == null || params.units == null || typeof params.units !== "object") {
+			throw new Error("Missing 'units' in context params");
+		}
+
 		for (const [key, value] of Object.entries(params.units)) {
 			const type = typeof value;
 			if (type !== "string" && type !== "number") {

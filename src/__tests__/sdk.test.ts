@@ -43,6 +43,14 @@ describe("SDK", () => {
 		);
 	});
 
+	test("createContext throws a validation error when units are missing", () => {
+		const sdk = new SDK(defaultOpts);
+		expect(() => sdk.createContext({} as never)).toThrow("Missing 'units' in context params");
+		expect(() => sdk.createContextWith({ units: null } as never, { experiments: [] })).toThrow(
+			"Missing 'units' in context params"
+		);
+	});
+
 	test("accepts a custom client without connection options", () => {
 		const client: Client = {
 			getContext: vi.fn().mockResolvedValue({ experiments: [] }),
