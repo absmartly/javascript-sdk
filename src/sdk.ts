@@ -137,7 +137,7 @@ export class SDK {
 	}
 
 	private static _validateParams(params: ContextParams): void {
-		if (params == null || params.units == null || typeof params.units !== "object") {
+		if (params == null || params.units == null || typeof params.units !== "object" || Array.isArray(params.units)) {
 			throw new Error("Missing 'units' in context params");
 		}
 

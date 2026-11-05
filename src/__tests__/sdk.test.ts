@@ -65,6 +65,15 @@ describe("SDK", () => {
 		expect(sdk.getClient()).toBe(client);
 	});
 
+	test("createContext rejects array units in context params", () => {
+		const sdk = new SDK(defaultOpts);
+		for (const units of [["user-id"], []]) {
+			expect(() => sdk.createContextWith({ units } as never, { experiments: [] })).toThrow(
+				"Missing 'units' in context params"
+			);
+		}
+	});
+
 	test("createContext validates empty string units", () => {
 		const sdk = new SDK(defaultOpts);
 		expect(() => sdk.createContext({ units: { session_id: "" } })).toThrow("Unit 'session_id' UID length must be >= 1");
