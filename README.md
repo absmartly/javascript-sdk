@@ -180,7 +180,7 @@ Then we can initialize the A/B Smartly context on the client-side directly with 
 
 ```html
 <head>
-    <script type="javascript">
+    <script>
         const context = sdk.createContextWith(
             { units: { session_id: "5ebf06d8cb5d8137290c4abb64155584fbdb64d8" } },
             {{ serverSideContext.data() }}
