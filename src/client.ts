@@ -19,10 +19,15 @@ export class DefaultClient implements Client {
 	private readonly _AbortControllerImpl: typeof AbortController;
 
 	constructor(opts: ClientOptions) {
-		const merged: Record<string, unknown> = Object.assign(
-			{ agent: "javascript-client", retries: DEFAULT_RETRIES, timeout: DEFAULT_TIMEOUT_MS, keepalive: true },
-			opts
-		);
+		const merged: Record<string, unknown> = {
+			agent: "javascript-client",
+			retries: DEFAULT_RETRIES,
+			timeout: DEFAULT_TIMEOUT_MS,
+			keepalive: true,
+		};
+		for (const [key, value] of Object.entries(opts)) {
+			if (value !== undefined) merged[key] = value;
+		}
 
 		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"]) {
 			if (key in merged && merged[key] !== undefined) {

@@ -59,6 +59,40 @@ describe("Client", () => {
 			expect(() => new DefaultClient(opts)).toThrow("Missing 'application' in options argument");
 		});
 
+		test("keeps the default agent when agent is undefined", () => {
+			const client = new DefaultClient({ ...defaultOpts, agent: undefined });
+			expect(client.getAgent()).toBe("javascript-client");
+		});
+
+		test("keeps the default timeout when timeout is undefined", async () => {
+			vi.useFakeTimers();
+			try {
+				const fetchImpl = vi.fn(
+					(_url: string, init: RequestInit) =>
+						new Promise((_resolve, reject) => {
+							init.signal?.addEventListener("abort", () => {
+								reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+							});
+						})
+				);
+				const client = new DefaultClient({
+					...defaultOpts,
+					retries: 0,
+					timeout: undefined,
+					fetchImpl: fetchImpl as unknown as typeof fetch,
+				});
+				const promise = client.getContext();
+				const assertion = expect(promise).rejects.toThrow("aborted");
+
+				await vi.advanceTimersByTimeAsync(2999);
+				expect(fetchImpl.mock.calls[0][1].signal?.aborted).toBe(false);
+				await vi.advanceTimersByTimeAsync(1);
+				await assertion;
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		test("throws for empty apiKey", () => {
 			const opts = { ...defaultOpts, apiKey: "" };
 			expect(() => new DefaultClient(opts)).toThrow("Invalid 'apiKey' in options argument");
