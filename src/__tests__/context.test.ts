@@ -3149,15 +3149,12 @@ describe("Context", () => {
 			const context = new Context(sdk, options, contextParams, dataPromise);
 			expect(context.isReady()).toBe(false);
 
-			// Resolve the promise to make context ready
 			resolveData!(getContextResponse);
 			await context.ready();
 			expect(context.isReady()).toBe(true);
 
-			// Queue events after ready
 			context.treatment("exp_test_ab");
 
-			// Timer should fire after publishDelay
 			await vi.advanceTimersByTimeAsync(100);
 			expect(publisher.publish).toHaveBeenCalledTimes(1);
 		});
@@ -3259,13 +3256,10 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, getContextResponse as any);
 			context.treatment("exp_test_ab");
 
-			// First publish fails
 			await expect(context.publish()).rejects.toThrow("network error");
 
-			// Events should still be pending
 			expect(context.pending()).toBe(1);
 
-			// Second publish succeeds with the preserved events
 			await context.publish();
 			expect(context.pending()).toBe(0);
 			expect(publisher.publish).toHaveBeenCalledTimes(2);
@@ -3284,15 +3278,12 @@ describe("Context", () => {
 
 			const publishPromise = context.publish();
 
-			// Queue new event while publish is in-flight
 			context.track("goal1");
-			expect(context.pending()).toBe(1); // new event pending
+			expect(context.pending()).toBe(1);
 
-			// Resolve the first publish
 			resolvePublish!();
 			await publishPromise;
 
-			// New event should still be pending
 			expect(context.pending()).toBe(1);
 		});
 	});
@@ -3304,12 +3295,10 @@ describe("Context", () => {
 			context.treatment("exp_test_ab");
 			expect(context.pending()).toBe(1);
 
-			// Same override value — no new exposure
 			context.override("exp_test_ab", 2);
 			context.treatment("exp_test_ab");
 			expect(context.pending()).toBe(1);
 
-			// Different override value — new exposure
 			context.override("exp_test_ab", 3);
 			context.treatment("exp_test_ab");
 			expect(context.pending()).toBe(2);
@@ -3403,7 +3392,7 @@ describe("Context", () => {
 			const options = context.getOptions();
 			expect(options.publishDelay).toBe(contextOptions.publishDelay);
 			expect(options.refreshPeriod).toBe(contextOptions.refreshPeriod);
-			expect(options).not.toBe(contextOptions); // should be a copy
+			expect(options).not.toBe(contextOptions);
 		});
 	});
 

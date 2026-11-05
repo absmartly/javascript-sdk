@@ -45,7 +45,6 @@ describe("operators", () => {
 		it("returns boolean", () => expect(evalExpr({ value: true })).toBe(true));
 	});
 
-	// NOTE: Branch VarOperator expects path string or {path: "..."}, not {value: "..."}
 	describe("var", () => {
 		it("extracts variable by path string", () => {
 			expect(evalExpr({ var: "x" }, { x: 99 })).toBe(99);
@@ -91,7 +90,6 @@ describe("operators", () => {
 		it("false → false", () => expect(evalExpr({ null: { value: false } })).toBe(false));
 	});
 
-	// NOTE: BinaryOperator base returns null if lhs is null, so eq(null, null) → null
 	describe("eq", () => {
 		it("null == null → null (null short-circuits)", () =>
 			expect(evalExpr({ eq: [{ value: null }, { value: null }] })).toBe(null));
@@ -130,7 +128,6 @@ describe("operators", () => {
 		it("1 <= 0 → false", () => expect(evalExpr({ lte: [{ value: 1 }, { value: 0 }] })).toBe(false));
 	});
 
-	// NOTE: Branch InOperator signature is (haystack, needle) — first arg is the collection
 	describe("in", () => {
 		it("string contains", () => {
 			expect(evalExpr({ in: [{ value: "abcdef" }, { value: "bc" }] })).toBe(true);

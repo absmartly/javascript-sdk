@@ -1,6 +1,5 @@
-// Ported from main's Jest suite (src/__tests__/context.test.js): assignment rules,
-// split rules, holdouts and publish()/finalize() hardening. Kept close to the original so cross-SDK scenario numbers
-// in the test names still line up.
+// Assignment rules, split rules, holdouts and publish()/finalize() behaviour. Cross-SDK scenario
+// numbers in the test names match the shared scenario list.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -587,7 +586,6 @@ describe("Context (rules and holdouts)", () => {
 		it("should return rule variant when rule matches", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
-			// Normal assignment would return 2, rules force variant 1
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
@@ -606,7 +604,6 @@ describe("Context (rules and holdouts)", () => {
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
-			// No rule matches, should get normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
@@ -614,7 +611,6 @@ describe("Context (rules and holdouts)", () => {
 			client.getEnvironment.mockReturnValueOnce("staging");
 			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
 			context.attribute("country", "US");
-			// Rule scoped to "production", client has "staging" — should get normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
@@ -628,7 +624,6 @@ describe("Context (rules and holdouts)", () => {
 		it("should match rule when environment name matches", () => {
 			const context = new Context(sdk, contextOptions, contextParams, envScopedRulesContextResponse);
 			context.attribute("country", "US");
-			// Rule scoped to "production", client has "production" — should get rule variant (1)
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
@@ -767,42 +762,33 @@ describe("Context (rules and holdouts)", () => {
 		it("should invalidate cached assignment when rule result changes due to attribute change", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 
-			// First call: no country set, rule doesn't match → normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 
-			// Change attribute so rule now matches
 			context.attribute("country", "US");
 
-			// Second call: rule matches → should return rule variant (1), not cached (2)
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
 		it("should invalidate cached assignment when rule stops matching due to attribute change", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 
-			// First call: country=US, rule matches → variant 1
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 
-			// Change attribute so rule no longer matches
 			context.attribute("country", "GB");
 
-			// Second call: rule no longer matches → should return normal assignment (2)
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
 		it("rule should take priority over audienceStrict when rule matches", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "US");
-			// audienceStrict is on, user doesn't match audience filter (no age set),
-			// but rule matches — should still get rule variant (1)
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
 		it("should fall back to audienceStrict behavior when no rule matches", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesStrictContextResponse);
 			context.attribute("country", "GB");
-			// No rule matches, audienceStrict on, audience filter mismatch — variant 0
 			expect(context.treatment("exp_test_abc")).toEqual(0);
 		});
 
@@ -828,8 +814,6 @@ describe("Context (rules and holdouts)", () => {
 		it("should return correct variableValue when rule forces a different variant", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "US");
-			// Rule forces variant 1 (B) which has config {"button.color":"blue"}
-			// Normal assignment would be variant 2 (C) with {"button.color":"red"}
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 			expect(context.variableValue("button.color", "default")).toEqual("blue");
 		});
@@ -860,11 +844,9 @@ describe("Context (rules and holdouts)", () => {
 			});
 			const context = new Context(sdk, contextOptions, contextParams, twoRulesContextResponse);
 
-			// First: US → rule variant 1
 			context.attribute("country", "US");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 
-			// Switch to GB → rule variant 2
 			context.attribute("country", "GB");
 			expect(context.treatment("exp_test_abc")).toEqual(2);
 		});
@@ -1873,13 +1855,6 @@ describe("Context (rules and holdouts)", () => {
 				]
 			);
 
-			// Fixed per final-review finding M-4: the construction and the async publish
-			// assertions are split apart. `.not.toThrow()` only catches SYNCHRONOUS throws, so
-			// wrapping the `.then()` callback (with its `done()` call) inside it let any assertion
-			// failure inside the callback escape as an unhandled rejection / test timeout instead
-			// of a clean, attributable test failure. The synchronous construction is asserted not
-			// to throw on its own, and the publish/exposure assertions run unwrapped afterward,
-			// matching how every other test in this block is structured.
 			expect(() => new Context(sdk, contextOptions, contextParams, response)).not.toThrow();
 
 			const context = new Context(sdk, contextOptions, contextParams, response);
@@ -2210,20 +2185,14 @@ describe("Context (rules and holdouts)", () => {
 			const context = new Context(sdk, contextOptions, contextParams, response);
 
 			expect(context.treatment("exp_shared_a")).toEqual(0);
-			expect(publisher.publish.mock.calls.length).toEqual(0); // nothing published yet; check pending directly
+			expect(publisher.publish.mock.calls.length).toEqual(0);
 			expect(context.pending()).toEqual(1);
 
 			expect(context.treatment("exp_shared_b")).toEqual(0);
-			// exp_shared_b is also suppressed, and the shared holdout already fired for exp_shared_a —
-			// no further exposures of any kind should be queued.
 			expect(context.pending()).toEqual(1);
 
 			publisher.publish.mockReturnValue(Promise.resolve());
 
-			// Tightened per final-review finding M-3: assert the exact exposures array (matching
-			// every other test in this describe block) so this verifies the SPECIFIC exposure that
-			// fired is the shared holdout's own — not merely that exactly one exposure fired, which
-			// would pass even if the wrong exposure (e.g. exp_shared_a's own) had fired instead.
 			context.publish().then(() => {
 				expect(publisher.publish.mock.calls[0][0].exposures).toEqual([
 					{
@@ -3017,10 +2986,7 @@ describe("Context (rules and holdouts)", () => {
 
 		// Scenario 221 (index 220): a covered full-on experiment can resolve before its unit type is
 		// installed; after unit() supplies that unit, resolving it again publishes the holdout
-		// exposure that was unavailable during the first evaluation. This is a regression test for
-		// the Task 6 fix round (C-1): a real bug existed here (the holdout exposure was permanently
-		// lost) and was fixed via _invalidateAssignmentsPinnedWithMissingUnit plus a change to
-		// _unitHash's negative-result caching.
+		// exposure that was unavailable during the first evaluation.
 		it("publishes the previously-unavailable holdout exposure once its late unit is set (scenario 221)", (done) => {
 			const response = buildHoldoutResponse(
 				[
@@ -3186,7 +3152,6 @@ describe("Context (rules and holdouts)", () => {
 						seedHi: 0,
 						seedLo: 1,
 						split: [0.3, 0.3, 0.4],
-						// deliberately no holdoutType field
 					},
 				]
 			);
@@ -3293,8 +3258,6 @@ describe("Context (rules and holdouts)", () => {
 
 			expect(context.treatment("exp_holdout_rules")).toEqual(1);
 
-			// `ruleOverride` is set and `assigned` stays false (a rule match is not a randomized
-			// assignment), matching the semantics of every other rule-matched assignment.
 			const assignment = context._assignments["exp_holdout_rules"];
 			expect(assignment.ruleOverride).toEqual(true);
 			expect(assignment.assigned).toEqual(false);
@@ -3406,16 +3369,8 @@ describe("Context (rules and holdouts)", () => {
 			expect(context._assignments["exp_holdout_split_rule"].suppressed).toEqual(true);
 		});
 
-		// Final-review Finding I-2, Test A: regression coverage for Task 5's override-fast-path
-		// fix (commit 716430c). Before that fix, the `hasOverride` branch in `_assign()` returned
-		// the cached assignment early on `overridden && variant match` alone, without checking
-		// `holdoutSetMatches` — so an already-overridden experiment whose holdout coverage changed
-		// across a refresh (here: holdout coverage added where there was none) kept returning the
-		// same frozen assignment forever, and the newly-applicable holdout's own exposure could
-		// never fire. This constructs exactly that: cache an overridden assignment with NO holdout
-		// coverage, refresh so the SAME experiment now has holdoutIds, and confirm the holdout's
-		// own exposure fires on the next treatment() call (proving the fast path rebuilt rather
-		// than returning the stale pinned holdouts/holdoutAssignments from before the refresh).
+		// An overridden assignment cached without holdout coverage must be rebuilt when a refresh
+		// adds holdouts to the same experiment, so the holdout's own exposure can fire.
 		it("Task 5 regression: override fast path revalidates the holdout set added by a refresh (I-2 Test A)", (done) => {
 			const baseExperiment = {
 				id: 1,
@@ -3469,18 +3424,12 @@ describe("Context (rules and holdouts)", () => {
 			const context = new Context(sdk, contextOptions, contextParams, initialResponse);
 			context.override("exp_override_holdout_added", 1);
 
-			// Caches the overridden assignment with no holdout coverage yet.
 			expect(context.treatment("exp_override_holdout_added")).toEqual(1);
 			expect(context.pending()).toEqual(1);
 
 			provider.getContextData.mockReturnValue(Promise.resolve(refreshedResponse));
 
 			context.refresh().then(() => {
-				// Pre-fix: this returns the stale cached assignment (holdouts: undefined) without
-				// ever resolving the newly-applicable holdout, so its own exposure never fires.
-				// Override still wins the variant either way (scenario 210's precedent) — the
-				// regression is specifically about the holdout's own exposure never being able to
-				// fire once coverage is added after the override was cached.
 				expect(context.treatment("exp_override_holdout_added")).toEqual(1);
 
 				publisher.publish.mockReturnValue(Promise.resolve());
@@ -3506,13 +3455,8 @@ describe("Context (rules and holdouts)", () => {
 			});
 		});
 
-		// Final-review Finding I-2, Test B: regression coverage for Task 5's holdout-arm-count
-		// pinning fix (commit 716430c). Before that fix, suppression read the arm count live from
-		// `holdouts[i].data.split.length` instead of the pinned `holdoutArmCount` on the holdout's
-		// own cached Assignment — but `_getHoldoutAssignment`'s cache only invalidates on (id,
-		// iteration) change, so a same-iteration split-length change (not expected on the real
-		// wire, but exactly the edge case the fix protects against) could desync the live arm
-		// count from the arm count the resolved variant was actually interpreted against.
+		// Suppression must use the holdout arm count pinned on the cached holdout assignment, not the
+		// live split length, when the split changes without a new iteration.
 		//
 		// Construct: resolve a 2-arm holdout for one experiment (pinning holdoutArmCount: 2 and
 		// variant: 1, both cached independently of any one covered experiment). Refresh so the
@@ -3582,9 +3526,6 @@ describe("Context (rules and holdouts)", () => {
 			const pinParams = { units: { session_id: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3" } };
 			const context = new Context(sdk, contextOptions, pinParams, initialResponse);
 
-			// Seeds _getHoldoutAssignment's cache: resolves and pins holdoutArmCount: 2 (the split
-			// length live at this moment) alongside variant: 1. Matches scenario 204's verdict for
-			// the identical holdout+unit pairing (not held out under 2 arms).
 			expect(context.treatment("exp_pin_seed_a")).toEqual(0);
 
 			// fullOnVariant: 0 is the key choice here — isHeldOutBy's 3-arm/variant-1 rule only
@@ -3597,7 +3538,6 @@ describe("Context (rules and holdouts)", () => {
 				name: "exp_pin_seed_b",
 			};
 
-			// Same holdout id AND iteration — the key precondition — but now 3 arms instead of 2.
 			const holdoutThreeArm = { ...holdoutTwoArm, split: [0.3, 0.3, 0.4] };
 
 			const refreshedResponse = buildHoldoutResponse([expA, expB], [holdoutThreeArm]);
@@ -3605,13 +3545,8 @@ describe("Context (rules and holdouts)", () => {
 			provider.getContextData.mockReturnValue(Promise.resolve(refreshedResponse));
 
 			context.refresh().then(() => {
-				// exp_pin_seed_b is queried for the first time here, so its own assignment is built
-				// fresh and must resolve the holdout via _getHoldoutAssignment, hitting the (id,
-				// iteration) cache seeded above.
-				//   Pinned arm count (2, correct): isHeldOutBy(1, 2, 0) is false -> NOT suppressed
-				//     -> normal traffic-split assignment path -> assigned: true, own exposure fires.
-				//   Live arm count (3, the pre-fix bug): isHeldOutBy(1, 3, 0) is true -> suppressed
-				//     -> assigned: false, variant forced to 0, own exposure does NOT fire.
+				// With the pinned arm count, isHeldOutBy(1, 2, 0) is false, so the assignment is not
+				// suppressed and its own exposure fires. The live arm count (3) would suppress it.
 				context.treatment("exp_pin_seed_b");
 
 				publisher.publish.mockReturnValue(Promise.resolve());
@@ -3702,8 +3637,6 @@ describe("Context (rules and holdouts)", () => {
 				const lateUnitParams = { units: { session_id: "context-created-without-user-id" } };
 				const context = new Context(sdk, contextOptions, lateUnitParams, response);
 
-				// treatment() (not peek()) fires the covered experiment's own exposure immediately,
-				// since full-on doesn't need a unit — pinning a null holdout entry as a side effect.
 				expect(context.treatment("exp_holdout_treatment_before_unit")).toEqual(2);
 				expect(context.pending()).toEqual(1);
 
@@ -3780,7 +3713,6 @@ describe("Context (rules and holdouts)", () => {
 
 				const context = new Context(sdk, contextOptions, contextParams, initialResponse);
 
-				// Fires the covered experiment's own exposure — no holdout coverage yet.
 				expect(context.treatment("exp_holdout_added_non_suppressing")).toEqual(1);
 				expect(context.pending()).toEqual(1);
 
@@ -3841,10 +3773,6 @@ describe("Context (rules and holdouts)", () => {
 		});
 
 		describe("holdouts: error handling", () => {
-			// _queueExposure must append to the publish queue and increment pending() BEFORE calling
-			// the (user-supplied) eventLogger. A throwing eventLogger is isolated by _logEvent itself
-			// (it never propagates — see _logEvent's doc comment), so this only verifies the exposure
-			// is queued regardless of the logger throwing.
 			it("keeps a queued exposure even when the eventLogger throws while reporting it", () => {
 				const throwingEventLogger = jest.fn((ctx, eventName) => {
 					if (eventName === "exposure") {
@@ -3888,15 +3816,9 @@ describe("Context (rules and holdouts)", () => {
 
 				expect(() => context.treatment("exp_holdout_throwing_logger")).not.toThrow();
 
-				// The exposure was appended and counted before the logger ran, and the logger's throw
-				// was isolated by _logEvent, so it is not lost.
 				expect(context.pending()).toEqual(1);
 			});
 
-			// With N applicable holdouts there are up to N+1 independent exposure-firing attempts per
-			// call (the covered experiment's own, plus one per holdout). A throwing eventLogger on any
-			// of them is isolated by _logEvent (it never propagates), so every attempt must still run
-			// and queue its own exposure regardless of the logger throwing on an earlier one.
 			it("queues every exposure even when the eventLogger throws while reporting each one", () => {
 				const eventLogger = jest.fn((ctx, eventName, data) => {
 					if (eventName === "exposure") {
