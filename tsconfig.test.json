@@ -5,7 +5,8 @@
 		"noUncheckedIndexedAccess": false,
 		"noUnusedLocals": false,
 		"noUnusedParameters": false,
-		"types": ["vitest/globals"]
+		"types": ["vitest/globals", "node"],
+		"lib": ["ES2022", "DOM", "DOM.Iterable"]
 	},
 	"include": ["src/**/*.ts"],
 	"exclude": ["node_modules"]
