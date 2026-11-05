@@ -19,7 +19,6 @@
 	"type": "module",
 	"main": "dist/index.cjs",
 	"module": "dist/index.js",
-	"browser": "dist/index.global.js",
 	"types": "dist/index.d.ts",
 	"exports": {
 		".": {
@@ -47,6 +46,7 @@
 		"prepack": "npm run build",
 		"pretest": "npm run -s generate-version",
 		"pretest:coverage": "npm run -s generate-version",
+		"pretest:watch": "npm run -s generate-version",
 		"pretypecheck": "npm run -s generate-version",
 		"format": "prettier --write '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
 		"format:check": "prettier --check '**/*.{js,mjs,jsx,json,ts,mts,tsx}'",
