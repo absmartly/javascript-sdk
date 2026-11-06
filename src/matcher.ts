@@ -48,7 +48,6 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	// Parsing is split from evaluation so callers can parse once per data install and reuse the result.
 	parseRules(assignmentRulesString: string): unknown[] | null {
 		let assignmentRules;
 		try {

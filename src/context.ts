@@ -574,7 +574,6 @@ export default class Context {
 		return attrs;
 	}
 
-	// A filter that fails to evaluate is a mismatch, so a strict audience fails closed.
 	private _evaluateAudience(audience: string): boolean | null {
 		try {
 			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
@@ -1102,9 +1101,11 @@ export default class Context {
 		if (this._opts.includeSystemAttributes === true) {
 			const client = this._sdk.getClient();
 			const app = client.getApplication();
-			const userNames = new Set(this._attrs.map((x) => x.name));
+			// A plain object, not a Set: the browser bundle still supports IE 10, which has no Set.
+			const userNames: Record<string, true> = {};
+			for (const x of this._attrs) userNames[x.name] = true;
 			const addSystemAttribute = (attrName: string, value: unknown) => {
-				if (!userNames.has(attrName)) {
+				if (!Object.prototype.hasOwnProperty.call(userNames, attrName)) {
 					allAttributes.push({ name: attrName, value, setAt: systemSetAt });
 				}
 			};
@@ -1225,8 +1226,10 @@ export default class Context {
 			}
 
 			let systemSetAt = request.publishedAt;
-			for (const x of this._exposures) systemSetAt = Math.min(systemSetAt, x.exposedAt);
-			for (const x of this._goals) systemSetAt = Math.min(systemSetAt, x.achievedAt);
+			if (this._opts.includeSystemAttributes === true) {
+				for (const x of this._exposures) systemSetAt = Math.min(systemSetAt, x.exposedAt);
+				for (const x of this._goals) systemSetAt = Math.min(systemSetAt, x.achievedAt);
+			}
 			const allAttributes = this._buildAttributes(systemSetAt);
 			if (allAttributes.length > 0) {
 				request.attributes = allAttributes;

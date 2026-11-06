@@ -8971,6 +8971,40 @@ describe("Context", () => {
 			});
 		});
 
+		it("should publish system attributes without a native Set (IE 10)", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("application", "mobile");
+			context.treatment("exp_test_ab");
+
+			const NativeSet = global.Set;
+			global.Set = undefined;
+			let publishing;
+			try {
+				publishing = context.publish();
+			} finally {
+				global.Set = NativeSet;
+			}
+
+			publishing.then(() => {
+				expect(publisher.publish).toHaveBeenCalledTimes(1);
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.attributes.filter((a) => a.name === "application")).toEqual([
+					{ name: "application", value: "mobile", setAt: timeOrigin },
+				]);
+				expect(request.attributes.find((a) => a.name === "sdk_name")).toBeDefined();
+
+				done();
+			});
+		});
+
 		it("should only include user attributes when includeSystemAttributes is not set", (done) => {
 			const defaultOptions = {
 				publishDelay: -1,
