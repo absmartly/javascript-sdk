@@ -379,7 +379,7 @@ context.customAssignments({
 });
 ```
 
-A custom assignment replaces only the randomized variant selection, so it is not applied unconditionally. The SDK ignores it, and returns the variant shown below, when:
+A custom assignment replaces only the randomized variant selection, so it is not applied unconditionally. The SDK ignores it, and returns the variant shown below, when any of the following conditions apply. They are checked in the order listed, so when several apply, the first one wins. For example, an override or a matching assignment rule takes precedence over all later conditions, and a full-on experiment returns its full-on variant even when the context has no unit of the experiment's unit type:
 - an `override()` is set for the experiment (the override variant wins)
 - one of the experiment's assignment rules matches (the rule's variant wins)
 - the unit is held out by a holdout (variant `0`)
