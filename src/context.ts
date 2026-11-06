@@ -97,6 +97,9 @@ export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
 	holdouts?: HoldoutExperiment[] | null;
+	// Parsed `data.assignmentRules`, filled on first use; `undefined` until then. The entry is rebuilt
+	// whenever context data is installed, so the cache never outlives the rules it was parsed from.
+	rules?: unknown[] | null;
 };
 
 export type Unit = {
@@ -510,9 +513,15 @@ export default class Context {
 		}
 	}
 
-	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+	private _resolveRule(entry: Experiment, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+		const experiment = entry.data;
 		const variantCount = experiment.variants.length;
-		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
+		if (entry.rules === undefined) {
+			entry.rules = this._audienceMatcher.parseRules(experiment.assignmentRules ?? "");
+		}
+		if (entry.rules == null) return null;
+
+		const action = this._audienceMatcher.evaluateParsedRules(entry.rules, this._environmentName, attrs);
 		if (action == null) return null;
 
 		if ("variant" in action) {
@@ -586,7 +595,8 @@ export default class Context {
 			);
 		};
 
-		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
+		const audienceMatches = (entry: Experiment, assignment: Assignment) => {
+			const experiment = entry.data;
 			const ruleKey = experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "";
 			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
 
@@ -606,7 +616,7 @@ export default class Context {
 					// An exposed split resolved without its unit keeps resolving as if the unit were still
 					// missing, so a unit set afterwards cannot switch the variant the user already saw.
 					const isUnitPinnedMissing = assignment.exposed && assignment.isRuleMissingUnit === true;
-					const rule = this._resolveRule(experiment, attrs, isUnitPinnedMissing);
+					const rule = this._resolveRule(entry, attrs, isUnitPinnedMissing);
 					const ruleVariant = rule?.variant ?? null;
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
@@ -689,7 +699,7 @@ export default class Context {
 				// assignment, so a custom mismatch is not staleness.
 				if (
 					experimentMatches(experiment.data, assignment) &&
-					audienceMatches(experiment.data, assignment) &&
+					audienceMatches(experiment, assignment) &&
 					holdoutSetMatches(experiment, assignment)
 				) {
 					// assignment up-to-date
@@ -755,7 +765,7 @@ export default class Context {
 
 				const rule =
 					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
-						? this._resolveRule(experiment.data, attrs, false)
+						? this._resolveRule(experiment, attrs, false)
 						: null;
 				const ruleVariant = rule?.variant ?? null;
 

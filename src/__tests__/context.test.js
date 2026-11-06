@@ -2371,6 +2371,28 @@ describe("Context", () => {
 			});
 		});
 
+		it("should parse assignment rules once per context data, not on every lookup", (done) => {
+			const rulesString = rulesContextResponse.experiments.find((x) => x.name === "exp_test_abc").assignmentRules;
+			const parse = jest.spyOn(JSON, "parse");
+			const rulesParses = () => parse.mock.calls.filter(([text]) => text === rulesString).length;
+
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			for (const country of ["US", "GB", "US", "DE"]) {
+				context.attribute("country", country);
+				context.treatment("exp_test_abc");
+			}
+			expect(rulesParses()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(clone(rulesContextResponse)));
+			context.refresh().then(() => {
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+				expect(rulesParses()).toEqual(2);
+				parse.mockRestore();
+				done();
+			});
+		});
+
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
