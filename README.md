@@ -178,6 +178,8 @@ Creating a context involves a round-trip to the A/B Smartly event collector.
 We can avoid repeating the round-trip on the client-side by sending the server-side data embedded in the first document, for example, by rendering it on the template.
 Then we can initialize the A/B Smartly context on the client-side directly with it.
 
+Context data can contain strings such as `</script>`, which would end the script element if inserted with plain `JSON.stringify()`. Use a script-safe JSON serializer that escapes `<` as `\u003c`, and insert its output as a JavaScript value.
+
 ```html
 <head>
     <script>
