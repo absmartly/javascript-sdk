@@ -9,8 +9,6 @@ import { hashUnit } from "../hashing";
 
 const jest = vi;
 
-// Adapts Jest-style `(done) => {}` tests: resolves when `done()` is called and
-// rejects when it's called with an error or the test body throws synchronously.
 function withDone(fn: (done: (err?: unknown) => void) => void) {
 	return () =>
 		new Promise<void>((resolve, reject) => {
@@ -3908,7 +3906,6 @@ describe("Context (rules and holdouts)", () => {
 					["exp_holdout_multi_error", "holdout_multi_error_a", "holdout_multi_error_b"].sort()
 				);
 
-				// All three exposures were queued despite all three throwing while reporting.
 				expect(context.pending()).toEqual(3);
 			});
 
@@ -4170,9 +4167,7 @@ describe("Context (rules and holdouts)", () => {
 				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(["holdout_var", "holdout_var_second"].sort());
 			});
 
-			// peekVariableValue() shares the exact same suppressedFallback capture as variableValue()
-			// (both fixed together in the same commit), but never triggers exposures, so it needs its
-			// own ordering regression test rather than relying on variableValue()'s coverage.
+			// peekVariableValue() never triggers exposures, so its suppressedFallback ordering is tested separately.
 			it("peekVariableValue(): an earlier suppressed candidate without the key blocks a later suppressed candidate that has it", () => {
 				const firstSuppressed = holdoutVarExperiment({
 					id: 1,
@@ -4242,7 +4237,6 @@ describe("Context (rules and holdouts)", () => {
 
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_THROW");
 
-				// The winning candidate's own exposure still fired despite the earlier throw.
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
 				expect(exposureCalls.map((c) => c[2].name)).toContain("exp_holdout_var_winner_after_throw_2");
 			});
@@ -4314,9 +4308,7 @@ describe("Context (rules and holdouts)", () => {
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
 			});
 
-			// _peekVariable carries the identical override-exclusion guard as _variableValue (same
-			// fix, same commit), but never triggers exposures, so it needs its own regression test
-			// rather than relying on variableValue()'s coverage of the guard.
+			// _peekVariable never triggers exposures, so its override-exclusion guard is tested separately.
 			it("peekVariableValue(): excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
@@ -4779,7 +4771,6 @@ describe("Context (rules and holdouts)", () => {
 				expect(context.pending()).toEqual(1);
 				expect(consoleErrorSpy).toHaveBeenCalled();
 
-				// Retry must still work — the flush must not be left permanently stuck.
 				publisher.publish.mockReturnValue(Promise.resolve());
 
 				context.finalize().then(() => {
