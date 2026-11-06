@@ -539,6 +539,8 @@ const variant = context.treatment("exp_test"); // returns 0 (control) on failure
 
 When an audience cannot be evaluated to a boolean (a malformed or non-boolean filter), the cached assignment's `audienceMismatch` flag is now left unchanged instead of being reset to `false`. This keeps a previously valid cached assignment from being needlessly invalidated. Assignment results for well-formed audiences are unchanged.
 
+An audience filter that throws while being evaluated is treated as a mismatch, so with `audienceStrict` the unit gets variant 0.
+
 ## About A/B Smartly
 
 **A/B Smartly** is the leading provider of state-of-the-art, on-premises, full-stack experimentation platforms for engineering and product teams that want to confidently deploy features as fast as they can develop them. A/B Smartly's real-time analytics helps engineering and product teams ensure that new features will improve the customer experience without breaking or degrading performance and/or business metrics.

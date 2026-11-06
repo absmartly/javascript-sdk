@@ -2210,6 +2210,25 @@ describe("Context", () => {
 			done();
 		});
 
+		it("should treat an audience that throws as a mismatch so strict audiences fail closed", () => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			context.attribute("age", 25);
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluate").mockImplementation(() => {
+				throw new Error("audience boom");
+			});
+			context.attribute("age", 26);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context._exposures[0].audienceMismatch).toEqual(true);
+
+			const fresh = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			fresh._audienceMatcher.evaluate = evaluate;
+			fresh.attribute("age", 25);
+			expect(fresh.treatment("exp_test_ab")).toEqual(0);
+			expect(fresh._exposures[0].audienceMismatch).toEqual(true);
+		});
+
 		it("should throw when not ready", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);

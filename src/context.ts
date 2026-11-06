@@ -565,12 +565,13 @@ export default class Context {
 		return attrs;
 	}
 
+	// A filter that fails to evaluate is a mismatch, so a strict audience fails closed.
 	private _evaluateAudience(audience: string): boolean | null {
 		try {
 			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
 		} catch (error) {
 			this._logError(error as Error);
-			return null;
+			return false;
 		}
 	}
 
