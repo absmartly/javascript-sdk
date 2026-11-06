@@ -1,157 +1,42 @@
-import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
+import { hashUnit } from "./hashing";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
-import SDK, { type EventLogger, type EventName } from "./sdk";
-import { ContextPublisher, type PublishParams } from "./publisher";
-import { ContextDataProvider } from "./provider";
-import { type ClientRequestOptions } from "./client";
+import { arrayEqualsShallow, isObject, isPromise } from "./utils";
 import { SDK_VERSION } from "./version";
+import { ContextNotReadyError, ContextFinalizedError } from "./errors";
+import type {
+	Assignment,
+	Attribute,
+	ContextData,
+	Experiment,
+	ExperimentData,
+	Exposure,
+	GoalAchievement,
+	HoldoutData,
+	HoldoutExperiment,
+	Units,
+	PublishParams,
+	JSONValue,
+	CustomFieldValue,
+} from "./models";
+import type {
+	Client,
+	ClientRequestOptions,
+	ContextDataProvider,
+	ContextOptions,
+	ContextPublisher,
+	EventLogger,
+	EventName,
+	ContextParams,
+} from "./interfaces";
 
-type JSONPrimitive = string | number | boolean | null;
-type JSONObject = { [key: string]: JSONValue };
-type JSONArray = JSONValue[];
-type JSONValue = JSONPrimitive | JSONObject | JSONArray;
-
-type CustomFieldValueType = "text" | "string" | "number" | "json" | "boolean";
-
-type CustomFieldValue = {
-	name: string;
-	value: string;
-	type: CustomFieldValueType;
-};
-
-export type ExperimentData = {
-	id: number;
-	name: string;
-	unitType: string | null;
-	iteration: number;
-	fullOnVariant: number;
-	trafficSplit: number[];
-	trafficSeedHi: number;
-	trafficSeedLo: number;
-	audience: string;
-	assignmentRules?: string;
-	audienceStrict: boolean;
-	split: number[];
-	seedHi: number;
-	seedLo: number;
-	variants: { config: null | string; name?: string }[];
-	variables: Record<string, unknown>;
-	variant: number;
-	overridden: boolean;
-	assigned: boolean;
-	exposed: boolean;
-	eligible: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-	customFieldValues: CustomFieldValue[] | null;
-	holdoutIds?: number[];
-};
-
-type Assignment = {
-	id: number;
-	iteration: number;
-	fullOnVariant: number;
-	unitType: string | null;
-	variant: number;
-	overridden: boolean;
-	assigned: boolean;
-	exposed: boolean;
-	eligible: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-	ruleOverride: boolean;
-	ruleVariant?: number | null;
-	isRuleMissingUnit?: boolean;
-	ruleKey?: string;
-	trafficSplit?: number[];
-	variables?: Record<string, unknown>;
-	attrsSeq?: number;
-	suppressed?: boolean;
-	holdouts?: HoldoutExperiment[];
-	holdoutAssignments?: (Assignment | null)[];
-	// `split.length` at the time `variant` was resolved; a same-iteration refresh can change
-	// the live value without invalidating the cache.
-	holdoutArmCount?: number;
-};
-
-export type HoldoutData = {
-	id: number;
-	name: string;
-	unitType?: string | null;
-	iteration: number;
-	seedHi: number;
-	seedLo: number;
-	split: number[];
-	holdoutType?: string;
-};
-
-export type HoldoutExperiment = {
-	data: HoldoutData;
-};
-
-export type Experiment = {
-	data: ExperimentData;
-	variables: Record<string, unknown>[];
-	holdouts?: HoldoutExperiment[] | null;
-};
-
-export type Unit = {
-	type: string;
-	uid: string | null;
-};
-
-export type Exposure = {
-	id: number;
-	name: string;
-	exposedAt: number;
-	unit: string | null;
-	variant: number;
-	assigned: boolean;
-	eligible: boolean;
-	overridden: boolean;
-	fullOn: boolean;
-	custom: boolean;
-	audienceMismatch: boolean;
-	ruleOverride: boolean;
-};
-
-export type Attribute = {
-	name: string;
-	value: unknown;
-	setAt: number;
-};
-
-export type Units = {
-	[key: string]: string | number;
-};
-
-export type Goal = {
-	name: string;
-	properties: Record<string, unknown> | null;
-	achievedAt: number;
-};
-
-export type ContextParams = {
-	units: Record<string, string | number>;
-};
-
-export type ContextOptions = {
-	publisher?: ContextPublisher;
-	dataProvider?: ContextDataProvider;
-	eventLogger?: EventLogger;
-	refreshPeriod: number;
-	publishDelay: number;
-	includeSystemAttributes?: boolean;
-};
-
-export type ContextData = {
-	experiments?: ExperimentData[];
-	holdouts?: HoldoutData[];
-};
+interface SDKLike {
+	getClient(): Client;
+	getContextPublisher(): ContextPublisher;
+	getContextDataProvider(): ContextDataProvider;
+	getEventLogger(): EventLogger;
+}
 
 function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVariant: number): boolean {
 	if (holdoutVariant === 0) return true;
@@ -159,42 +44,47 @@ function isHeldOutBy(holdoutVariant: number, holdoutArmCount: number, fullOnVari
 	return false;
 }
 
-export default class Context {
+export class Context {
 	private readonly _assigners: Record<string, VariantAssigner>;
 	private readonly _attrs: Attribute[];
 	private readonly _audienceMatcher: AudienceMatcher;
 	private readonly _cassignments: Record<string, number>;
 	private readonly _dataProvider: ContextDataProvider;
-	private _environmentName: string | null;
+	private _environmentName: string | null = null;
 	private readonly _eventLogger: EventLogger;
 	private readonly _opts: ContextOptions;
 	private readonly _publisher: ContextPublisher;
-	private readonly _sdk: SDK;
+	private readonly _sdk: SDKLike;
 	private readonly _units: Units;
-	private _assignments: Record<string, Assignment>;
-	private _data: ContextData;
+	private _assignments: Record<string, Assignment> = {};
+	private _data!: ContextData;
 	private _exposures: Exposure[];
 	private _failed: boolean;
-	private _failedError: Error | null;
+	private _failedError: Error | null = null;
 	private _finalized: boolean;
-	private _finalizing: Promise<void> | null;
-	private _goals: Goal[];
-	private _index: Record<string, Experiment>;
-	private _indexVariables: Record<string, Experiment[]>;
-	private _holdoutsById: Record<number, HoldoutData>;
-	private _holdoutAssignments: Record<string, Assignment>;
+	private _finalizing: Promise<void> | null = null;
+	private _goals: GoalAchievement[];
+	private _index!: Record<string, Experiment>;
+	private _indexVariables!: Record<string, Experiment[]>;
+	private _holdoutsById: Record<number, HoldoutData> = {};
+	private _holdoutAssignments: Record<string, Assignment> = {};
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
-	private _attrsMapCache: Record<string, unknown> | null;
-	private _attrsMapCacheSeq: number;
+	private _attrsMapCache: Record<string, unknown> | null = null;
+	private _attrsMapCacheSeq: number = -1;
 	private _hashes?: Record<string, string | null>;
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
 	private _refreshInterval?: ReturnType<typeof setInterval>;
 	private _flushPromise?: Promise<Error | undefined>;
 
-	constructor(sdk: SDK, options: ContextOptions, params: ContextParams, promise: ContextData | Promise<ContextData>) {
+	constructor(
+		sdk: SDKLike,
+		options: ContextOptions,
+		params: ContextParams,
+		promise: ContextData | Promise<ContextData>
+	) {
 		this._sdk = sdk;
 		this._publisher = options.publisher || this._sdk.getContextPublisher();
 		this._dataProvider = options.dataProvider || this._sdk.getContextDataProvider();
@@ -202,7 +92,6 @@ export default class Context {
 		this._opts = options;
 		this._pending = 0;
 		this._failed = false;
-		this._failedError = null;
 		this._finalized = false;
 		this._attrs = [];
 		this._goals = [];
@@ -211,15 +100,21 @@ export default class Context {
 		this._cassignments = {};
 		this._units = {};
 		this._assigners = {};
-		this._holdoutAssignments = {};
 		this._audienceMatcher = new AudienceMatcher();
-		this._environmentName = null;
 		this._attrsSeq = 0;
-		this._attrsMapCache = null;
-		this._attrsMapCacheSeq = -1;
 
-		if (params.units) {
-			this.units(params.units);
+		try {
+			if (params.units) {
+				this.units(params.units);
+			}
+
+			if (params.attributes) {
+				this.attributes(params.attributes);
+			}
+		} catch (error) {
+			// The caller gets the validation error; don't leave an already-started fetch as an unhandled rejection.
+			if (isPromise(promise)) (promise as Promise<ContextData>).catch(() => {});
+			throw error;
 		}
 
 		if (isPromise(promise)) {
@@ -244,10 +139,8 @@ export default class Context {
 					this._logError(error);
 				});
 		} else {
-			promise = promise as ContextData;
-			this._init(promise);
-
-			this._logEvent("ready", promise);
+			this._init(promise as ContextData);
+			this._logEvent("ready", promise as ContextData);
 		}
 	}
 
@@ -271,12 +164,15 @@ export default class Context {
 		return this._failedError;
 	}
 
-	ready() {
+	ready(): Promise<true> {
 		if (this.isReady()) {
 			return Promise.resolve(true);
 		}
 
-		return this._promise?.then(() => true) ?? Promise.resolve(true);
+		return (this._promise as Promise<unknown>).then(
+			() => true as const,
+			() => true as const
+		);
 	}
 
 	pending() {
@@ -285,7 +181,6 @@ export default class Context {
 
 	data() {
 		this._checkReady();
-
 		return this._data;
 	}
 
@@ -299,6 +194,14 @@ export default class Context {
 
 	provider() {
 		return this._dataProvider;
+	}
+
+	getSDK() {
+		return this._sdk;
+	}
+
+	getOptions(): ContextOptions {
+		return { ...this._opts };
 	}
 
 	publish(requestOptions?: ClientRequestOptions) {
@@ -354,6 +257,10 @@ export default class Context {
 
 		this._units[unitType] = uid;
 
+		if (this._hashes) {
+			delete this._hashes[unitType];
+		}
+
 		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
 	}
 
@@ -362,7 +269,7 @@ export default class Context {
 	// since re-resolving would queue a second, conflicting exposure.
 	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
 		for (const experimentName in this._assignments) {
-			const assignment = this._assignments[experimentName];
+			const assignment = this._assignments[experimentName]!;
 			if (assignment.unitType !== unitType || assignment.exposed) continue;
 
 			const hasMissingHoldoutEntry = assignment.holdoutAssignments?.some(
@@ -387,12 +294,15 @@ export default class Context {
 
 	getAttribute(attrName: string) {
 		for (let i = this._attrs.length - 1; i >= 0; i--) {
-			if (this._attrs[i].name === attrName) return this._attrs[i].value;
+			if (this._attrs[i]!.name === attrName) return this._attrs[i]!.value;
 		}
 		return undefined;
 	}
 
 	attribute(attrName: string, value: unknown) {
+		if (typeof attrName !== "string" || attrName.trim().length === 0) {
+			throw new Error("Attribute name must be a non-empty string");
+		}
 		this._checkNotFinalized();
 
 		this._attrs.push({ name: attrName, value: value, setAt: Date.now() });
@@ -401,8 +311,8 @@ export default class Context {
 
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
-		for (const attr of this._attrs) {
-			attributes[attr.name] = attr.value;
+		for (const a of this._attrs) {
+			attributes[a.name] = a.value;
 		}
 		return attributes;
 	}
@@ -414,20 +324,26 @@ export default class Context {
 	}
 
 	peek(experimentName: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
 		this._checkReady(true);
-
 		return this._peek(experimentName).variant;
 	}
 
 	treatment(experimentName: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
 		this._checkReady(true);
-
 		return this._treatment(experimentName).variant;
 	}
 
 	track(goalName: string, properties?: Record<string, unknown>) {
+		if (typeof goalName !== "string" || goalName.trim().length === 0) {
+			throw new Error("Goal name must be a non-empty string");
+		}
 		this._checkNotFinalized();
-
 		return this._track(goalName, properties);
 	}
 
@@ -437,19 +353,22 @@ export default class Context {
 
 	experiments() {
 		this._checkReady();
-
 		return this._data.experiments?.map((x) => x.name);
 	}
 
-	variableValue(key: string, defaultValue: string): string {
+	variableValue<T>(key: string, defaultValue: T): T {
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Variable key must be a non-empty string");
+		}
 		this._checkReady(true);
-
 		return this._variableValue(key, defaultValue);
 	}
 
-	peekVariableValue(key: string, defaultValue: string): string {
+	peekVariableValue<T>(key: string, defaultValue: T): T {
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Variable key must be a non-empty string");
+		}
 		this._checkReady(true);
-
 		return this._peekVariable(key, defaultValue);
 	}
 
@@ -469,10 +388,13 @@ export default class Context {
 	}
 
 	override(experimentName: string, variant: number) {
-		// Deliberately allowed after finalize() — not guarded by
-		// _checkNotFinalized(), unlike track()/treatment()/etc. This is the
-		// canonical cross-SDK behavior for this SDK: see cross-sdk-tests
-		// scenario "190 - Post-Finalize - override() Allowed (Verified Finalized)".
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
+			throw new Error("Variant must be a non-negative integer");
+		}
+		this._checkNotFinalized();
 		this._overrides = Object.assign(this._overrides, { [experimentName]: variant });
 	}
 
@@ -483,8 +405,13 @@ export default class Context {
 	}
 
 	customAssignment(experimentName: string, variant: number) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof variant !== "number" || variant < 0 || !Number.isInteger(variant)) {
+			throw new Error("Variant must be a non-negative integer");
+		}
 		this._checkNotFinalized();
-
 		this._cassignments[experimentName] = variant;
 	}
 
@@ -494,45 +421,44 @@ export default class Context {
 		}
 	}
 
-	getSDK(): SDK {
-		return this._sdk;
+	customFieldKeys() {
+		this._checkReady(true);
+		return this._customFieldKeys();
 	}
 
-	getOptions(): ContextOptions {
-		return { ...this._opts };
+	customFieldValue(experimentName: string, key: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Key must be a non-empty string");
+		}
+		this._checkReady(true);
+		return this._customFieldValue(experimentName, key);
+	}
+
+	customFieldValueType(experimentName: string, key: string) {
+		if (typeof experimentName !== "string" || experimentName.trim().length === 0) {
+			throw new Error("Experiment name must be a non-empty string");
+		}
+		if (typeof key !== "string" || key.trim().length === 0) {
+			throw new Error("Key must be a non-empty string");
+		}
+		this._checkReady(true);
+		return this._customFieldValueType(experimentName, key);
 	}
 
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
-			throw new Error("ABsmartly Context is finalized.");
+			throw new ContextFinalizedError();
 		} else if (this.isFinalizing()) {
-			throw new Error("ABsmartly Context is finalizing.");
+			throw new ContextFinalizedError(true);
 		}
-	}
-
-	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
-		const variantCount = experiment.variants.length;
-		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
-		if (action == null) return null;
-
-		if ("variant" in action) {
-			const isInBounds = action.variant >= 0 && action.variant < variantCount;
-			return isInBounds ? { variant: action.variant, isMissingUnit: false } : null;
-		}
-		if (action.split.length !== variantCount) return null;
-
-		const unitType = experiment.unitType;
-		const unit = unitType != null && !isUnitPinnedMissing ? this._unitHash(unitType) : null;
-		if (unitType == null || unit === null) return { variant: experiment.fullOnVariant, isMissingUnit: true };
-
-		const assigner =
-			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
-		return { variant: assigner.assign(action.split, experiment.seedHi, experiment.seedLo), isMissingUnit: false };
 	}
 
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
-			throw new Error("ABsmartly Context is not yet ready.");
+			throw new ContextNotReadyError();
 		}
 
 		if (expectNotFinalized) {
@@ -574,7 +500,29 @@ export default class Context {
 		}
 	}
 
-	private _assign(experimentName: string) {
+	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+		const variantCount = experiment.variants.length;
+		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
+		if (action == null) return null;
+
+		if ("variant" in action) {
+			const isInBounds = action.variant >= 0 && action.variant < variantCount;
+			return isInBounds ? { variant: action.variant, isMissingUnit: false } : null;
+		}
+		if (action.split.length !== variantCount) return null;
+
+		const unitType = experiment.unitType;
+		const unit = unitType != null && !isUnitPinnedMissing ? this._unitHash(unitType) : null;
+		if (unitType == null || unit === null) return { variant: experiment.fullOnVariant, isMissingUnit: true };
+
+		const assigner =
+			unitType in this._assigners
+				? this._assigners[unitType]!
+				: (this._assigners[unitType] = new VariantAssigner(unit));
+		return { variant: assigner.assign(action.split, experiment.seedHi, experiment.seedLo), isMissingUnit: false };
+	}
+
+	private _assign(experimentName: string): Assignment {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
 				experiment.id === assignment.id &&
@@ -598,7 +546,7 @@ export default class Context {
 				}
 			}
 
-			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
+			if (this._attrsSeq > assignment.attrsSeq || ruleKeyChanged) {
 				const attrs = this._getAttributesMap();
 
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
@@ -617,12 +565,7 @@ export default class Context {
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
 					const result = this._evaluateAudience(experiment.audience);
-					// An indeterminate (null) audience result leaves the cached
-					// `audienceMismatch` flag as-is rather than forcing it to `false`,
-					// so a cached mismatch=true assignment isn't wrongly treated as
-					// stale — this only affects the cache-validity check below, not
-					// the flag's value.
-					const newAudienceMismatch = result !== null ? !result : assignment.audienceMismatch;
+					const newAudienceMismatch = typeof result === "boolean" ? !result : true;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
@@ -645,10 +588,10 @@ export default class Context {
 			}
 
 			for (let i = 0; i < freshHoldouts.length; i++) {
-				if (freshHoldouts[i].data.id !== pinnedHoldouts[i].data.id) {
+				if (freshHoldouts[i]!.data.id !== pinnedHoldouts[i]!.data.id) {
 					return false;
 				}
-				if (freshHoldouts[i].data.iteration !== pinnedHoldouts[i].data.iteration) {
+				if (freshHoldouts[i]!.data.iteration !== pinnedHoldouts[i]!.data.iteration) {
 					return false;
 				}
 			}
@@ -658,29 +601,27 @@ export default class Context {
 
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
-		const experiment = experimentName in this._index ? this._index[experimentName] : null;
+		const experiment = experimentName in this._index ? this._index[experimentName]! : null;
 
 		if (experimentName in this._assignments) {
-			const assignment = this._assignments[experimentName];
+			const assignment = this._assignments[experimentName]!;
 			if (hasOverride) {
 				if (
 					assignment.overridden &&
-					assignment.variant === this._overrides[experimentName] &&
+					assignment.variant === this._overrides[experimentName]! &&
 					(experiment == null || holdoutSetMatches(experiment, assignment))
 				) {
-					// override up-to-date
 					return assignment;
 				}
 			} else if (experiment == null) {
 				if (!assignment.assigned) {
-					// previously not-running experiment
 					return assignment;
 				}
 			} else if (
 				assignment.suppressed ||
 				assignment.ruleOverride ||
 				!hasCustom ||
-				this._cassignments[experimentName] === assignment.variant
+				this._cassignments[experimentName]! === assignment.variant
 			) {
 				// Suppressed assignments are forced to variant 0 and a matching rule wins over a custom
 				// assignment, so a custom mismatch is not staleness.
@@ -689,7 +630,6 @@ export default class Context {
 					audienceMatches(experiment.data, assignment) &&
 					holdoutSetMatches(experiment, assignment)
 				) {
-					// assignment up-to-date
 					return assignment;
 				}
 			}
@@ -709,6 +649,9 @@ export default class Context {
 			custom: false,
 			audienceMismatch: false,
 			ruleOverride: false,
+			trafficSplit: null,
+			variables: null,
+			attrsSeq: 0,
 		};
 
 		this._assignments[experimentName] = assignment;
@@ -739,7 +682,7 @@ export default class Context {
 			}
 
 			assignment.overridden = true;
-			assignment.variant = this._overrides[experimentName];
+			assignment.variant = this._overrides[experimentName]!;
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
@@ -772,10 +715,7 @@ export default class Context {
 				} else {
 					if (experiment.data.audience && experiment.data.audience.length > 0) {
 						const result = this._evaluateAudience(experiment.data.audience);
-
-						if (typeof result === "boolean") {
-							assignment.audienceMismatch = !result;
-						}
+						assignment.audienceMismatch = typeof result === "boolean" ? !result : true;
 					}
 
 					if (experiment.data.audienceStrict && assignment.audienceMismatch) {
@@ -787,7 +727,7 @@ export default class Context {
 								if (unit !== null) {
 									const assigner =
 										unitType in this._assigners
-											? this._assigners[unitType]
+											? this._assigners[unitType]!
 											: (this._assigners[unitType] = new VariantAssigner(unit));
 									const eligible =
 										assigner.assign(
@@ -801,7 +741,7 @@ export default class Context {
 
 									if (eligible) {
 										if (hasCustom) {
-											assignment.variant = this._cassignments[experimentName];
+											assignment.variant = this._cassignments[experimentName]!;
 											assignment.custom = true;
 										} else {
 											assignment.variant = assigner.assign(
@@ -824,7 +764,6 @@ export default class Context {
 					}
 				}
 
-				// store these so we can detect changes to running experiment
 				assignment.unitType = unitType;
 				assignment.id = experiment.data.id;
 				assignment.iteration = experiment.data.iteration;
@@ -835,7 +774,7 @@ export default class Context {
 		}
 
 		if (experiment != null && assignment.variant < experiment.data.variants.length) {
-			assignment.variables = experiment.variables[assignment.variant];
+			assignment.variables = experiment.variables[assignment.variant] ?? null;
 		}
 
 		return assignment;
@@ -850,7 +789,6 @@ export default class Context {
 
 		if (!assignment.exposed) {
 			assignment.exposed = true;
-
 			this._triggerExposures(experimentName, assignment);
 		}
 
@@ -878,7 +816,7 @@ export default class Context {
 			if (!holdoutAssignment.exposed) {
 				holdoutAssignment.exposed = true;
 
-				this._queueExposure(holdouts[i].data.name, holdoutAssignment);
+				this._queueExposure(holdouts[i]!.data.name, holdoutAssignment);
 			}
 		});
 	}
@@ -898,9 +836,8 @@ export default class Context {
 			audienceMismatch: assignment.audienceMismatch,
 			ruleOverride: assignment.ruleOverride,
 		};
-		// The exposure is appended and counted BEFORE the (user-supplied) eventLogger runs: a
-		// throwing logger must not discard the exposure itself, only fail to report it. _setTimeout
-		// is scheduled in a finally so a throwing logger still flushes what's already queued.
+		// The exposure is appended and counted BEFORE the (user-supplied) eventLogger runs, and
+		// _setTimeout runs in a finally, so a throwing logger can never discard a queued exposure.
 		this._exposures.push(exposureEvent);
 		this._pending++;
 
@@ -927,18 +864,14 @@ export default class Context {
 		return Array.from(keys);
 	}
 
-	customFieldKeys() {
-		this._checkReady(true);
-
-		return this._customFieldKeys();
-	}
-
 	private _customFieldValue(experimentName: string, key: string): JSONValue {
 		const experiment = this._index[experimentName];
 
 		if (experiment != null) {
-			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			const field = experiment.data.customFieldValues?.find((x: CustomFieldValue) => x.name === key);
 			if (field != null) {
+				if (field.value === null) return null;
+
 				switch (field.type) {
 					case "text":
 					case "string":
@@ -976,17 +909,11 @@ export default class Context {
 		return null;
 	}
 
-	customFieldValue(experimentName: string, key: string) {
-		this._checkReady(true);
-
-		return this._customFieldValue(experimentName, key);
-	}
-
 	private _customFieldValueType(experimentName: string, key: string) {
 		const experiment = this._index[experimentName];
 
 		if (experiment != null) {
-			const field = experiment.data.customFieldValues?.find((x) => x.name === key);
+			const field = experiment.data.customFieldValues?.find((x: CustomFieldValue) => x.name === key);
 			if (field != null) {
 				return field.type;
 			}
@@ -995,29 +922,22 @@ export default class Context {
 		return null;
 	}
 
-	customFieldValueType(experimentName: string, key: string) {
-		this._checkReady(true);
-
-		return this._customFieldValueType(experimentName, key);
-	}
-
 	// A held-out unit reads the control value, not the caller's default, when nothing else wins.
 	// The first suppressed candidate is captured even if it lacks the key, so a later one can't win.
-	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
+	private _resolveVariableValue<T>(key: string, defaultValue: T, shouldQueueExposure: boolean): T {
 		let suppressedFallback: Record<string, unknown> | undefined;
 
 		for (const experiment of this._indexVariables[key] ?? []) {
 			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
+			if (assignment.variables != null) {
 				if (shouldQueueExposure && !assignment.exposed) {
 					assignment.exposed = true;
-
 					this._triggerExposures(experimentName, assignment);
 				}
 
 				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					return assignment.variables[key] as string;
+					return assignment.variables[key] as T;
 				}
 
 				if (
@@ -1032,17 +952,17 @@ export default class Context {
 		}
 
 		if (suppressedFallback !== undefined && key in suppressedFallback) {
-			return suppressedFallback[key] as string;
+			return suppressedFallback[key] as T;
 		}
 
 		return defaultValue;
 	}
 
-	private _variableValue(key: string, defaultValue: string): string {
+	private _variableValue<T>(key: string, defaultValue: T): T {
 		return this._resolveVariableValue(key, defaultValue, true);
 	}
 
-	private _peekVariable(key: string, defaultValue: string): string {
+	private _peekVariable<T>(key: string, defaultValue: T): T {
 		return this._resolveVariableValue(key, defaultValue, false);
 	}
 
@@ -1060,7 +980,7 @@ export default class Context {
 
 	private _track(goalName: string, properties?: Record<string, unknown>) {
 		const props = this._validateGoal(goalName, properties);
-		const goalEvent: Goal = { name: goalName, properties: props, achievedAt: Date.now() };
+		const goalEvent: GoalAchievement = { name: goalName, properties: props, achievedAt: Date.now() };
 		this._logEvent("goal", goalEvent);
 
 		this._goals.push(goalEvent);
@@ -1284,7 +1204,7 @@ export default class Context {
 			return undefined;
 		};
 
-		let publishResult: Promise<void>;
+		let publishResult: Promise<unknown>;
 		try {
 			// `Promise.resolve(...)` normalizes the extension point: a custom
 			// publisher is only required to conform to `ContextPublisher`'s type at
@@ -1304,8 +1224,7 @@ export default class Context {
 		// exceptions internally), so `.then(onSuccess, onFailure)` never rejects.
 		// The `_flushPromise` cleanup below still uses the two-argument `.then()`
 		// form defensively, so a flush can never get stuck referencing a settled
-		// promise. `.finally()` is avoided (not part of the ES6 Promise contract
-		// the documented IE 10 target relies on a polyfill for).
+		// promise.
 		this._flushPromise = publishResult.then(onSuccess, onFailure).then(
 			(result) => {
 				this._flushPromise = undefined;
@@ -1347,18 +1266,13 @@ export default class Context {
 		}
 	}
 
-	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
+	private _logEvent(eventName: EventName, data?: unknown) {
 		if (this._eventLogger) {
-			// A throwing custom eventLogger must never propagate out of this method:
-			// every call site treats logging as a side effect, and letting an
-			// observer exception escape here has repeatedly corrupted unrelated
-			// control flow (e.g. turning a successful init into a "failed" one when
-			// this call sits inside a .then() immediately followed by .catch(),
-			// or stranding a promise whose settlement was supposed to happen right
-			// after this call).
 			try {
-				this._eventLogger(this, eventName, data);
+				this._eventLogger(this, eventName, data as any);
 			} catch (observerError) {
+				// A throwing custom eventLogger must never propagate: every call site treats logging
+				// as a side effect, and an escaping observer exception corrupts unrelated control flow.
 				console.error(observerError);
 			}
 		}
@@ -1374,7 +1288,7 @@ export default class Context {
 		}
 	}
 
-	private _unitHash(unitType: string) {
+	private _unitHash(unitType: string): string | null {
 		if (!this._hashes) {
 			this._hashes = {};
 		}
@@ -1385,12 +1299,12 @@ export default class Context {
 				return null;
 			}
 
-			const hash = hashUnit(this._units[unitType]);
+			const hash = hashUnit(this._units[unitType]!);
 			this._hashes[unitType] = hash;
 			return hash;
 		}
 
-		return this._hashes[unitType];
+		return this._hashes[unitType]!;
 	}
 
 	private _getHoldoutAssignment(holdout: HoldoutExperiment, unitType: string): Assignment | null {
@@ -1409,7 +1323,9 @@ export default class Context {
 		}
 
 		const assigner =
-			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+			unitType in this._assigners
+				? this._assigners[unitType]!
+				: (this._assigners[unitType] = new VariantAssigner(unit));
 
 		const assignment: Assignment = {
 			id: liveHoldoutData.id,
@@ -1425,6 +1341,9 @@ export default class Context {
 			custom: false,
 			audienceMismatch: false,
 			ruleOverride: false,
+			trafficSplit: null,
+			variables: null,
+			attrsSeq: 0,
 			holdoutArmCount: liveHoldoutData.split.length,
 		};
 
@@ -1441,48 +1360,42 @@ export default class Context {
 		const indexVariables: Record<string, Experiment[]> = {};
 
 		const holdoutsById: Record<number, HoldoutData> = {};
-
-		(data.holdouts || []).forEach((holdout) => {
+		for (const holdout of data.holdouts || []) {
 			if (holdout.split && holdout.split.length > 0) {
 				holdoutsById[holdout.id] = holdout;
 			}
-		});
-
+		}
 		this._holdoutsById = holdoutsById;
 
 		const holdoutExperiments: Record<number, HoldoutExperiment> = {};
-
 		const resolveHoldoutExperiment = (holdoutId: number): HoldoutExperiment | undefined => {
 			if (holdoutExperiments[holdoutId]) {
 				return holdoutExperiments[holdoutId];
 			}
 
-			const holdoutData = this._holdoutsById[holdoutId];
+			const holdoutData = holdoutsById[holdoutId];
 			if (!holdoutData) {
 				return undefined;
 			}
 
-			const holdoutEntry: HoldoutExperiment = {
-				data: holdoutData,
-			};
-
+			const holdoutEntry: HoldoutExperiment = { data: holdoutData };
 			holdoutExperiments[holdoutId] = holdoutEntry;
 			return holdoutEntry;
 		};
 
-		(data.experiments || []).forEach((experiment) => {
+		for (const experiment of data.experiments || []) {
 			const variables: Record<string, unknown>[] = [];
 
 			let holdouts: HoldoutExperiment[] | null = null;
 			if (experiment.holdoutIds && experiment.holdoutIds.length > 0) {
 				const resolved: HoldoutExperiment[] = [];
 
-				experiment.holdoutIds.forEach((holdoutId) => {
+				for (const holdoutId of experiment.holdoutIds) {
 					const holdoutExperiment = resolveHoldoutExperiment(holdoutId);
 					if (holdoutExperiment) {
 						insertUniqueSorted(resolved, holdoutExperiment, (a, b) => a.data.id < b.data.id);
 					}
-				});
+				}
 
 				holdouts = resolved.length > 0 ? resolved : null;
 			}
@@ -1496,15 +1409,15 @@ export default class Context {
 			index[experiment.name] = entry;
 
 			for (let i = 0; i < experiment.variants.length; i++) {
-				const variant = experiment.variants[i];
+				const variant = experiment.variants[i]!;
 				const config = variant.config;
-				let parsed = {};
+				let parsed: Record<string, unknown> = {};
 
 				if (config != null && config.length > 0) {
 					try {
 						const value = JSON.parse(config);
 						if (isObject(value)) {
-							parsed = value;
+							parsed = value as Record<string, unknown>;
 						}
 					} catch (error) {
 						this._logError(
@@ -1528,14 +1441,13 @@ export default class Context {
 
 				variables[i] = parsed;
 			}
-		});
+		}
 
 		this._index = index;
 		this._indexVariables = indexVariables;
 		this._assignments = assignments;
 
 		if (!this._failed && this._opts.refreshPeriod > 0 && !this._refreshInterval) {
-			// _refresh already logs refresh errors via the callback.
 			this._refreshInterval = setInterval(() => this._refresh(), this._opts.refreshPeriod);
 		}
 	}

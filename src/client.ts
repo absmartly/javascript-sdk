@@ -1,77 +1,40 @@
-import fetch from "./fetch"; // eslint-disable-line no-shadow
-// eslint-disable-next-line no-shadow
-import { AbortController } from "./abort";
-// eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
-
-import { type AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
-import { type ContextOptions, type ContextParams } from "./context";
-import { type PublishParams } from "./publisher";
+import type { ApplicationObject, ContextData, PublishParams } from "./models";
+import type { ContextParams } from "./interfaces";
 import { toWellFormedString } from "./utils";
-
-export type FetchResponse = {
-	status: number;
-	ok: boolean;
-	text: () => Promise<string>;
-	statusText: string;
-	json: () => Promise<string>;
-};
-
-export type ClientRequestOptions = {
-	query?: Record<string, string | number | boolean>;
-	path: string;
-	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
-	body?: Record<string, unknown>;
-	/** @deprecated The API key is sent by default; set to false to suppress auth headers. */
-	auth?: boolean;
-	signal?: AbortSignal | ABsmartlyAbortSignal;
-	timeout?: number;
-};
-
-export type ApplicationObject = { name: string; version: number | string };
+import type { Client, ClientOptions, ClientRequestOptions } from "./interfaces";
 
 const DEFAULT_RETRIES = 5;
 const DEFAULT_TIMEOUT_MS = 3000;
 const RETRY_DELAY_MS = 50;
 
-export type ClientOptions = {
-	agent?: string;
-	apiKey: string;
-	application: string | ApplicationObject;
-	endpoint: string;
-	environment: string;
-	retries?: number;
-	timeout?: number;
-	keepalive?: boolean;
-};
-
 type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
 	application: ApplicationObject;
 };
 
-export default class Client {
+export class DefaultClient implements Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
+	private readonly _fetchImpl: typeof fetch;
+	private readonly _AbortControllerImpl: typeof AbortController;
 
 	constructor(opts: ClientOptions) {
-		const merged: Record<string, unknown> = Object.assign(
-			{
-				agent: "javascript-client",
-				retries: DEFAULT_RETRIES,
-				timeout: DEFAULT_TIMEOUT_MS,
-				keepalive: true,
-			},
-			opts
-		);
+		const merged: Record<string, unknown> = {
+			agent: "javascript-client",
+			retries: DEFAULT_RETRIES,
+			timeout: DEFAULT_TIMEOUT_MS,
+			keepalive: true,
+		};
+		for (const [key, value] of Object.entries(opts)) {
+			if (value !== undefined) merged[key] = value;
+		}
 
 		for (const key of ["agent", "application", "apiKey", "endpoint", "environment"]) {
 			if (key in merged && merged[key] !== undefined) {
 				const value = merged[key];
 				if (typeof value !== "string" || (value as string).length === 0) {
 					if (key === "application") {
-						if (value !== null && typeof value === "object" && "name" in (value as object)) {
-							continue;
-						}
+						if (value !== null && typeof value === "object" && "name" in (value as object)) continue;
 					}
 					throw new Error(`Invalid '${key}' in options argument`);
 				}
@@ -81,21 +44,16 @@ export default class Client {
 		}
 
 		if (typeof merged.application === "string") {
-			merged.application = {
-				name: merged.application,
-				version: 0,
-			};
+			merged.application = { name: merged.application, version: 0 };
 		}
 
 		this._opts = merged as unknown as NormalizedClientOptions;
 		this._delay = RETRY_DELAY_MS;
+		this._fetchImpl = (opts.fetchImpl ?? globalThis.fetch).bind(globalThis) as typeof fetch;
+		this._AbortControllerImpl = opts.AbortControllerImpl ?? AbortController;
 	}
 
-	getEnvironment(): string {
-		return this._opts.environment;
-	}
-
-	getContext(options?: Partial<ClientRequestOptions>) {
+	getContext(options?: Partial<ClientRequestOptions>): Promise<ContextData> {
 		return this.get({
 			...options,
 			path: "/context",
@@ -103,23 +61,15 @@ export default class Client {
 				application: this._opts.application.name,
 				environment: this._opts.environment,
 			},
-		});
+		}) as Promise<ContextData>;
 	}
 
-	createContext(params: ContextParams, options: ContextOptions) {
-		const body = {
-			units: params.units,
-		};
-
-		return this.post({
-			...options,
-			path: "/context",
-			body,
-		});
+	createContext(params: ContextParams): Promise<unknown> {
+		return this.post({ path: "/context", body: { units: params.units } });
 	}
 
-	publish(params: PublishParams, options?: ClientRequestOptions) {
-		const body: PublishParams = {
+	publish(params: PublishParams, options?: ClientRequestOptions): Promise<unknown> {
+		const body: Record<string, unknown> = {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
@@ -129,30 +79,21 @@ export default class Client {
 		if (Array.isArray(params.goals) && params.goals.length > 0) {
 			body.goals = params.goals;
 		}
-
 		if (Array.isArray(params.exposures) && params.exposures.length > 0) {
 			body.exposures = params.exposures;
 		}
-
 		if (Array.isArray(params.attributes) && params.attributes.length > 0) {
 			body.attributes = params.attributes;
 		}
 
-		return this.put({
-			...options,
-			path: "/context",
-			body,
-		});
+		return this.put({ ...options, path: "/context", body });
 	}
 
-	request(options: ClientRequestOptions) {
+	request(options: ClientRequestOptions): Promise<unknown> {
 		let url = `${this._opts.endpoint}${options.path}`;
 		if (options.query) {
-			// Built manually (not with URLSearchParams) because the declared IE 10
-			// browser target excludes the `web.*` core-js polyfills that would
-			// otherwise provide it (see babel.config.js). Values are normalized to
-			// well-formed UTF-16 first: unlike `URLSearchParams`, `encodeURIComponent`
-			// throws `URIError: URI malformed` on an unpaired surrogate.
+			// Values are normalized to well-formed UTF-16 first: unlike `URLSearchParams`,
+			// `encodeURIComponent` throws `URIError: URI malformed` on an unpaired surrogate.
 			const queryString = Object.entries(options.query)
 				.map(
 					([key, value]) =>
@@ -164,10 +105,10 @@ export default class Client {
 			}
 		}
 
-		const controller = new AbortController();
+		const controller = new this._AbortControllerImpl();
 
-		const tryOnce = () => {
-			const opts: Record<string, unknown> = {
+		const tryOnce = (): Promise<unknown> => {
+			const opts: RequestInit = {
 				method: options.method,
 				body: options.body !== undefined ? JSON.stringify(options.body, null, 0) : undefined,
 				signal: controller.signal,
@@ -187,11 +128,11 @@ export default class Client {
 					"X-Agent": this._opts.agent,
 					"X-Environment": this._opts.environment,
 					"X-Application": this._opts.application.name,
-					"X-Application-Version": this._opts.application.version,
+					"X-Application-Version": String(this._opts.application.version),
 				};
 			}
 
-			return fetch(url, opts).then((response: FetchResponse) => {
+			return this._fetchImpl(url, opts).then((response: Response) => {
 				if (!response.ok) {
 					const bail = response.status >= 400 && response.status < 500;
 					return response.text().then((text: string) => {
@@ -199,22 +140,15 @@ export default class Client {
 							text !== null && text.length > 0 ? text : response.statusText
 						);
 						error._bail = bail;
-
 						return Promise.reject(error);
 					});
 				}
-
 				return response.json();
 			});
 		};
 
 		type WaitFn = ((ms: number) => Promise<void>) & { reject?: (reason: AbortError) => void };
-		type TryWithFn = ((
-			retries: number,
-			timeout: number,
-			tries?: number,
-			waited?: number
-		) => ReturnType<typeof tryOnce>) & {
+		type TryWithFn = ((retries: number, timeout: number, tries?: number, waited?: number) => Promise<unknown>) & {
 			timedout?: boolean;
 		};
 
@@ -235,28 +169,19 @@ export default class Client {
 			delete tryWith.timedout;
 
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
-				console.warn(reason);
-
 				// timeout <= 0 means "no deadline": the retry budget is governed by
 				// `retries` alone, so the elapsed-time check below must not apply.
 				const hasDeadline = timeout > 0;
 
-				if (reason._bail || retries <= 0) {
-					throw new Error(reason.message);
-				} else if (tries >= retries) {
-					throw new RetryError(tries, reason, url);
-				} else if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
-					if (tryWith.timedout) {
-						throw new TimeoutError(timeout);
-					}
-
+				if (reason._bail || retries <= 0) throw new Error(reason.message);
+				if (tries >= retries) throw new RetryError(tries, reason, url);
+				if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
+					if (tryWith.timedout) throw new TimeoutError(timeout);
 					throw reason;
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (hasDeadline && waited + delay > timeout) {
-					delay = timeout - waited;
-				}
+				if (hasDeadline && waited + delay > timeout) delay = timeout - waited;
 
 				return wait(delay).then(() => tryWith(retries, timeout, tries + 1, waited + delay));
 			});
@@ -291,7 +216,7 @@ export default class Client {
 		};
 
 		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout)
-			.then((value: string) => {
+			.then((value) => {
 				finalCleanUp();
 				return value;
 			})
@@ -301,18 +226,12 @@ export default class Client {
 			});
 	}
 
-	post(options: ClientRequestOptions) {
-		return this.request({
-			...options,
-			method: "POST",
-		});
+	post(options: ClientRequestOptions): Promise<unknown> {
+		return this.request({ ...options, method: "POST" });
 	}
 
-	put(options: ClientRequestOptions) {
-		return this.request({
-			...options,
-			method: "PUT",
-		});
+	put(options: ClientRequestOptions): Promise<unknown> {
+		return this.request({ ...options, method: "PUT" });
 	}
 
 	getAgent(): string {
@@ -323,15 +242,16 @@ export default class Client {
 		return this._opts.application;
 	}
 
-	get(options: ClientRequestOptions) {
-		return this.request({
-			...options,
-			method: "GET",
-		});
+	getEnvironment(): string {
+		return this._opts.environment;
+	}
+
+	get(options: ClientRequestOptions): Promise<unknown> {
+		return this.request({ ...options, method: "GET" });
 	}
 
 	/** @deprecated Use get() instead. */
-	getUnauthed(options: ClientRequestOptions) {
+	getUnauthed(options: ClientRequestOptions): Promise<unknown> {
 		return this.get(options);
 	}
 }

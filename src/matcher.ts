@@ -5,7 +5,7 @@ export type RuleAction = { variant: number } | { split: number[] };
 
 const SPLIT_PERCENTAGES_SUM_TOLERANCE = 0.01;
 
-const parseSplitPercentages = (percentages: unknown) => {
+function parseSplitPercentages(percentages: unknown): number[] | null {
 	if (typeof percentages !== "string") return null;
 
 	const values = percentages.split("/").map((value) => parseFloat(value));
@@ -15,9 +15,9 @@ const parseSplitPercentages = (percentages: unknown) => {
 	if (parseFloat(Math.abs(100 - total).toFixed(2)) > SPLIT_PERCENTAGES_SUM_TOLERANCE) return null;
 
 	return values.map((value) => value / 100);
-};
+}
 
-const parseRuleAction = (rule: Record<string, unknown>): RuleAction | null => {
+function parseRuleAction(rule: Record<string, unknown>): RuleAction | null {
 	switch (rule.type) {
 		case "assign":
 			return Number.isInteger(rule.variant) ? { variant: rule.variant as number } : null;
@@ -28,14 +28,16 @@ const parseRuleAction = (rule: Record<string, unknown>): RuleAction | null => {
 		default:
 			return null;
 	}
-};
+}
 
 export class AudienceMatcher {
-	evaluate(audienceString: string, vars: Record<string, unknown>) {
+	private readonly _jsonExpr = new JsonExpr();
+
+	evaluate(audienceString: string, vars: Record<string, unknown>): boolean | null {
 		let audience;
 		try {
 			audience = JSON.parse(audienceString);
-		} catch (_error) {
+		} catch {
 			return null;
 		}
 
@@ -44,7 +46,6 @@ export class AudienceMatcher {
 				return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
 			}
 		}
-
 		return null;
 	}
 
@@ -99,6 +100,4 @@ export class AudienceMatcher {
 
 		return null;
 	}
-
-	_jsonExpr = new JsonExpr();
 }

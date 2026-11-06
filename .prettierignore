@@ -6,3 +6,5 @@ js
 lib
 types
 package-lock.json
+docs
+.claude
