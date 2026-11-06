@@ -2334,6 +2334,24 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(2);
 		});
 
+		it("should not keep a rule variant for an experiment removed on refresh", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			const removedResponse = clone(rulesContextResponse);
+			removedResponse.experiments = removedResponse.experiments.filter((x) => x.name !== "exp_test_abc");
+			provider.getContextData.mockReturnValue(Promise.resolve(removedResponse));
+
+			context.refresh().then(() => {
+				expect(context.peek("exp_test_abc")).toEqual(0);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+				expect(context.pending()).toEqual(2);
+				done();
+			});
+		});
+
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
