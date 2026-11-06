@@ -1093,24 +1093,31 @@ export default class Context {
 		}
 	}
 
-	private _buildAttributes(): Attribute[] {
+	// The collector only applies attributes with setAt <= an event's time and picks the latest setAt
+	// among duplicates, so system attributes are stamped with the earliest event in the batch and left
+	// out when the user set the same name.
+	private _buildAttributes(systemSetAt: number): Attribute[] {
 		const allAttributes: Attribute[] = [];
 
 		if (this._opts.includeSystemAttributes === true) {
 			const client = this._sdk.getClient();
 			const app = client.getApplication();
-			const now = Date.now();
-			allAttributes.push(
-				{ name: "sdk_name", value: client.getAgent(), setAt: now },
-				{ name: "sdk_version", value: SDK_VERSION, setAt: now },
-				{ name: "application", value: app.name, setAt: now },
-				{ name: "environment", value: client.getEnvironment() ?? null, setAt: now }
-			);
+			const userNames = new Set(this._attrs.map((x) => x.name));
+			const addSystemAttribute = (attrName: string, value: unknown) => {
+				if (!userNames.has(attrName)) {
+					allAttributes.push({ name: attrName, value, setAt: systemSetAt });
+				}
+			};
+
+			addSystemAttribute("sdk_name", client.getAgent());
+			addSystemAttribute("sdk_version", SDK_VERSION);
+			addSystemAttribute("application", app.name);
+			addSystemAttribute("environment", client.getEnvironment() ?? null);
 			if (
 				(typeof app.version === "string" && app.version.length > 0) ||
 				(typeof app.version === "number" && app.version > 0)
 			) {
-				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
+				addSystemAttribute("app_version", app.version);
 			}
 		}
 
@@ -1217,7 +1224,10 @@ export default class Context {
 				}));
 			}
 
-			const allAttributes = this._buildAttributes();
+			let systemSetAt = request.publishedAt;
+			for (const x of this._exposures) systemSetAt = Math.min(systemSetAt, x.exposedAt);
+			for (const x of this._goals) systemSetAt = Math.min(systemSetAt, x.achievedAt);
+			const allAttributes = this._buildAttributes(systemSetAt);
 			if (allAttributes.length > 0) {
 				request.attributes = allAttributes;
 			}

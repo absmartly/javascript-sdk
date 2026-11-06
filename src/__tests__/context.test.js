@@ -8917,6 +8917,60 @@ describe("Context", () => {
 			});
 		});
 
+		it("should stamp system attributes with the earliest event in the batch", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 10);
+			context.track("goal1");
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 20);
+			context.treatment("exp_test_ab");
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			context.publish().then(() => {
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.publishedAt).toEqual(timeOrigin + 100);
+
+				const systemNames = ["sdk_name", "sdk_version", "application", "environment"];
+				for (const attrName of systemNames) {
+					expect(request.attributes.find((a) => a.name === attrName).setAt).toEqual(timeOrigin + 10);
+				}
+
+				done();
+			});
+		});
+
+		it("should not send a system attribute the user has set", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("application", "mobile");
+			context.treatment("exp_test_ab");
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			context.publish().then(() => {
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.attributes.filter((a) => a.name === "application")).toEqual([
+					{ name: "application", value: "mobile", setAt: timeOrigin },
+				]);
+				expect(request.attributes.find((a) => a.name === "sdk_name")).toBeDefined();
+
+				done();
+			});
+		});
+
 		it("should only include user attributes when includeSystemAttributes is not set", (done) => {
 			const defaultOptions = {
 				publishDelay: -1,

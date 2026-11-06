@@ -202,7 +202,7 @@ When enabled, the following attributes are automatically prepended to the publis
 | `environment` | The environment from the SDK configuration |
 | `app_version` | The application version, only included if greater than `0` |
 
-These system attributes are prepended before any user-defined attributes.
+These system attributes are prepended before any user-defined attributes. Their `setAt` is the time of the earliest exposure or goal in the publish, so they apply to every event in it. A system attribute is not sent when you set an attribute with the same name yourself, so your value is kept.
 
 #### Selecting a treatment
 ```javascript
