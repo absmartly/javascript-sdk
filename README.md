@@ -402,7 +402,7 @@ const type = context.customFieldValueType("exp_test_experiment", "country");
 The SDK provides typed error classes for programmatic error handling. All of them extend `Error`, and the context lifecycle errors keep the messages of earlier SDK versions:
 
 - `ContextNotReadyError` (`"ABsmartly Context is not yet ready."`) is thrown when a method that needs experiment data is called before the context is ready.
-- `ContextFinalizedError` (`"ABsmartly Context is finalizing."` or `"ABsmartly Context is finalized."`) is thrown when a method that changes or reads context state is called after `finalize()` has been called.
+- `ContextFinalizedError` is thrown when a method that changes or reads context state is called after `finalize()` has been called. Its message distinguishes the two states: `"ABsmartly Context is finalizing."` while the finalizing publish is still in flight, and `"ABsmartly Context is finalized."` once it has completed. The distinction matters: if the finalizing publish fails, the context is **not** marked finalized and keeps its queued events for a retry, so a failed `finalize()` can be retried on the same context rather than abandoning those events.
 
 Both extend `ABSmartlyError`.
 
@@ -421,7 +421,12 @@ try {
     if (error instanceof ContextNotReadyError) {
         // Context not ready yet — await context.ready() first
     } else if (error instanceof ContextFinalizedError) {
-        // Context has been finalized — create a new one
+        // Context is finalizing or finalized. Prefer awaiting the pending
+        // finalize() and retrying it on the original context if it fails —
+        // the original still holds the queued events for a retry. Only once
+        // the original context has finalized successfully should you create a
+        // new context; abandoning a context whose finalize failed loses its
+        // retained events.
     }
 }
 ```
