@@ -1,22 +1,24 @@
-import { ValueOperator } from "./operators/value";
-import { AndCombinator } from "./operators/and";
-import { OrCombinator } from "./operators/or";
-import { VarOperator } from "./operators/var";
-import { NotOperator } from "./operators/not";
-import { NullOperator } from "./operators/null";
-import { MatchOperator } from "./operators/match";
-import { InOperator } from "./operators/in";
 import { Evaluator } from "./evaluator";
-import { EqualsOperator } from "./operators/eq";
-import { GreaterThanOperator } from "./operators/gt";
-import { GreaterThanOrEqualOperator } from "./operators/gte";
-import { LessThanOperator } from "./operators/lt";
-import { LessThanOrEqualOperator } from "./operators/lte";
-import { SemverEqualsOperator } from "./operators/semver_eq";
-import { SemverGreaterThanOperator } from "./operators/semver_gt";
-import { SemverGreaterThanOrEqualOperator } from "./operators/semver_gte";
-import { SemverLessThanOperator } from "./operators/semver_lt";
-import { SemverLessThanOrEqualOperator } from "./operators/semver_lte";
+import {
+	AndCombinator,
+	EqualsOperator,
+	GreaterThanOperator,
+	GreaterThanOrEqualOperator,
+	InOperator,
+	LessThanOperator,
+	LessThanOrEqualOperator,
+	MatchOperator,
+	NotOperator,
+	NullOperator,
+	OrCombinator,
+	SemverEqualsOperator,
+	SemverGreaterThanOperator,
+	SemverGreaterThanOrEqualOperator,
+	SemverLessThanOperator,
+	SemverLessThanOrEqualOperator,
+	ValueOperator,
+	VarOperator,
+} from "./operators";
 
 const operators = {
 	and: new AndCombinator(),
@@ -40,12 +42,12 @@ const operators = {
 };
 
 export class JsonExpr {
-	evaluateBooleanExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
+	evaluateBooleanExpr(expr: unknown, vars: Record<string, unknown>): boolean {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.booleanConvert(evaluator.evaluate(expr));
 	}
 
-	evaluateExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
+	evaluateExpr(expr: unknown, vars: Record<string, unknown>): unknown {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.evaluate(expr);
 	}

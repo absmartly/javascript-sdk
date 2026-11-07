@@ -1,36 +1,5 @@
-import { md5 } from "./md5";
-
-export const getApplicationName = (app: string | { name: string; version: number | string }): string =>
-	typeof app !== "string" ? app.name : app;
-
-export const getApplicationVersion = (app: string | { name: string; version: number | string }): number | string =>
-	typeof app !== "string" ? app.version : 0;
-
-function isBrowser() {
-	return typeof window !== "undefined" && typeof window.document !== "undefined";
-}
-
-function isReactNative() {
-	return typeof navigator !== "undefined" && navigator.product === "ReactNative";
-}
-
-export function isLongLivedApp() {
-	return isBrowser() || isReactNative();
-}
-
-export function isWorker() {
-	return typeof self === "object" && self.constructor && self.constructor.name === "DedicatedWorkerGlobalScope";
-}
-
-export function isNumeric(value: unknown): value is number {
-	return typeof value === "number";
-}
-
 export function isObject(value: unknown): value is Record<string, unknown> {
-	if (!(value instanceof Object)) {
-		return false;
-	}
-
+	if (!(value instanceof Object)) return false;
 	const proto = Object.getPrototypeOf(value);
 	return proto == null || proto === Object.prototype;
 }
@@ -39,21 +8,17 @@ export function isPromise(value: unknown): value is Promise<unknown> {
 	return value !== null && typeof value === "object" && typeof (value as Promise<unknown>).then === "function";
 }
 
-function arrayEqualsDeep(a: unknown[], b: unknown[], astack: unknown[] = [], bstack: unknown[] = []) {
-	let len = astack?.length ?? 0;
+function arrayEqualsDeep(a: unknown[], b: unknown[], astack: unknown[] = [], bstack: unknown[] = []): boolean {
+	let len = astack.length;
 	while (len--) {
 		if (astack[len] === a) return bstack[len] === b;
 	}
-
-	astack = astack ?? [];
-	bstack = bstack ?? [];
 
 	astack.push(a);
 	bstack.push(b);
 
 	len = a.length;
 	while (len--) {
-		// eslint-disable-next-line no-use-before-define
 		if (!isEqualsDeep(a[len], b[len], astack, bstack)) return false;
 	}
 
@@ -69,10 +34,10 @@ function objectEqualsDeep(
 	keys: string[],
 	astack?: unknown[],
 	bstack?: unknown[]
-) {
+): boolean {
 	let len = astack?.length ?? 0;
 	while (len--) {
-		if (astack && astack[len] === a) return bstack && bstack[len] === b;
+		if (astack && astack[len] === a) return bstack !== undefined && bstack[len] === b;
 	}
 
 	astack = astack ?? [];
@@ -83,11 +48,8 @@ function objectEqualsDeep(
 
 	len = keys.length;
 	while (len--) {
-		const key = keys[len];
-		// eslint-disable-next-line no-prototype-builtins
+		const key = keys[len]!;
 		if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
-
-		// eslint-disable-next-line no-use-before-define
 		if (!isEqualsDeep(a[key], b[key], astack, bstack)) return false;
 	}
 
@@ -97,7 +59,7 @@ function objectEqualsDeep(
 	return true;
 }
 
-export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?: unknown[]) {
+export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?: unknown[]): boolean {
 	if (a === b) return true;
 	if (typeof a !== typeof b) return false;
 
@@ -105,7 +67,7 @@ export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?
 		case "boolean":
 			return a === b;
 		case "number":
-			if (Number.isNaN(a)) return Number.isNaN(b);
+			if (Number.isNaN(a)) return Number.isNaN(b as number);
 			return a === b;
 		case "string":
 			return a === b;
@@ -122,18 +84,10 @@ export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?
 				if (a.length === b.length) {
 					return arrayEqualsDeep(a, b, astack, bstack);
 				}
-			} else {
-				if (a && b) {
-					const keys = Object.keys(a);
-					if (keys.length === Object.keys(b).length) {
-						return objectEqualsDeep(
-							a as Record<string | number | symbol, unknown>,
-							b as Record<string | number | symbol, unknown>,
-							keys,
-							astack,
-							bstack
-						);
-					}
+			} else if (a && b) {
+				const keys = Object.keys(a);
+				if (keys.length === Object.keys(b as Record<string, unknown>).length) {
+					return objectEqualsDeep(a as Record<string, unknown>, b as Record<string, unknown>, keys, astack, bstack);
 				}
 			}
 			break;
@@ -144,13 +98,22 @@ export function isEqualsDeep(a: unknown, b: unknown, astack?: unknown[], bstack?
 	return false;
 }
 
-export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
+export function arrayEqualsShallow(a?: unknown[] | null, b?: unknown[] | null): boolean {
 	return a === b || (a?.length === b?.length && !a?.some((va, vi) => b && va !== b[vi]));
 }
 
+export function chooseVariant(split: number[], prob: number): number {
+	let cumSum = 0.0;
+	for (let i = 0; i < split.length; ++i) {
+		cumSum += split[i]!;
+		if (prob < cumSum) return i;
+	}
+	return split.length - 1;
+}
+
 // Replaces unmatched UTF-16 surrogates with U+FFFD, matching
-// `String.prototype.toWellFormed()` (ES2024, not assumed available under the
-// declared Node 6 / IE 10 targets) so `encodeURIComponent` — which throws
+// `String.prototype.toWellFormed()` (ES2024, not assumed available in every
+// supported runtime) so `encodeURIComponent` — which throws
 // `URIError: URI malformed` on a lone surrogate — never sees one.
 export function toWellFormedString(value: string): string {
 	let result = "";
@@ -160,7 +123,7 @@ export function toWellFormedString(value: string): string {
 		if (c >= 0xd800 && c <= 0xdbff) {
 			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
 			if (next >= 0xdc00 && next <= 0xdfff) {
-				result += value[i] + value[i + 1];
+				result += value[i]! + value[i + 1]!;
 				i++;
 			} else {
 				result += "�";
@@ -168,104 +131,9 @@ export function toWellFormedString(value: string): string {
 		} else if (c >= 0xdc00 && c <= 0xdfff) {
 			result += "�";
 		} else {
-			result += value[i];
+			result += value[i]!;
 		}
 	}
 
 	return result;
-}
-
-export function stringToUint8Array(value: string) {
-	if (typeof TextEncoder !== "undefined") {
-		return new Uint8Array(new TextEncoder().encode(value));
-	}
-
-	const utf8: number[] = [];
-	for (let i = 0; i < value.length; i++) {
-		let c = value.charCodeAt(i);
-		if (c >= 0xd800 && c <= 0xdbff) {
-			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
-			if (next >= 0xdc00 && next <= 0xdfff) {
-				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
-				i++;
-			} else {
-				// Unmatched high surrogate: not a valid UTF-8 code point, encode as U+FFFD.
-				c = 0xfffd;
-			}
-		} else if (c >= 0xdc00 && c <= 0xdfff) {
-			// Unmatched low surrogate: not a valid UTF-8 code point, encode as U+FFFD.
-			c = 0xfffd;
-		}
-		if (c < 0x80) {
-			utf8.push(c);
-		} else if (c < 0x800) {
-			utf8.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-		} else if (c < 0x10000) {
-			utf8.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
-		} else {
-			utf8.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
-		}
-	}
-	return new Uint8Array(utf8);
-}
-
-const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-export function base64UrlNoPadding(value: Uint8Array) {
-	const chars = Base64URLNoPaddingChars;
-
-	const remaining = value.byteLength % 3;
-	const encodeLen = ((value.byteLength / 3) | 0) * 4 + (remaining === 0 ? 0 : remaining === 1 ? 2 : 3);
-	const result = new Array(encodeLen);
-
-	let i;
-	let out = 0;
-	const len = value.byteLength - remaining;
-	for (i = 0; i < len; i += 3) {
-		const bytes = (value[i] << 16) | (value[i + 1] << 8) | value[i + 2];
-		result[out] = chars[(bytes >> 18) & 63];
-		result[out + 1] = chars[(bytes >> 12) & 63];
-		result[out + 2] = chars[(bytes >> 6) & 63];
-		result[out + 3] = chars[bytes & 63];
-		out += 4;
-	}
-
-	switch (remaining) {
-		case 2:
-			{
-				const bytes = (value[i] << 16) | (value[i + 1] << 8);
-				result[out] = chars[(bytes >> 18) & 63];
-				result[out + 1] = chars[(bytes >> 12) & 63];
-				result[out + 2] = chars[(bytes >> 6) & 63];
-			}
-			break;
-		case 1:
-			{
-				const bytes = value[i] << 16;
-				result[out] = chars[(bytes >> 18) & 63];
-				result[out + 1] = chars[(bytes >> 12) & 63];
-			}
-			break;
-		default:
-			break;
-	}
-
-	return result.join("");
-}
-
-export function hashUnit(value: string | number) {
-	const unit = typeof value === "string" ? value : value.toFixed(0);
-	return base64UrlNoPadding(md5(stringToUint8Array(unit).buffer));
-}
-
-export function chooseVariant(split: number[], prob: number) {
-	let cumSum = 0.0;
-	for (let i = 0; i < split.length; ++i) {
-		cumSum += split[i];
-		if (prob < cumSum) {
-			return i;
-		}
-	}
-
-	return split.length - 1;
 }
