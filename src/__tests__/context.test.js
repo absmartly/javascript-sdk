@@ -2210,6 +2210,25 @@ describe("Context", () => {
 			done();
 		});
 
+		it("should treat an audience that throws as a mismatch so strict audiences fail closed", () => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			context.attribute("age", 25);
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluate").mockImplementation(() => {
+				throw new Error("audience boom");
+			});
+			context.attribute("age", 26);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context._exposures[0].audienceMismatch).toEqual(true);
+
+			const fresh = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			fresh._audienceMatcher.evaluate = evaluate;
+			fresh.attribute("age", 25);
+			expect(fresh.treatment("exp_test_ab")).toEqual(0);
+			expect(fresh._exposures[0].audienceMismatch).toEqual(true);
+		});
+
 		it("should throw when not ready", (done) => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
@@ -2332,6 +2351,46 @@ describe("Context", () => {
 
 			context.attribute("country", "GB");
 			expect(context.treatment("exp_test_abc")).toEqual(2);
+		});
+
+		it("should not keep a rule variant for an experiment removed on refresh", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			const removedResponse = clone(rulesContextResponse);
+			removedResponse.experiments = removedResponse.experiments.filter((x) => x.name !== "exp_test_abc");
+			provider.getContextData.mockReturnValue(Promise.resolve(removedResponse));
+
+			context.refresh().then(() => {
+				expect(context.peek("exp_test_abc")).toEqual(0);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+				expect(context.pending()).toEqual(2);
+				done();
+			});
+		});
+
+		it("should parse assignment rules once per context data, not on every lookup", (done) => {
+			const rulesString = rulesContextResponse.experiments.find((x) => x.name === "exp_test_abc").assignmentRules;
+			const parse = jest.spyOn(JSON, "parse");
+			const rulesParses = () => parse.mock.calls.filter(([text]) => text === rulesString).length;
+
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			for (const country of ["US", "GB", "US", "DE"]) {
+				context.attribute("country", country);
+				context.treatment("exp_test_abc");
+			}
+			expect(rulesParses()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(clone(rulesContextResponse)));
+			context.refresh().then(() => {
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+				expect(rulesParses()).toEqual(2);
+				parse.mockRestore();
+				done();
+			});
 		});
 
 		it("should return normal assignment when no rules match", () => {
@@ -8853,6 +8912,94 @@ describe("Context", () => {
 
 				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
 				expect(appVersionAttr).toBeUndefined();
+
+				done();
+			});
+		});
+
+		it("should stamp system attributes with the earliest event in the batch", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 10);
+			context.track("goal1");
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 20);
+			context.treatment("exp_test_ab");
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			context.publish().then(() => {
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.publishedAt).toEqual(timeOrigin + 100);
+
+				const systemNames = ["sdk_name", "sdk_version", "application", "environment"];
+				for (const attrName of systemNames) {
+					expect(request.attributes.find((a) => a.name === attrName).setAt).toEqual(timeOrigin + 10);
+				}
+
+				done();
+			});
+		});
+
+		it("should not send a system attribute the user has set", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("application", "mobile");
+			context.treatment("exp_test_ab");
+			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			context.publish().then(() => {
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.attributes.filter((a) => a.name === "application")).toEqual([
+					{ name: "application", value: "mobile", setAt: timeOrigin },
+				]);
+				expect(request.attributes.find((a) => a.name === "sdk_name")).toBeDefined();
+
+				done();
+			});
+		});
+
+		it("should publish system attributes without a native Set (IE 10)", (done) => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("application", "mobile");
+			context.treatment("exp_test_ab");
+
+			const NativeSet = global.Set;
+			global.Set = undefined;
+			let publishing;
+			try {
+				publishing = context.publish();
+			} finally {
+				global.Set = NativeSet;
+			}
+
+			publishing.then(() => {
+				expect(publisher.publish).toHaveBeenCalledTimes(1);
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.attributes.filter((a) => a.name === "application")).toEqual([
+					{ name: "application", value: "mobile", setAt: timeOrigin },
+				]);
+				expect(request.attributes.find((a) => a.name === "sdk_name")).toBeDefined();
 
 				done();
 			});
