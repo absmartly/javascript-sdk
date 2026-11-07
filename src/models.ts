@@ -88,6 +88,9 @@ export type Experiment = {
 	data: ExperimentData;
 	variables: Record<string, unknown>[];
 	holdouts?: HoldoutExperiment[] | null;
+	// Parsed `data.assignmentRules`, filled on first use; `undefined` until then. The entry is rebuilt
+	// whenever context data is installed, so the cache never outlives the rules it was parsed from.
+	rules?: unknown[] | null;
 };
 
 export interface Unit {

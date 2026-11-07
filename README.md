@@ -244,7 +244,7 @@ When enabled, the following attributes are automatically prepended to the publis
 | `environment` | The environment from the SDK configuration |
 | `app_version` | The application version, only included if greater than `0` |
 
-These system attributes are prepended before any user-defined attributes.
+These system attributes are prepended before any user-defined attributes. Their `setAt` is the time of the earliest exposure or goal in the publish, so they apply to every event in it. A system attribute is not sent when you set an attribute with the same name yourself, so your value is kept.
 
 #### Selecting a treatment
 ```typescript
@@ -387,6 +387,8 @@ A custom assignment replaces only the randomized variant selection, so it is not
 - the experiment is full-on (the full-on variant)
 - the context has no unit of the experiment's unit type (variant `0`)
 - the unit falls outside the experiment's traffic allocation (variant `0`)
+
+An audience filter that throws while being evaluated is treated as a mismatch, so with `audienceStrict` the unit gets variant 0.
 
 #### Custom fields
 Experiments can have custom field values configured in the A/B Smartly web console.

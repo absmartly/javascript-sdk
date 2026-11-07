@@ -3088,6 +3088,85 @@ describe("Context", () => {
 
 			expect(request.attributes).toEqual([{ name: "custom_attr", value: "custom_value", setAt: expect.any(Number) }]);
 		});
+
+		it("should stamp system attributes with the earliest event in the batch", async () => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse as any);
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			vi.spyOn(Date, "now").mockImplementation(() => timeOrigin + 10);
+			context.track("goal1");
+			vi.spyOn(Date, "now").mockImplementation(() => timeOrigin + 20);
+			context.treatment("exp_test_ab");
+			vi.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			await context.publish();
+			const request = (publisher.publish as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(request.publishedAt).toEqual(timeOrigin + 100);
+
+			const systemNames = ["sdk_name", "sdk_version", "application", "environment"];
+			for (const attrName of systemNames) {
+				expect(request.attributes.find((a: any) => a.name === attrName).setAt).toEqual(timeOrigin + 10);
+			}
+		});
+
+		it("should not send a system attribute the user has set", async () => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse as any);
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			context.attribute("application", "mobile");
+			context.treatment("exp_test_ab");
+			vi.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
+
+			await context.publish();
+			const request = (publisher.publish as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(request.attributes.filter((a: any) => a.name === "application")).toEqual([
+				{ name: "application", value: "mobile", setAt: timeOrigin },
+			]);
+			expect(request.attributes.find((a: any) => a.name === "sdk_name")).toBeDefined();
+		});
+
+		it("should publish system attributes without a native Set (IE 10)", async () => {
+			const optionsWithSystemAttrs = {
+				publishDelay: -1,
+				refreshPeriod: 0,
+				includeSystemAttributes: true,
+			};
+
+			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse as any);
+			(publisher.publish as ReturnType<typeof vi.fn>).mockReturnValue(Promise.resolve());
+
+			context.attribute("application", "mobile");
+			context.treatment("exp_test_ab");
+
+			const NativeSet = global.Set;
+			(global as any).Set = undefined;
+			let publishing: Promise<void>;
+			try {
+				publishing = context.publish();
+			} finally {
+				global.Set = NativeSet;
+			}
+
+			await publishing;
+			expect(publisher.publish).toHaveBeenCalledTimes(1);
+			const request = (publisher.publish as ReturnType<typeof vi.fn>).mock.calls[0][0];
+			expect(request.attributes.filter((a: any) => a.name === "application")).toEqual([
+				{ name: "application", value: "mobile", setAt: timeOrigin },
+			]);
+			expect(request.attributes.find((a: any) => a.name === "sdk_name")).toBeDefined();
+		});
 	});
 
 	describe("publishDelay auto-flush", () => {

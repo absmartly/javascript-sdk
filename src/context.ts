@@ -496,13 +496,19 @@ export class Context {
 			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
 		} catch (error) {
 			this._logError(error as Error);
-			return null;
+			return false;
 		}
 	}
 
-	private _resolveRule(experiment: ExperimentData, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+	private _resolveRule(entry: Experiment, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+		const experiment = entry.data;
 		const variantCount = experiment.variants.length;
-		const action = this._audienceMatcher.evaluateRules(experiment.assignmentRules ?? "", this._environmentName, attrs);
+		if (entry.rules === undefined) {
+			entry.rules = this._audienceMatcher.parseRules(experiment.assignmentRules ?? "");
+		}
+		if (entry.rules == null) return null;
+
+		const action = this._audienceMatcher.evaluateParsedRules(entry.rules, this._environmentName, attrs);
 		if (action == null) return null;
 
 		if ("variant" in action) {
@@ -533,7 +539,8 @@ export class Context {
 			);
 		};
 
-		const audienceMatches = (experiment: ExperimentData, assignment: Assignment) => {
+		const audienceMatches = (entry: Experiment, assignment: Assignment) => {
+			const experiment = entry.data;
 			const ruleKey = experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "";
 			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
 
@@ -553,7 +560,7 @@ export class Context {
 					// An exposed split resolved without its unit keeps resolving as if the unit were still
 					// missing, so a unit set afterwards cannot switch the variant the user already saw.
 					const isUnitPinnedMissing = assignment.exposed && assignment.isRuleMissingUnit === true;
-					const rule = this._resolveRule(experiment, attrs, isUnitPinnedMissing);
+					const rule = this._resolveRule(entry, attrs, isUnitPinnedMissing);
 					const ruleVariant = rule?.variant ?? null;
 					if (ruleVariant !== (assignment.ruleVariant ?? null)) {
 						return false;
@@ -614,7 +621,10 @@ export class Context {
 					return assignment;
 				}
 			} else if (experiment == null) {
-				if (!assignment.assigned) {
+				// A rule-won assignment is not "assigned" either, but its variant came from the
+				// experiment's rules, so it must be rebuilt once the experiment is gone.
+				if (!assignment.assigned && !assignment.ruleOverride) {
+					// previously not-running experiment
 					return assignment;
 				}
 			} else if (
@@ -627,7 +637,7 @@ export class Context {
 				// assignment, so a custom mismatch is not staleness.
 				if (
 					experimentMatches(experiment.data, assignment) &&
-					audienceMatches(experiment.data, assignment) &&
+					audienceMatches(experiment, assignment) &&
 					holdoutSetMatches(experiment, assignment)
 				) {
 					return assignment;
@@ -695,7 +705,7 @@ export class Context {
 
 				const rule =
 					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
-						? this._resolveRule(experiment.data, attrs, false)
+						? this._resolveRule(experiment, attrs, false)
 						: null;
 				const ruleVariant = rule?.variant ?? null;
 
@@ -1000,24 +1010,33 @@ export class Context {
 		}
 	}
 
-	private _buildAttributes(): Attribute[] {
+	// The collector only applies attributes with setAt <= an event's time and picks the latest setAt
+	// among duplicates, so system attributes are stamped with the earliest event in the batch and left
+	// out when the user set the same name.
+	private _buildAttributes(systemSetAt: number): Attribute[] {
 		const allAttributes: Attribute[] = [];
 
 		if (this._opts.includeSystemAttributes === true) {
 			const client = this._sdk.getClient();
 			const app = client.getApplication();
-			const now = Date.now();
-			allAttributes.push(
-				{ name: "sdk_name", value: client.getAgent(), setAt: now },
-				{ name: "sdk_version", value: SDK_VERSION, setAt: now },
-				{ name: "application", value: app.name, setAt: now },
-				{ name: "environment", value: client.getEnvironment() ?? null, setAt: now }
-			);
+			// A plain object, not a Set: the browser bundle still supports IE 10, which has no Set.
+			const userNames: Record<string, true> = {};
+			for (const x of this._attrs) userNames[x.name] = true;
+			const addSystemAttribute = (attrName: string, value: unknown) => {
+				if (!Object.prototype.hasOwnProperty.call(userNames, attrName)) {
+					allAttributes.push({ name: attrName, value, setAt: systemSetAt });
+				}
+			};
+
+			addSystemAttribute("sdk_name", client.getAgent());
+			addSystemAttribute("sdk_version", SDK_VERSION);
+			addSystemAttribute("application", app.name);
+			addSystemAttribute("environment", client.getEnvironment() ?? null);
 			if (
 				(typeof app.version === "string" && app.version.length > 0) ||
 				(typeof app.version === "number" && app.version > 0)
 			) {
-				allAttributes.push({ name: "app_version", value: app.version, setAt: now });
+				addSystemAttribute("app_version", app.version);
 			}
 		}
 
@@ -1124,7 +1143,12 @@ export class Context {
 				}));
 			}
 
-			const allAttributes = this._buildAttributes();
+			let systemSetAt = request.publishedAt;
+			if (this._opts.includeSystemAttributes === true) {
+				for (const x of this._exposures) systemSetAt = Math.min(systemSetAt, x.exposedAt);
+				for (const x of this._goals) systemSetAt = Math.min(systemSetAt, x.achievedAt);
+			}
+			const allAttributes = this._buildAttributes(systemSetAt);
 			if (allAttributes.length > 0) {
 				request.attributes = allAttributes;
 			}

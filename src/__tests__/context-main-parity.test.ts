@@ -9,6 +9,10 @@ import { hashUnit } from "../hashing";
 
 const jest = vi;
 
+function clone<T>(obj: T): T {
+	return JSON.parse(JSON.stringify(obj)) as T;
+}
+
 function withDone(fn: (done: (err?: unknown) => void) => void) {
 	return () =>
 		new Promise<void>((resolve, reject) => {
@@ -599,6 +603,46 @@ describe("Context (rules and holdouts)", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(2);
 		});
 
+		it("should not keep a rule variant for an experiment removed on refresh", (done) => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(context.pending()).toEqual(1);
+
+			const removedResponse = clone(rulesContextResponse);
+			removedResponse.experiments = removedResponse.experiments.filter((x) => x.name !== "exp_test_abc");
+			provider.getContextData.mockReturnValue(Promise.resolve(removedResponse));
+
+			context.refresh().then(() => {
+				expect(context.peek("exp_test_abc")).toEqual(0);
+				expect(context.treatment("exp_test_abc")).toEqual(0);
+				expect(context.pending()).toEqual(2);
+				done();
+			});
+		});
+
+		it("should parse assignment rules once per context data, not on every lookup", (done) => {
+			const rulesString = rulesContextResponse.experiments.find((x) => x.name === "exp_test_abc").assignmentRules;
+			const parse = jest.spyOn(JSON, "parse");
+			const rulesParses = () => parse.mock.calls.filter(([text]) => text === rulesString).length;
+
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			for (const country of ["US", "GB", "US", "DE"]) {
+				context.attribute("country", country);
+				context.treatment("exp_test_abc");
+			}
+			expect(rulesParses()).toEqual(1);
+
+			provider.getContextData.mockReturnValue(Promise.resolve(clone(rulesContextResponse)));
+			context.refresh().then(() => {
+				context.attribute("country", "US");
+				expect(context.treatment("exp_test_abc")).toEqual(1);
+				expect(rulesParses()).toEqual(2);
+				parse.mockRestore();
+				done();
+			});
+		});
+
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
@@ -807,6 +851,25 @@ describe("Context (rules and holdouts)", () => {
 				});
 				done();
 			});
+		});
+
+		it("should treat an audience that throws as a mismatch so strict audiences fail closed", () => {
+			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			context.attribute("age", 25);
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluate").mockImplementation(() => {
+				throw new Error("audience boom");
+			});
+			context.attribute("age", 26);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context._exposures[0].audienceMismatch).toEqual(true);
+
+			const fresh = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
+			fresh._audienceMatcher.evaluate = evaluate;
+			fresh.attribute("age", 25);
+			expect(fresh.treatment("exp_test_ab")).toEqual(0);
+			expect(fresh._exposures[0].audienceMismatch).toEqual(true);
 		});
 
 		it("should return correct variableValue when rule forces a different variant", () => {
