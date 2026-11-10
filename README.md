@@ -202,7 +202,7 @@ When enabled, the following attributes are automatically prepended to the publis
 | `environment` | The environment from the SDK configuration |
 | `app_version` | The application version, only included if greater than `0` |
 
-These system attributes are prepended before any user-defined attributes.
+These system attributes are prepended before any user-defined attributes. Their `setAt` is the time of the earliest exposure or goal in the publish, so they apply to every event in it. A system attribute is not sent when you set an attribute with the same name yourself, so your value is kept.
 
 #### Selecting a treatment
 ```javascript
@@ -538,6 +538,8 @@ const variant = context.treatment("exp_test"); // returns 0 (control) on failure
 ### `audienceMismatch` cache invalidation on indeterminate audiences
 
 When an audience cannot be evaluated to a boolean (a malformed or non-boolean filter), the cached assignment's `audienceMismatch` flag is now left unchanged instead of being reset to `false`. This keeps a previously valid cached assignment from being needlessly invalidated. Assignment results for well-formed audiences are unchanged.
+
+An audience filter that throws while being evaluated is treated as a mismatch, so with `audienceStrict` the unit gets variant 0.
 
 ## About A/B Smartly
 

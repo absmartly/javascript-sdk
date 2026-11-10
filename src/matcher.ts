@@ -48,11 +48,7 @@ export class AudienceMatcher {
 		return null;
 	}
 
-	evaluateRules(
-		assignmentRulesString: string,
-		environmentName: string | null,
-		vars: Record<string, unknown>
-	): RuleAction | null {
+	parseRules(assignmentRulesString: string): unknown[] | null {
 		let assignmentRules;
 		try {
 			assignmentRules = JSON.parse(assignmentRulesString);
@@ -63,7 +59,24 @@ export class AudienceMatcher {
 
 		if (!assignmentRules || !Array.isArray(assignmentRules.rules)) return null;
 
-		for (const rule of assignmentRules.rules) {
+		return assignmentRules.rules;
+	}
+
+	evaluateRules(
+		assignmentRulesString: string,
+		environmentName: string | null,
+		vars: Record<string, unknown>
+	): RuleAction | null {
+		const rules = this.parseRules(assignmentRulesString);
+		return rules != null ? this.evaluateParsedRules(rules, environmentName, vars) : null;
+	}
+
+	evaluateParsedRules(
+		rules: unknown[],
+		environmentName: string | null,
+		vars: Record<string, unknown>
+	): RuleAction | null {
+		for (const rule of rules as Record<string, unknown>[]) {
 			if (!rule) continue;
 
 			const action = parseRuleAction(rule);
