@@ -546,13 +546,13 @@ When an audience cannot be evaluated to a boolean (a malformed or non-boolean fi
 
 An audience filter that throws while being evaluated is treated as a mismatch, so with `audienceStrict` the unit gets variant 0.
 
-### Audiences always see `application` and `environment`; `app_version` is gone
+### Audiences always see `application` and `environment`; the automatic `app_version` is gone
 
 **Before:** audience filters and assignment-rule conditions saw only the attributes you set (and, in pre-releases of 1.14.0, `application`, `environment` and `app_version` when `includeSystemAttributes` was on). The Web Console offers `application` and `environment` as attributes because the collector adds them to every event, but the SDK never had them, so a condition on either evaluated against a missing value and never matched.
 
-**After:** the SDK always evaluates audiences and assignment-rule conditions with `application` and `environment` set to the names configured in the SDK. An attribute you set with the same name, at any time, overrides them. Names that are not configured or empty are left out. They are not published. `app_version` is no longer available to audiences or rules, and `includeSystemAttributes` now only adds `sdk_name` and `sdk_version` to the publish payload; the option is still accepted.
+**After:** the SDK always evaluates audiences and assignment-rule conditions with `application` and `environment` set to the names configured in the SDK. An attribute you set with the same name, at any time, overrides them. Names that are not configured or empty are left out. They are not published. The SDK no longer adds `app_version` for audiences or rules (one you set yourself with `context.attribute("app_version", ...)` is still used and published like any other attribute), and `includeSystemAttributes` now only adds `sdk_name` and `sdk_version` to the publish payload; the option is still accepted.
 
-**This changes assignment for running experiments.** A unit in an experiment with Audience enforced (`audienceStrict`) and an `environment` or `application` condition currently gets variant 0, even when it matches the condition and even when the experiment is full-on. After upgrading, a matching unit is randomised normally (or gets the full-on variant). Those experiments are broken today; this release fixes them, but their exposures will change. If an audience used `app_version`, it no longer matches.
+**This changes assignment for running experiments.** A unit in an experiment with Audience enforced (`audienceStrict`) and an `environment` or `application` condition currently gets variant 0, even when it matches the condition and even when the experiment is full-on. After upgrading, a matching unit is randomised normally (or gets the full-on variant). Those experiments are broken today; this release fixes them, but their exposures will change. An audience or rule on `app_version` no longer matches unless you set `app_version` yourself.
 
 ## About A/B Smartly
 

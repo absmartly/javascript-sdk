@@ -8912,19 +8912,32 @@ describe("Context", () => {
 		});
 
 		it.each([
-			["a number", 3],
-			["a semver string", "1.2.3"],
-		])("should not expose app_version to audiences when the application version is %s", (_, version) => {
+			["a number", 3, {}],
+			["a semver string", "1.2.3", {}],
+			["a number, with includeSystemAttributes", 3, { includeSystemAttributes: true }],
+			["a semver string, with includeSystemAttributes", "1.2.3", { includeSystemAttributes: true }],
+		])("should not expose app_version to audiences when the application version is %s", (_, version, extra) => {
 			client.getApplication.mockReturnValue({ name: "website", version });
 			const context = new Context(
 				sdk,
-				contextOptions,
+				{ ...contextOptions, ...extra },
 				contextParams,
 				strictAudienceResponse([{ eq: [{ var: "app_version" }, { value: version }] }])
 			);
 			expect(context.treatment("exp_test_ab")).toEqual(0);
 			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(true);
 			expect(context._getAttributesMap()).toEqual({ application: "website", environment: "production" });
+		});
+
+		it("should still evaluate an app_version the user sets", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse([{ eq: [{ var: "app_version" }, { value: "1.2.3" }] }])
+			);
+			context.attribute("app_version", "1.2.3");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
 		});
 
 		it("should not report system attributes as user attributes", () => {
