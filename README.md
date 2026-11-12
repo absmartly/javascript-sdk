@@ -183,7 +183,7 @@ context.units({
 ### Selecting a Treatment
 
 #### Including system attributes
-You can opt in to automatically include system attributes (SDK name, SDK version, application, environment, and application version) in every publish payload. These are sent as context attributes and can be useful for debugging and filtering in the Web Console.
+You can opt in to also send the SDK name and version with every publish. These are sent as context attributes and can be useful for debugging and filtering in the Web Console.
 
 To enable this, set the `includeSystemAttributes` option to `true` when creating the context:
 ```javascript
@@ -192,17 +192,16 @@ const context = sdk.createContext(request, {
 });
 ```
 
-When enabled, the following attributes are automatically prepended to the publish request payload:
+When enabled, the following attributes are prepended to the publish request payload:
 
 | Attribute | Description |
 |:--- |---|
 | `sdk_name` | The SDK agent name (e.g. `"absmartly-javascript-sdk"`) |
-| `sdk_version` | The SDK version (e.g. `"1.13.4"`) |
-| `application` | The application name from the SDK configuration |
-| `environment` | The environment from the SDK configuration |
-| `app_version` | The application version, only included if greater than `0` |
+| `sdk_version` | The SDK version (e.g. `"1.14.0"`) |
 
-These system attributes are prepended before any user-defined attributes. Their `setAt` is the time of the earliest exposure or goal in the publish, so they apply to every event in it. A system attribute is not sent when you set an attribute with the same name yourself, so your value is kept.
+Their `setAt` is the time of the earliest exposure or goal in the publish, so they apply to every event in it. A system attribute is not sent when you set an attribute with the same name yourself, so your value is kept.
+
+The application and environment names are not part of this option: the collector already adds them to every event, and the SDK always uses them for audiences (see [Context Attributes](#context-attributes)).
 
 #### Selecting a treatment
 ```javascript
@@ -265,6 +264,12 @@ context.attribute("user_agent", navigator.userAgent);
 context.attributes({
     customer_age: "new_customer",
 });
+```
+
+Audience filters and assignment-rule conditions can also use `application` and `environment`, the application and environment names configured in the SDK. They are always available, but they are not real attributes: they are not published (the collector adds them on its side) and `getAttributes()` doesn't return them. Names that are not configured or empty are left out. An attribute you set with the same name, at any time, takes precedence:
+
+```javascript
+context.attribute("environment", "staging"); // audiences now see "staging"
 ```
 
 ### Custom Assignments
@@ -540,6 +545,14 @@ const variant = context.treatment("exp_test"); // returns 0 (control) on failure
 When an audience cannot be evaluated to a boolean (a malformed or non-boolean filter), the cached assignment's `audienceMismatch` flag is now left unchanged instead of being reset to `false`. This keeps a previously valid cached assignment from being needlessly invalidated. Assignment results for well-formed audiences are unchanged.
 
 An audience filter that throws while being evaluated is treated as a mismatch, so with `audienceStrict` the unit gets variant 0.
+
+### Audiences always see `application` and `environment`; the automatic `app_version` is gone
+
+**Before:** audience filters and assignment-rule conditions saw only the attributes you set (and, in pre-releases of 1.14.0, `application`, `environment` and `app_version` when `includeSystemAttributes` was on). The Web Console offers `application` and `environment` as attributes because the collector adds them to every event, but the SDK never had them, so a condition on either evaluated against a missing value and never matched.
+
+**After:** the SDK always evaluates audiences and assignment-rule conditions with `application` and `environment` set to the names configured in the SDK. An attribute you set with the same name, at any time, overrides them. Names that are not configured or empty are left out. They are not published. The SDK no longer adds `app_version` for audiences or rules (one you set yourself with `context.attribute("app_version", ...)` is still used and published like any other attribute), and `includeSystemAttributes` now only adds `sdk_name` and `sdk_version` to the publish payload; the option is still accepted.
+
+**This changes assignment for running experiments.** In an experiment with Audience enforced (`audienceStrict`) and an `environment` or `application` condition, a unit whose context does not set that attribute itself currently gets variant 0, even when the configured name matches the condition and even when the experiment is full-on. After upgrading, such a unit is randomised normally (or gets the full-on variant) when the configured name matches. Those units are misassigned today; this release fixes them, but their exposures will change. An attribute your context sets itself still overrides the configured name, so its matching does not change. This protection is per attribute: if an audience uses both `application` and `environment` and the context sets only one of them, the configured name for the other can still change the result. An audience or rule on `app_version` no longer matches unless you set `app_version` yourself.
 
 ## About A/B Smartly
 
