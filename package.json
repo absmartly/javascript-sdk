@@ -4,6 +4,10 @@
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/absmartly/javascript-sdk.git"
+	},
 	"keywords": [
 		"absmartly",
 		"ab-smartly",
