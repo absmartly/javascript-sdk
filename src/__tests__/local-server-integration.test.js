@@ -9,6 +9,7 @@ describe("Local server integration (real HTTP)", () => {
 	let server;
 	let baseUrl;
 	const requests = [];
+	let contextResponse = { experiments: [] };
 
 	beforeAll((done) => {
 		server = http.createServer((req, res) => {
@@ -27,7 +28,7 @@ describe("Local server integration (real HTTP)", () => {
 				res.setHeader("Content-Type", "application/json");
 				if (req.method === "GET") {
 					res.statusCode = 200;
-					res.end(JSON.stringify({ experiments: [] }));
+					res.end(JSON.stringify(contextResponse));
 				} else if (req.method === "PUT") {
 					res.statusCode = 200;
 					res.end(JSON.stringify({}));
@@ -43,6 +44,11 @@ describe("Local server integration (real HTTP)", () => {
 			baseUrl = `http://127.0.0.1:${port}`;
 			done();
 		});
+	});
+
+	beforeEach(() => {
+		requests.length = 0;
+		contextResponse = { experiments: [] };
 	});
 
 	afterAll((done) => {
@@ -115,4 +121,64 @@ describe("Local server integration (real HTTP)", () => {
 		expect(Array.isArray(body.exposures)).toBe(true);
 		expect(body.exposures.length).toBeGreaterThan(0);
 	});
+
+	it.each([
+		["not set", {}, []],
+		["true", { includeSystemAttributes: true }, ["sdk_name", "sdk_version"]],
+	])(
+		"matches an environment audience without publishing application, environment or app_version (includeSystemAttributes %s)",
+		async (_, extraOptions, systemNames) => {
+			contextResponse = {
+				experiments: [
+					{
+						id: 1,
+						name: "exp_environment",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 3603515,
+						seedLo: 233373850,
+						split: [0.5, 0.5],
+						trafficSeedHi: 449867249,
+						trafficSeedLo: 455443629,
+						trafficSplit: [0.0, 1.0],
+						fullOnVariant: 1,
+						applications: [{ name: "www" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audienceStrict: true,
+						audience: JSON.stringify({
+							filter: [
+								{ eq: [{ var: "environment" }, { value: "development" }] },
+								{ eq: [{ var: "application" }, { value: "www" }] },
+							],
+						}),
+					},
+				],
+			};
+			const sdk = new SDK({
+				endpoint: baseUrl,
+				apiKey: "test-api-key",
+				application: { name: "www", version: 1000003 },
+				environment: "development",
+			});
+
+			const context = sdk.createContext(
+				{ units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" } },
+				{ publishDelay: -1, refreshPeriod: 0, ...extraOptions }
+			);
+			await context.ready();
+
+			context.attribute("user_type", "vip");
+			expect(context.treatment("exp_environment")).toBe(1);
+			await context.publish();
+
+			const putReq = requests.find((r) => r.method === "PUT");
+			expect(putReq.body.exposures).toEqual([
+				expect.objectContaining({ name: "exp_environment", variant: 1, audienceMismatch: false }),
+			]);
+			expect(putReq.body.attributes.map((a) => a.name)).toEqual([...systemNames, "user_type"]);
+		}
+	);
 });

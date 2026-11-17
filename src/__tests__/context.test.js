@@ -2843,30 +2843,7 @@ describe("Context", () => {
 			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
 		});
 
-		it("should match rule on application attribute when includeSystemAttributes is true", () => {
-			const appRuleResponse = buildRulesResponse({
-				assignmentRules: JSON.stringify({
-					rules: [
-						{
-							name: "Website Only",
-							type: "assign",
-							conditions: { and: [{ eq: [{ var: "application" }, { value: "website" }] }] },
-							environments: [],
-							variant: 1,
-						},
-					],
-				}),
-			});
-			const optionsWithSystemAttrs = {
-				publishDelay: -1,
-				refreshPeriod: 0,
-				includeSystemAttributes: true,
-			};
-			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, appRuleResponse);
-			expect(context.treatment("exp_test_abc")).toEqual(1);
-		});
-
-		it("should not match rule on application attribute when includeSystemAttributes is not set", () => {
+		it("should match rule conditions on the configured application", () => {
 			const appRuleResponse = buildRulesResponse({
 				assignmentRules: JSON.stringify({
 					rules: [
@@ -2881,10 +2858,10 @@ describe("Context", () => {
 				}),
 			});
 			const context = new Context(sdk, contextOptions, contextParams, appRuleResponse);
-			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
-		it("should match rule on environment attribute when includeSystemAttributes is true", () => {
+		it("should match rule conditions on the configured environment, independent of the rule's environments list", () => {
 			const envRuleResponse = buildRulesResponse({
 				assignmentRules: JSON.stringify({
 					rules: [
@@ -2898,12 +2875,45 @@ describe("Context", () => {
 					],
 				}),
 			});
-			const optionsWithSystemAttrs = {
-				publishDelay: -1,
-				refreshPeriod: 0,
-				includeSystemAttributes: true,
-			};
-			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, envRuleResponse);
+			const context = new Context(sdk, contextOptions, contextParams, envRuleResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+		});
+
+		it("should not match rule conditions on another environment", () => {
+			const envRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Staging Only",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "environment" }, { value: "staging" }] }] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, envRuleResponse);
+			expect(context.treatment("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+		});
+
+		it("should match rule conditions on a user-set environment over the configured one", () => {
+			const envRuleResponse = buildRulesResponse({
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "Staging Only",
+							type: "assign",
+							conditions: { and: [{ eq: [{ var: "environment" }, { value: "staging" }] }] },
+							environments: [],
+							variant: 1,
+						},
+					],
+				}),
+			});
+			const context = new Context(sdk, contextOptions, contextParams, envRuleResponse);
+			expect(context.peek("exp_test_abc")).toEqual(expectedVariants["exp_test_abc"]);
+			context.attribute("environment", "staging");
 			expect(context.treatment("exp_test_abc")).toEqual(1);
 		});
 
@@ -8715,10 +8725,250 @@ describe("Context", () => {
 		});
 	});
 
+	describe("system attributes in audience evaluation", () => {
+		const strictAudienceResponse = (filter) => ({
+			...getContextResponse,
+			experiments: getContextResponse.experiments.map((x) =>
+				x.name === "exp_test_ab"
+					? {
+							...x,
+							audienceStrict: true,
+							trafficSplit: [0.0, 1.0],
+							split: [0.0, 1.0],
+							audience: JSON.stringify({ filter }),
+					  }
+					: x
+			),
+		});
+		const environmentIs = (value) => [{ eq: [{ var: "environment" }, { value }] }];
+		const applicationIs = (value) => [{ eq: [{ var: "application" }, { value }] }];
+
+		afterEach(() => {
+			client.getApplication.mockReturnValue({ name: "website", version: 0 });
+			client.getEnvironment.mockReturnValue("production");
+		});
+
+		const exposureOf = (context, experimentName) => context._exposures.find((x) => x.name === experimentName);
+
+		it("should match a strict audience on the configured environment", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("production"))
+			);
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(false);
+			expect(context.variableValue("banner.size", "default")).toEqual("large");
+		});
+
+		it("should match a strict audience on the configured application", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(applicationIs("website"))
+			);
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(false);
+		});
+
+		it("should give variant 0 when a strict audience names another environment", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("staging"))
+			);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(true);
+		});
+
+		it("should give variant 0 when a strict audience names another application", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(applicationIs("mobile"))
+			);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(true);
+		});
+
+		it("should match full-on experiments on the configured environment instead of serving variant 0", () => {
+			const response = strictAudienceResponse(environmentIs("production"));
+			response.experiments = response.experiments.map((x) =>
+				x.name === "exp_test_ab" ? { ...x, fullOnVariant: 1, split: [0.5, 0.5] } : x
+			);
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(false);
+			expect(exposureOf(context, "exp_test_ab").fullOn).toEqual(true);
+		});
+
+		it("should let a user-set environment win, set after creation", () => {
+			const staging = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("staging"))
+			);
+			staging.attribute("environment", "staging");
+			expect(staging.treatment("exp_test_ab")).toEqual(1);
+
+			const production = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("production"))
+			);
+			production.attribute("environment", "staging");
+			expect(production.treatment("exp_test_ab")).toEqual(0);
+			expect(exposureOf(production, "exp_test_ab").audienceMismatch).toEqual(true);
+		});
+
+		it("should invalidate an assignment cached before the user set the environment", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("staging"))
+			);
+			expect(context.peek("exp_test_ab")).toEqual(0);
+
+			context.attribute("environment", "staging");
+			expect(context.peek("exp_test_ab")).toEqual(1);
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(false);
+		});
+
+		it("should invalidate a matching assignment once the user overrides the environment", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("production"))
+			);
+			expect(context.peek("exp_test_ab")).toEqual(1);
+
+			context.attribute("environment", "staging");
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(true);
+		});
+
+		it("should let a user-set application win", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(applicationIs("mobile"))
+			);
+			context.attribute("application", "mobile");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+
+		it("should let a user-set null environment win over the configured one", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse([{ null: { var: "environment" } }])
+			);
+			expect(context.peek("exp_test_ab")).toEqual(0);
+			context.attribute("environment", null);
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+
+		it.each([
+			["undefined", undefined],
+			["null", null],
+			["empty", ""],
+		])("should leave environment out of the map when it is %s", (_, environmentName) => {
+			client.getEnvironment.mockReturnValue(environmentName);
+			const matching = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse(environmentIs("production"))
+			);
+			expect(matching.treatment("exp_test_ab")).toEqual(0);
+			expect(exposureOf(matching, "exp_test_ab").audienceMismatch).toEqual(true);
+
+			const absent = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse([{ null: { var: "environment" } }])
+			);
+			expect(absent.treatment("exp_test_ab")).toEqual(1);
+			expect(absent._getAttributesMap()).toEqual({ application: "website" });
+		});
+
+		it("should leave application out of the map when its name is empty", () => {
+			client.getApplication.mockReturnValue({ name: "", version: 0 });
+			const context = new Context(sdk, contextOptions, contextParams, strictAudienceResponse(applicationIs("")));
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(context._getAttributesMap()).toEqual({ environment: "production" });
+		});
+
+		it.each([
+			["a number", 3, {}],
+			["a semver string", "1.2.3", {}],
+			["a number, with includeSystemAttributes", 3, { includeSystemAttributes: true }],
+			["a semver string, with includeSystemAttributes", "1.2.3", { includeSystemAttributes: true }],
+		])("should not expose app_version to audiences when the application version is %s", (_, version, extra) => {
+			client.getApplication.mockReturnValue({ name: "website", version });
+			const context = new Context(
+				sdk,
+				{ ...contextOptions, ...extra },
+				contextParams,
+				strictAudienceResponse([{ eq: [{ var: "app_version" }, { value: version }] }])
+			);
+			expect(context.treatment("exp_test_ab")).toEqual(0);
+			expect(exposureOf(context, "exp_test_ab").audienceMismatch).toEqual(true);
+			expect(context._getAttributesMap()).toEqual({ application: "website", environment: "production" });
+		});
+
+		it("should still evaluate an app_version the user sets", () => {
+			const context = new Context(
+				sdk,
+				contextOptions,
+				contextParams,
+				strictAudienceResponse([{ eq: [{ var: "app_version" }, { value: "1.2.3" }] }])
+			);
+			context.attribute("app_version", "1.2.3");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+
+		it("should not report system attributes as user attributes", () => {
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			context.attribute("age", 25);
+			expect(context.getAttributes()).toEqual({ age: 25 });
+			expect(context.getAttribute("environment")).toBeUndefined();
+		});
+
+		it.each([
+			["not set", {}],
+			["false", { includeSystemAttributes: false }],
+			["true", { includeSystemAttributes: true }],
+		])("should evaluate with system attributes when includeSystemAttributes is %s", (_, extra) => {
+			const options = { ...contextOptions, ...extra };
+			const context = new Context(
+				sdk,
+				options,
+				contextParams,
+				strictAudienceResponse(environmentIs("production"))
+			);
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+		});
+	});
+
 	describe("includeSystemAttributes", () => {
 		afterEach(() => {
 			client.getApplication.mockReturnValue({ name: "website", version: 0 });
 		});
+
+		const publishedAttributeNames = (request) => (request.attributes ?? []).map((a) => a.name);
 
 		it("should not include system attributes by default", (done) => {
 			const defaultOptions = {
@@ -8741,7 +8991,37 @@ describe("Context", () => {
 			});
 		});
 
-		it("should include system attributes when includeSystemAttributes is true", (done) => {
+		it("should not publish application, environment or app_version even after they were used for evaluation", (done) => {
+			client.getApplication.mockReturnValue({ name: "website", version: 3 });
+			const response = {
+				...getContextResponse,
+				experiments: getContextResponse.experiments.map((x) =>
+					x.name === "exp_test_ab"
+						? {
+								...x,
+								audienceStrict: true,
+								audience: JSON.stringify({
+									filter: [{ eq: [{ var: "environment" }, { value: "production" }] }],
+								}),
+						  }
+						: x
+				),
+			};
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			publisher.publish.mockReturnValue(Promise.resolve());
+
+			context.attribute("custom_attr", "custom_value");
+			expect(context.treatment("exp_test_ab")).toEqual(1);
+
+			context.publish().then(() => {
+				const request = publisher.publish.mock.calls[0][0];
+				expect(request.attributes).toEqual([{ name: "custom_attr", value: "custom_value", setAt: timeOrigin }]);
+				done();
+			});
+		});
+
+		it("should include only sdk_name and sdk_version when includeSystemAttributes is true", (done) => {
+			client.getApplication.mockReturnValue({ name: "website", version: 3 });
 			const optionsWithSystemAttrs = {
 				publishDelay: -1,
 				refreshPeriod: 0,
@@ -8754,32 +9034,12 @@ describe("Context", () => {
 			context.treatment("exp_test_ab");
 
 			context.publish().then(() => {
-				const call = publisher.publish.mock.calls[0];
-				const request = call[0];
+				const request = publisher.publish.mock.calls[0][0];
 
-				expect(request.attributes).toBeDefined();
-				expect(request.attributes.length).toBeGreaterThanOrEqual(4);
-
-				const sdkNameAttr = request.attributes.find((a) => a.name === "sdk_name");
-				const sdkVersionAttr = request.attributes.find((a) => a.name === "sdk_version");
-				const applicationAttr = request.attributes.find((a) => a.name === "application");
-				const environmentAttr = request.attributes.find((a) => a.name === "environment");
-
-				expect(sdkNameAttr).toBeDefined();
-				expect(sdkNameAttr.value).toEqual("absmartly-javascript-sdk");
-				expect(sdkNameAttr.setAt).toEqual(expect.any(Number));
-
-				expect(sdkVersionAttr).toBeDefined();
-				expect(sdkVersionAttr.value).toEqual(SDK_VERSION);
-				expect(sdkVersionAttr.setAt).toEqual(expect.any(Number));
-
-				expect(applicationAttr).toBeDefined();
-				expect(applicationAttr.value).toEqual("website");
-				expect(applicationAttr.setAt).toEqual(expect.any(Number));
-
-				expect(environmentAttr).toBeDefined();
-				expect(environmentAttr.value).toEqual("production");
-				expect(environmentAttr.setAt).toEqual(expect.any(Number));
+				expect(request.attributes).toEqual([
+					{ name: "sdk_name", value: "absmartly-javascript-sdk", setAt: timeOrigin },
+					{ name: "sdk_version", value: SDK_VERSION, setAt: timeOrigin },
+				]);
 
 				done();
 			});
@@ -8799,119 +9059,10 @@ describe("Context", () => {
 			context.treatment("exp_test_ab");
 
 			context.publish().then(() => {
-				const call = publisher.publish.mock.calls[0];
-				const request = call[0];
+				const request = publisher.publish.mock.calls[0][0];
 
-				expect(request.attributes[0].name).toEqual("sdk_name");
-				expect(request.attributes[1].name).toEqual("sdk_version");
-				expect(request.attributes[2].name).toEqual("application");
-				expect(request.attributes[3].name).toEqual("environment");
-				expect(request.attributes[4].name).toEqual("custom_attr");
-				expect(request.attributes[4].value).toEqual("custom_value");
-
-				done();
-			});
-		});
-
-		it("should include app_version when application version is set", (done) => {
-			client.getApplication.mockReturnValue({ name: "website", version: 3 });
-
-			const optionsWithSystemAttrs = {
-				publishDelay: -1,
-				refreshPeriod: 0,
-				includeSystemAttributes: true,
-			};
-
-			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
-			publisher.publish.mockReturnValue(Promise.resolve());
-
-			context.treatment("exp_test_ab");
-
-			context.publish().then(() => {
-				const call = publisher.publish.mock.calls[0];
-				const request = call[0];
-
-				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
-				expect(appVersionAttr).toBeDefined();
-				expect(appVersionAttr.value).toEqual(3);
-
-				done();
-			});
-		});
-
-		it("should not include app_version when application version is 0", (done) => {
-			const optionsWithSystemAttrs = {
-				publishDelay: -1,
-				refreshPeriod: 0,
-				includeSystemAttributes: true,
-			};
-
-			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
-			publisher.publish.mockReturnValue(Promise.resolve());
-
-			context.treatment("exp_test_ab");
-
-			context.publish().then(() => {
-				const call = publisher.publish.mock.calls[0];
-				const request = call[0];
-
-				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
-				expect(appVersionAttr).toBeUndefined();
-
-				done();
-			});
-		});
-
-		it("should include app_version when application version is a semver string", (done) => {
-			client.getApplication.mockReturnValue({ name: "website", version: "1.2.3" });
-
-			const optionsWithSystemAttrs = {
-				publishDelay: -1,
-				refreshPeriod: 0,
-				includeSystemAttributes: true,
-			};
-
-			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
-			publisher.publish.mockReturnValue(Promise.resolve());
-
-			context.treatment("exp_test_ab");
-
-			context.publish().then(() => {
-				const call = publisher.publish.mock.calls[0];
-				const request = call[0];
-
-				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
-				expect(appVersionAttr).toBeDefined();
-				expect(appVersionAttr.value).toEqual("1.2.3");
-
-				done();
-			});
-		});
-
-		it("should include app_version with application as plain string", (done) => {
-			client.getApplication.mockReturnValueOnce({ name: "website", version: 0 });
-
-			const optionsWithSystemAttrs = {
-				publishDelay: -1,
-				refreshPeriod: 0,
-				includeSystemAttributes: true,
-			};
-
-			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
-			publisher.publish.mockReturnValue(Promise.resolve());
-
-			context.treatment("exp_test_ab");
-
-			context.publish().then(() => {
-				const call = publisher.publish.mock.calls[0];
-				const request = call[0];
-
-				const applicationAttr = request.attributes.find((a) => a.name === "application");
-				expect(applicationAttr).toBeDefined();
-				expect(applicationAttr.value).toEqual("website");
-
-				const appVersionAttr = request.attributes.find((a) => a.name === "app_version");
-				expect(appVersionAttr).toBeUndefined();
+				expect(publishedAttributeNames(request)).toEqual(["sdk_name", "sdk_version", "custom_attr"]);
+				expect(request.attributes[2].value).toEqual("custom_value");
 
 				done();
 			});
@@ -8937,7 +9088,7 @@ describe("Context", () => {
 				const request = publisher.publish.mock.calls[0][0];
 				expect(request.publishedAt).toEqual(timeOrigin + 100);
 
-				const systemNames = ["sdk_name", "sdk_version", "application", "environment"];
+				const systemNames = ["sdk_name", "sdk_version"];
 				for (const attrName of systemNames) {
 					expect(request.attributes.find((a) => a.name === attrName).setAt).toEqual(timeOrigin + 10);
 				}
@@ -8956,16 +9107,16 @@ describe("Context", () => {
 			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
-			context.attribute("application", "mobile");
+			context.attribute("sdk_name", "custom-wrapper");
 			context.treatment("exp_test_ab");
 			jest.spyOn(Date, "now").mockImplementation(() => timeOrigin + 100);
 
 			context.publish().then(() => {
 				const request = publisher.publish.mock.calls[0][0];
-				expect(request.attributes.filter((a) => a.name === "application")).toEqual([
-					{ name: "application", value: "mobile", setAt: timeOrigin },
+				expect(request.attributes.filter((a) => a.name === "sdk_name")).toEqual([
+					{ name: "sdk_name", value: "custom-wrapper", setAt: timeOrigin },
 				]);
-				expect(request.attributes.find((a) => a.name === "sdk_name")).toBeDefined();
+				expect(request.attributes.find((a) => a.name === "sdk_version")).toBeDefined();
 
 				done();
 			});
@@ -8981,7 +9132,7 @@ describe("Context", () => {
 			const context = new Context(sdk, optionsWithSystemAttrs, contextParams, getContextResponse);
 			publisher.publish.mockReturnValue(Promise.resolve());
 
-			context.attribute("application", "mobile");
+			context.attribute("sdk_name", "custom-wrapper");
 			context.treatment("exp_test_ab");
 
 			const NativeSet = global.Set;
@@ -8996,10 +9147,10 @@ describe("Context", () => {
 			publishing.then(() => {
 				expect(publisher.publish).toHaveBeenCalledTimes(1);
 				const request = publisher.publish.mock.calls[0][0];
-				expect(request.attributes.filter((a) => a.name === "application")).toEqual([
-					{ name: "application", value: "mobile", setAt: timeOrigin },
+				expect(request.attributes.filter((a) => a.name === "sdk_name")).toEqual([
+					{ name: "sdk_name", value: "custom-wrapper", setAt: timeOrigin },
 				]);
-				expect(request.attributes.find((a) => a.name === "sdk_name")).toBeDefined();
+				expect(request.attributes.find((a) => a.name === "sdk_version")).toBeDefined();
 
 				done();
 			});

@@ -148,6 +148,7 @@ export type ContextOptions = {
 	eventLogger?: EventLogger;
 	refreshPeriod: number;
 	publishDelay: number;
+	// Publishes `sdk_name` and `sdk_version`. Audiences always see `application` and `environment` regardless.
 	includeSystemAttributes?: boolean;
 };
 
@@ -549,23 +550,29 @@ export default class Context {
 		}
 	}
 
+	// Non-empty `application` and `environment` names from the client config, which the collector also
+	// attaches to every exposure server-side, so audiences and rule conditions can target them.
+	private _getSystemAttributes(): Record<string, string> {
+		const client = this._sdk.getClient();
+		const systemAttrs: Record<string, string> = {};
+		const applicationName = client.getApplication()?.name;
+		if (typeof applicationName === "string" && applicationName.length > 0) {
+			systemAttrs["application"] = applicationName;
+		}
+		const environmentName = client.getEnvironment();
+		if (typeof environmentName === "string" && environmentName.length > 0) {
+			systemAttrs["environment"] = environmentName;
+		}
+		return systemAttrs;
+	}
+
+	// System attributes first, then user attributes on top, so a user-set value always wins, even one set
+	// after an assignment was cached (the `_attrsSeq` bump invalidates it).
 	private _getAttributesMap(): Record<string, unknown> {
 		if (this._attrsMapCache !== null && this._attrsMapCacheSeq === this._attrsSeq) {
 			return this._attrsMapCache;
 		}
-		const attrs: Record<string, unknown> = {};
-		if (this._opts.includeSystemAttributes === true) {
-			const client = this._sdk.getClient();
-			const app = client.getApplication();
-			attrs["application"] = app.name;
-			attrs["environment"] = client.getEnvironment() ?? null;
-			if (
-				(typeof app.version === "string" && app.version.length > 0) ||
-				(typeof app.version === "number" && app.version > 0)
-			) {
-				attrs["app_version"] = app.version;
-			}
-		}
+		const attrs: Record<string, unknown> = this._getSystemAttributes();
 		for (const attr of this._attrs) {
 			attrs[attr.name] = attr.value;
 		}
@@ -1100,7 +1107,6 @@ export default class Context {
 
 		if (this._opts.includeSystemAttributes === true) {
 			const client = this._sdk.getClient();
-			const app = client.getApplication();
 			// A plain object, not a Set: the browser bundle still supports IE 10, which has no Set.
 			const userNames: Record<string, true> = {};
 			for (const x of this._attrs) userNames[x.name] = true;
@@ -1112,14 +1118,6 @@ export default class Context {
 
 			addSystemAttribute("sdk_name", client.getAgent());
 			addSystemAttribute("sdk_version", SDK_VERSION);
-			addSystemAttribute("application", app.name);
-			addSystemAttribute("environment", client.getEnvironment() ?? null);
-			if (
-				(typeof app.version === "string" && app.version.length > 0) ||
-				(typeof app.version === "number" && app.version > 0)
-			) {
-				addSystemAttribute("app_version", app.version);
-			}
 		}
 
 		for (const x of this._attrs) {
