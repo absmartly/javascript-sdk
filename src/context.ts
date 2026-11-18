@@ -113,13 +113,14 @@ type Assignment = {
 	switchbackSilent?: boolean;
 };
 
-// The cache slots of one switchback experiment: the bare-name slot (before the anchor or with an
-// unservable schedule) and at most SWITCHBACK_RETAINED_PERIODS period slots, all of one generation.
+// The cache slots of one switchback experiment, all of one generation and kept apart from
+// `_assignments` so no experiment name can collide with them: the period-less slot (before the anchor
+// or with an unservable schedule) and at most SWITCHBACK_RETAINED_PERIODS period slots.
 type SwitchbackEpoch = {
 	generation: number;
 	periods: number[];
-	// Period index -> slot, kept apart from `_assignments` so no experiment name can collide with it.
 	slots: Record<number, Assignment>;
+	periodless?: Assignment;
 };
 
 const SWITCHBACK_RETAINED_PERIODS = 2;
@@ -424,15 +425,15 @@ export default class Context {
 				for (const period in slots) {
 					if (this._isSwitchbackSlotWithoutUnit(slots[period])) delete slots[period];
 				}
+				const periodless = epochs[experimentName].periodless;
+				if (periodless !== undefined && this._isSwitchbackSlotWithoutUnit(periodless)) {
+					delete epochs[experimentName].periodless;
+				}
 			}
 		}
 
 		for (const experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
-			if (assignment.switchbackServing !== undefined) {
-				if (this._isSwitchbackSlotWithoutUnit(assignment)) delete this._assignments[experimentName];
-				continue;
-			}
 			if (assignment.unitType !== unitType || assignment.exposed) continue;
 
 			const hasMissingHoldoutEntry = assignment.holdoutAssignments?.some(
@@ -967,15 +968,9 @@ export default class Context {
 			? this._cassignments[experimentName]
 			: undefined;
 
-		// The bare-name slot can still hold a unit assignment from before a refresh made the experiment a
-		// switchback, so only a slot of this generation is reused; `_assign` drops older switchback slots.
-		const cached: Assignment | undefined =
-			periodIndex === null
-				? Object.prototype.hasOwnProperty.call(this._assignments, experimentName)
-					? this._assignments[experimentName]
-					: undefined
-				: this._switchbackEpochs?.[experimentName]?.slots[periodIndex];
-		const current = cached?.switchbackGeneration === switchback.generation ? cached : undefined;
+		// `_assign` dropped the slots of any earlier generation, so a slot found here is current.
+		const epoch = this._switchbackEpochs?.[experimentName];
+		const current = periodIndex === null ? epoch?.periodless : epoch?.slots[periodIndex];
 		if (current !== undefined && this._isSwitchbackAssignmentCurrent(experiment, current, hasOverride, custom)) {
 			return current;
 		}
@@ -1186,18 +1181,17 @@ export default class Context {
 		);
 	}
 
-	// Drops every slot of an experiment's switchback epoch (its period slots and its bare-name slot)
-	// once the installed definition is gone, is not a switchback or carries another generation.
+	// Drops every slot of an experiment's switchback epoch once the installed definition is gone, is not
+	// a switchback or carries another generation.
 	private _dropStaleSwitchbackEpoch(experimentName: string, experiment: Experiment | null) {
 		const epochs = this._switchbackEpochs as Record<string, SwitchbackEpoch>;
 		const epoch = epochs[experimentName];
 		if (epoch === undefined || experiment?.switchback?.generation === epoch.generation) return;
 
-		delete this._assignments[experimentName];
 		delete epochs[experimentName];
 	}
 
-	// Installs a slot: the bare-name slot in `_assignments`, a period slot in its epoch. At most
+	// Installs a slot in the experiment's epoch. At most
 	// SWITCHBACK_RETAINED_PERIODS period slots are kept per experiment, evicting the lowest index other
 	// than the one just installed. Re-entering an evicted period (a clock moved back by two or more
 	// periods) resolves and exposes it once more.
@@ -1213,7 +1207,7 @@ export default class Context {
 		const epoch =
 			epochs[experimentName] ?? (epochs[experimentName] = { generation, periods: [], slots: Object.create(null) });
 		if (periodIndex === null) {
-			this._assignments[experimentName] = assignment;
+			epoch.periodless = assignment;
 			return;
 		}
 

@@ -1198,7 +1198,8 @@ describe("switchback serving through Context", () => {
 		expect(context.peek("exp_periods")).toEqual(EXPECTED_2_ARMS[0]);
 		clock = ANCHOR + HOUR;
 		expect(context.peek("exp_periods")).toEqual(EXPECTED_2_ARMS[1]);
-		expect(Object.keys(context._assignments)).toEqual(["exp_sb"]);
+		expect(Object.keys(context._assignments)).toEqual([]);
+		expect(context._switchbackEpochs.exp_sb.periodless).toBeDefined();
 		expect(Object.keys(context._switchbackEpochs.exp_periods.slots)).toEqual(["0", "1"]);
 
 		const unit = asUnit(sb(2, HOUR));
@@ -1267,18 +1268,32 @@ describe("switchback serving through Context", () => {
 		expect((await publishExposures(context)).map((e) => e.name)).toEqual(["exp_sb", "exp_sb\u001f0"]);
 	});
 
-	// The epoch map has no prototype: before it held this experiment's epoch, a switchback named like an
-	// Object member found Object.prototype's member and threw.
-	it("keeps the epoch of a switchback named like an Object member", () => {
-		const names = ["constructor", "toString", "hasOwnProperty", "valueOf"];
-		const context = createContext(dataOf(sb(2, HOUR), ...names.map((n, i) => switchback(i + 2, n, 2, HOUR))));
-		clock = ANCHOR + 10;
-		context.treatment("exp_sb");
-		const now = clock;
-		for (const n of names) {
-			expect(() => context._assignSwitchback(n, context._index[n], now)).not.toThrow();
-			expect(context._assignSwitchback(n, context._index[n], now).variant).toEqual(EXPECTED_2_ARMS[0]);
-			expect(Object.keys(context._switchbackEpochs[n].slots)).toEqual(["0"]);
+	// Switchbacks named like Object members (`__proto__` included) are cached and exposed like any
+	// other, through every read API, before the anchor and in a period, and setting a unit later works.
+	it("serves switchbacks named like Object members", async () => {
+		const names = ["constructor", "toString", "hasOwnProperty", "valueOf", "__proto__"];
+		const inPeriod = names.map((n, i) => switchback(i + 1, n, 2, HOUR));
+		const preAnchor = names.map((n, i) => ({ ...switchback(i + 11, `${n}_pre`, 2, HOUR), name: n }));
+		for (const [label, experiments, expected, exposed] of [
+			["in a period", inPeriod, EXPECTED_2_ARMS[0], names.length],
+			["before the anchor", preAnchor.map((e) => ({ ...e, switchbackStartAt: ANCHOR + 10 * HOUR })), 0, 0],
+		]) {
+			publisher.publish.mockClear();
+			clock = ANCHOR + 10;
+			const context = createContext(dataOf(...experiments), { device_id: "d" });
+			context.unit(UNIT_TYPE, UID);
+			for (const n of names) {
+				for (let i = 0; i < 2; ++i) {
+					expect([label, n, context.treatment(n), context.peek(n)]).toEqual([label, n, expected, expected]);
+				}
+			}
+			expect([label, context.pending()]).toEqual([label, exposed]);
+			context.override("constructor", 1);
+			expect(context.treatment("constructor")).toEqual(1);
+			// A unit set after the resolutions walks every cached slot.
+			expect(() => context.unit("user_id", "u")).not.toThrow();
+			const published = (await publishExposures(context)).map((e) => e.name);
+			expect([label, published]).toEqual([label, exposed === 0 ? ["constructor"] : [...names, "constructor"]]);
 		}
 	});
 

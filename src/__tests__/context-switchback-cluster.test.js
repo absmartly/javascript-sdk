@@ -137,7 +137,8 @@ function createContext(attributes, experiments, units) {
 // The cached "sbc" resolution at the clock's current reading (Java's switchbackResolutionForTest).
 function resolution(context) {
 	const periods = Object.values(context._switchbackEpochs?.sbc?.slots ?? {});
-	const slots = "sbc" in context._assignments ? [context._assignments.sbc, ...periods] : periods;
+	const periodless = context._switchbackEpochs?.sbc?.periodless;
+	const slots = periodless !== undefined ? [periodless, ...periods] : periods;
 	expect(slots.length).toEqual(1);
 	return slots[0];
 }
