@@ -128,9 +128,8 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			customFieldValues: null,
 		};
 		const context = sdk.createContextWith({ units: { session_id: "u1" } }, { experiments: [plain] });
-		const first = context.treatment("plain");
-
 		const spy = jest.spyOn(context, "_getAttributesMap");
+		const first = context.treatment("plain");
 		for (let i = 0; i < 50; i++) {
 			context.attribute(`a${i}`, i);
 			for (let j = 0; j < 5; j++) expect(context.treatment("plain")).toBe(first);
@@ -168,6 +167,15 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			'export const SDK_VERSION = "9.8.7-fixture.1";\n'
 		);
 		fs.rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("builds the default agent from the generated SDK_VERSION, not a literal", () => {
+		jest.isolateModules(() => {
+			jest.doMock("../version", () => ({ SDK_VERSION: "9.8.7-fixture.1" }));
+			const IsolatedSDK = require("../sdk").default; // eslint-disable-line @typescript-eslint/no-var-requires
+			expect(new IsolatedSDK(options).getClient().getAgent()).toBe("absmartly-javascript-sdk/9.8.7-fixture.1");
+		});
+		jest.dontMock("../version");
 	});
 
 	it("derives the SDK agent version from package.json, not a literal", () => {
@@ -273,6 +281,44 @@ describe("1.13.4 source and behaviour compatibility", () => {
 
 		const spy = jest.spyOn(AudienceMatcher.prototype, "evaluate");
 		for (let i = 0; i < 100; i++) expect(context.treatment("aud")).toBe(first);
+		expect(spy).toHaveBeenCalledTimes(1);
+		spy.mockRestore();
+	});
+
+	it("builds the attribute map once per setAttribute across audience experiments", () => {
+		const audienceExperiment = (id, experimentName) => ({
+			id,
+			name: experimentName,
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: JSON.stringify({ filter: [{ eq: [{ var: "country" }, { value: "US" }] }] }),
+			audienceStrict: false,
+			customFieldValues: null,
+		});
+		const sdk = new SDK(options);
+		const context = sdk.createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [audienceExperiment(11, "aud1"), audienceExperiment(12, "aud2")] }
+		);
+		context.treatment("aud1");
+		context.treatment("aud2");
+		context.attribute("country", "US");
+
+		const spy = jest.spyOn(context, "_getSystemAttributes");
+		context.treatment("aud1");
+		context.treatment("aud2");
 		expect(spy).toHaveBeenCalledTimes(1);
 		spy.mockRestore();
 	});
