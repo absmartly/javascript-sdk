@@ -1267,6 +1267,21 @@ describe("switchback serving through Context", () => {
 		expect((await publishExposures(context)).map((e) => e.name)).toEqual(["exp_sb", "exp_sb\u001f0"]);
 	});
 
+	// The epoch map has no prototype: before it held this experiment's epoch, a switchback named like an
+	// Object member found Object.prototype's member and threw.
+	it("keeps the epoch of a switchback named like an Object member", () => {
+		const names = ["constructor", "toString", "hasOwnProperty", "valueOf"];
+		const context = createContext(dataOf(sb(2, HOUR), ...names.map((n, i) => switchback(i + 2, n, 2, HOUR))));
+		clock = ANCHOR + 10;
+		context.treatment("exp_sb");
+		const now = clock;
+		for (const n of names) {
+			expect(() => context._assignSwitchback(n, context._index[n], now)).not.toThrow();
+			expect(context._assignSwitchback(n, context._index[n], now).variant).toEqual(EXPECTED_2_ARMS[0]);
+			expect(Object.keys(context._switchbackEpochs[n].slots)).toEqual(["0"]);
+		}
+	});
+
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {
 		const context = createContext(dataOf(sb(2, HOUR)));
 		clock = ANCHOR + 10;

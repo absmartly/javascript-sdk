@@ -961,14 +961,19 @@ export default class Context {
 		const switchback = experiment.switchback as { generation: number; sources: SwitchbackSources | null };
 		const data = experiment.data;
 		const periodIndex = switchback.sources !== null ? switchbackPeriodIndex(data, now) : null;
-		const hasOverride = experimentName in this._overrides;
-		const custom = experimentName in this._cassignments ? this._cassignments[experimentName] : undefined;
+		// Own properties only: an experiment can be named like an Object member (`constructor`).
+		const hasOverride = Object.prototype.hasOwnProperty.call(this._overrides, experimentName);
+		const custom = Object.prototype.hasOwnProperty.call(this._cassignments, experimentName)
+			? this._cassignments[experimentName]
+			: undefined;
 
 		// The bare-name slot can still hold a unit assignment from before a refresh made the experiment a
 		// switchback, so only a slot of this generation is reused; `_assign` drops older switchback slots.
 		const cached: Assignment | undefined =
 			periodIndex === null
-				? this._assignments[experimentName]
+				? Object.prototype.hasOwnProperty.call(this._assignments, experimentName)
+					? this._assignments[experimentName]
+					: undefined
 				: this._switchbackEpochs?.[experimentName]?.slots[periodIndex];
 		const current = cached?.switchbackGeneration === switchback.generation ? cached : undefined;
 		if (current !== undefined && this._isSwitchbackAssignmentCurrent(experiment, current, hasOverride, custom)) {
@@ -1202,8 +1207,11 @@ export default class Context {
 		periodIndex: number | null,
 		assignment: Assignment
 	) {
-		const epochs = this._switchbackEpochs ?? (this._switchbackEpochs = {});
-		const epoch = epochs[experimentName] ?? (epochs[experimentName] = { generation, periods: [], slots: {} });
+		// No prototype, so an experiment named like an Object member (`constructor`) has no epoch yet.
+		const epochs =
+			this._switchbackEpochs ?? (this._switchbackEpochs = Object.create(null) as Record<string, SwitchbackEpoch>);
+		const epoch =
+			epochs[experimentName] ?? (epochs[experimentName] = { generation, periods: [], slots: Object.create(null) });
 		if (periodIndex === null) {
 			this._assignments[experimentName] = assignment;
 			return;
