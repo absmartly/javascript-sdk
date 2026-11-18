@@ -58,8 +58,10 @@ export default class SDK {
 			agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 		};
 
+		// Every key present on the options is passed through, even when its value is undefined, as 1.13.4
+		// did (so `agent: undefined` still overrides the default and the Client rejects it).
 		for (const key of clientOptionKeys) {
-			if (options?.[key] !== undefined) {
+			if (options != null && Object.prototype.hasOwnProperty.call(options, key)) {
 				extracted[key] = options[key] as never;
 			}
 		}

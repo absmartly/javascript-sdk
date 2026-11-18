@@ -101,6 +101,29 @@ describe("SDK", () => {
 			done();
 		});
 
+		it("should pass explicitly undefined client options through, as 1.13.4 did", (done) => {
+			const options = {
+				application: "application",
+				apiKey: "apikey",
+				endpoint: "localhost:8080",
+				environment: "test",
+				agent: undefined,
+				timeout: undefined,
+				keepalive: undefined,
+			};
+
+			new SDK(options); // eslint-disable-line no-new
+
+			const passed = Client.mock.calls[Client.mock.calls.length - 1][0];
+			expect(Object.prototype.hasOwnProperty.call(passed, "agent")).toBe(true);
+			expect(passed.agent).toBeUndefined();
+			expect(Object.prototype.hasOwnProperty.call(passed, "timeout")).toBe(true);
+			expect(Object.prototype.hasOwnProperty.call(passed, "keepalive")).toBe(true);
+			expect(Object.prototype.hasOwnProperty.call(passed, "retries")).toBe(false);
+
+			done();
+		});
+
 		it("should set default values for unspecified client options", (done) => {
 			const options = {
 				application: "application",
