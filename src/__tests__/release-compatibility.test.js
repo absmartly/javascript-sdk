@@ -1,5 +1,6 @@
 import SDK from "../sdk";
 import { SDK_VERSION } from "../version";
+import pkg from "../../package.json";
 import Client from "../client";
 import sdkFetch from "../fetch";
 import { AudienceMatcher } from "../matcher";
@@ -43,6 +44,62 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			expect(sdk.getClient().getApplication().version).toBe(version);
 		}
 	);
+
+	it("bounds retries by a per-request timeout that overrides the client timeout", async () => {
+		sdkFetch.mockRejectedValue(new Error("connection refused"));
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		const client = new Client({ ...options, timeout: 20, retries: 3 });
+
+		// With the client's 20 ms as the retry budget (1.13.4) this gives up after 2 attempts.
+		// The request's own 1000 ms budget now applies, so all 3 retries run.
+		const error = await client.request({ method: "GET", path: "/context", timeout: 1000 }).catch((e) => e);
+		warn.mockRestore();
+		expect(error.name).toBe("RetryError");
+		expect(sdkFetch).toHaveBeenCalledTimes(4);
+	});
+
+	it("logs an unparsable audience to the console as 1.13.4 did, without a logger error event", () => {
+		const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+		const eventLogger = jest.fn();
+		const sdk = new SDK({ ...options, eventLogger });
+		const context = sdk.createContextWith(
+			{ units: { session_id: "u1" } },
+			{
+				experiments: [
+					{
+						id: 9,
+						name: "badaud",
+						iteration: 1,
+						unitType: "session_id",
+						seedHi: 1,
+						seedLo: 2,
+						split: [0.5, 0.5],
+						trafficSeedHi: 3,
+						trafficSeedLo: 4,
+						trafficSplit: [0, 1],
+						fullOnVariant: 0,
+						applications: [{ name: "web" }],
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: null },
+						],
+						audience: "{not json",
+						audienceStrict: false,
+						customFieldValues: null,
+					},
+				],
+			}
+		);
+		context.treatment("badaud");
+		expect(errorSpy).toHaveBeenCalledWith(expect.any(SyntaxError));
+		expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
+		errorSpy.mockRestore();
+	});
+
+	it("derives the SDK agent version from package.json, not a literal", () => {
+		expect(SDK_VERSION).toBe(pkg.version);
+		expect(new SDK(options).getClient().getAgent()).toBe(`absmartly-javascript-sdk/${pkg.version}`);
+	});
 
 	it("preserves explicit custom agents and the unauthenticated helper", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
@@ -112,6 +169,40 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		spy.mockRestore();
 	});
 
+	it("evaluates an audience once after an unrelated setAttribute, not on every cached read", () => {
+		const sdk = new SDK(options);
+		const experiment = {
+			id: 8,
+			name: "aud",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: JSON.stringify({ filter: [{ eq: [{ var: "country" }, { value: "US" }] }] }),
+			audienceStrict: false,
+			customFieldValues: null,
+		};
+		const context = sdk.createContextWith({ units: { session_id: "u1" } }, { experiments: [experiment] });
+		context.attribute("country", "US");
+		const first = context.treatment("aud");
+		context.attribute("plan", "pro");
+
+		const spy = jest.spyOn(AudienceMatcher.prototype, "evaluate");
+		for (let i = 0; i < 100; i++) expect(context.treatment("aud")).toBe(first);
+		expect(spy).toHaveBeenCalledTimes(1);
+		spy.mockRestore();
+	});
+
 	it("routes getContext() through a subclass's getUnauthed() override", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
 		const seen = [];
@@ -152,6 +243,17 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			audienceStrict: true,
 			customFieldValues: null,
 		};
+
+		it("still evaluates audiences when only getApplication exists", () => {
+			const client = { ...legacyClient(), getApplication: () => ({ name: "web", version: 0 }) };
+			const sdk = new SDK({ ...options, client });
+			const context = sdk.createContextWith(
+				{ units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" } },
+				{ experiments: [strictCountryExperiment] }
+			);
+			context.attribute("country", "US");
+			expect(context.treatment("exp")).toBe(1);
+		});
 
 		it("still evaluates audiences", () => {
 			const sdk = new SDK({ ...options, client: legacyClient() });

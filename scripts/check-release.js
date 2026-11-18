@@ -2,7 +2,7 @@
 /* global BigInt */
 const { execFileSync } = require("child_process");
 const { appendFileSync } = require("fs");
-const { name, version } = require("../package.json");
+const { name, version, repository } = require("../package.json");
 
 // npm distribution tags cannot be valid semver ranges, so use v1-lts rather
 // than v1 for older majors. Reject malformed versions instead of guessing.
@@ -46,12 +46,22 @@ function releaseTag(packageVersion, latestVersion, gitTag) {
 	return "latest";
 }
 
+// npm provenance requires package.json repository.url to name the repository the workflow runs in.
+function checkRepository(repo, githubRepository) {
+	const url = repo && typeof repo === "object" ? repo.url : repo;
+	const match = typeof url === "string" && /github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/.exec(url);
+	if (!match || !githubRepository || match[1].toLowerCase() !== githubRepository.toLowerCase()) {
+		throw new Error(`package.json repository.url must point at github.com/${githubRepository}`);
+	}
+}
+
 function main() {
 	const event = process.env.GITHUB_EVENT_NAME;
 	if (event !== "push" && event !== "workflow_dispatch") {
 		throw new Error("Unsupported workflow event");
 	}
 	const gitTag = event === "push" ? process.env.GITHUB_REF_NAME : `v${version}`;
+	checkRepository(repository, process.env.GITHUB_REPOSITORY);
 	// Check the tag before making a registry request.
 	majorOf(version);
 	if (gitTag !== `v${version}`) {
@@ -90,4 +100,4 @@ if (require.main === module) {
 	}
 }
 
-module.exports = { majorOf, releaseTag };
+module.exports = { majorOf, releaseTag, checkRepository };

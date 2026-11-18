@@ -10,7 +10,8 @@
 - Semantic-version expression operators (`semver_eq/gt/gte/lt/lte`) and
   `Evaluator.versionCompare`; old expression operators keep their conversion rules.
 - Optional `includeSystemAttributes` publishes `sdk_name` and `sdk_version` only.
-- Tag-driven npm Trusted Publishing and a manual publish dry run.
+- Tag-driven npm Trusted Publishing and a manual publish dry run, plus a
+  `repository` field in `package.json`, which npm provenance requires.
 
 ### Changed
 
@@ -41,6 +42,11 @@
 - Shared variable keys retain experiment-id priority and fall through unassigned
   experiments or variants missing the key; peek queues no exposures. The existing
   `variableKeys()` map-of-lists return shape is unchanged.
+- A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
+  client timeout for it. Affected: callers passing a per-request `timeout` that
+  differs from the client one, who now get more (or fewer) retries to match it.
+  `timeout: 0` keeps its 1.13.4 meaning: a request value of 0 falls back to the
+  client timeout, and a client timeout of 0 means no retries.
 
 ### Fixed
 
@@ -50,9 +56,6 @@
   promises or lose/duplicate successfully delivered events.
 - Malformed variant configs are isolated rather than failing the entire context;
   audience evaluation exceptions fail strict audiences closed.
-- A per-request `timeout` now also bounds the retry budget (previously only the
-  client timeout did). A `timeout` of 0 keeps its 1.13.4 meaning: a request value
-  of 0 falls back to the client timeout, and a client timeout of 0 means no retries.
 - The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
   it is now transpiled, and the build fails if `dist/` is not ES5.
 - Query keys are encoded and unmatched query surrogates no longer throw URIError.

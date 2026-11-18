@@ -8702,7 +8702,8 @@ describe("Context", () => {
 
 		it("should console an error when a field type is invalid", () => {
 			const errorSpy = jest.spyOn(console, "error");
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
@@ -8710,6 +8711,7 @@ describe("Context", () => {
 			expect(errorSpy).toHaveBeenCalledWith(
 				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
 			);
+			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
 		});
 	});
 

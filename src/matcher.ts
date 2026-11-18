@@ -35,7 +35,9 @@ export class AudienceMatcher {
 		let audience;
 		try {
 			audience = JSON.parse(audienceString);
-		} catch (_error) {
+		} catch (error) {
+			// 1.13.4 logged unparsable audiences to the console; keep that diagnostic.
+			console.error(error);
 			return null;
 		}
 

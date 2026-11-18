@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires, no-shadow */
 /* global BigInt */
-const { majorOf, releaseTag } = require("../check-release");
+const { majorOf, releaseTag, checkRepository } = require("../check-release");
+const pkg = require("../../package.json");
 
 test("uses a non-semver lts tag for older major releases", () => {
 	expect(releaseTag("1.14.0", "2.0.0", "v1.14.0")).toBe("v1-lts");
@@ -32,4 +33,10 @@ test("refuses an older same-major release instead of moving latest back", () => 
 	expect(() => releaseTag("1.13.5", "1.14.0", "v1.13.5")).toThrow(/not newer than latest/);
 	expect(() => releaseTag("1.14.0", "1.14.0", "v1.14.0")).toThrow(/not newer than latest/);
 	expect(releaseTag("1.14.1", "2.0.0", "v1.14.1")).toBe("v1-lts");
+});
+
+test("package.json repository matches this repo, as npm provenance requires", () => {
+	expect(() => checkRepository(pkg.repository, "absmartly/javascript-sdk")).not.toThrow();
+	expect(() => checkRepository(undefined, "absmartly/javascript-sdk")).toThrow(/repository.url/);
+	expect(() => checkRepository(pkg.repository, "someone/fork")).toThrow(/repository.url/);
 });
