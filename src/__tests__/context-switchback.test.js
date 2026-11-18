@@ -1187,8 +1187,8 @@ describe("switchback serving through Context", () => {
 		expect(context.pending()).toEqual(1);
 	});
 
-	// The unit path reads the bare-name slot, so the pre-anchor switchback slot must not survive the
-	// switch to a unit experiment, and no period slot outlives its epoch.
+	// Switchback slots live in the experiment's epoch, which the switch to a unit experiment drops, so
+	// neither the pre-anchor slot nor any period slot outlives it.
 	it("drops every switchback slot when the experiment becomes a unit experiment", async () => {
 		const preAnchor = sb(2, HOUR);
 		preAnchor.switchbackStartAt = ANCHOR + 10 * HOUR;
@@ -1217,8 +1217,8 @@ describe("switchback serving through Context", () => {
 		]);
 	});
 
-	// A unit experiment's cached assignment shares the bare-name key with the pre-anchor, unservable and
-	// legacy switchback slots, so it must not be served once a refresh makes the experiment a switchback.
+	// A unit assignment cached before a refresh made the experiment a switchback must not be served for
+	// its pre-anchor, unservable or legacy (period-less) resolution.
 	it("does not reuse a unit assignment when a refresh makes the experiment a switchback without a period", async () => {
 		for (const changes of [
 			{ switchbackStartAt: ANCHOR + 10 * HOUR },
