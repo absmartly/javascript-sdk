@@ -422,8 +422,13 @@ export default class Context {
 		if (epochs !== undefined) {
 			for (const experimentName in epochs) {
 				const slots = epochs[experimentName].slots;
-				for (const period in slots) {
-					if (this._isSwitchbackSlotWithoutUnit(slots[period])) delete slots[period];
+				const epoch = epochs[experimentName];
+				for (let i = epoch.periods.length - 1; i >= 0; --i) {
+					const period = epoch.periods[i];
+					if (slots[period] !== undefined && this._isSwitchbackSlotWithoutUnit(slots[period])) {
+						delete slots[period];
+						epoch.periods.splice(i, 1);
+					}
 				}
 				const periodless = epochs[experimentName].periodless;
 				if (periodless !== undefined && this._isSwitchbackSlotWithoutUnit(periodless)) {

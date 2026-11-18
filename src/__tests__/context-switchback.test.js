@@ -1380,6 +1380,22 @@ describe("switchback serving through Context", () => {
 		expect(peeked._switchbackEpochs.exp_sb.periodless).toBeUndefined();
 	});
 
+	it("removes invalidated period indices when a linked unit arrives", () => {
+		const context = createContext(dataOf(sb(2, HOUR)), {});
+		for (const period of [2, 3]) {
+			clock = ANCHOR + period * HOUR;
+			context.treatment("exp_sb");
+		}
+		context.unit(UNIT_TYPE, UID);
+		expect(context._switchbackEpochs.exp_sb.periods).toEqual([]);
+		for (const period of [0, 1, 0]) {
+			clock = ANCHOR + period * HOUR;
+			context.treatment("exp_sb");
+		}
+		expect(context.pending()).toEqual(2);
+		expect(context._switchbackEpochs.exp_sb.periods).toEqual([0, 1]);
+	});
+
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {
 		const context = createContext(dataOf(sb(2, HOUR)));
 		clock = ANCHOR + 10;
