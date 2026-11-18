@@ -213,7 +213,12 @@ export function resolveSwitchbackServing(
 function isAllowed(allowedValues: unknown, key: string) {
 	if (allowedValues == null) return true;
 	if (!Array.isArray(allowedValues)) return false;
-	return allowedValues.length === 0 || allowedValues.indexOf(key) >= 0;
+	if (allowedValues.length === 0) return true;
+	// Compared as text, as Java reads a JSON number in this string list.
+	for (const allowed of allowedValues) {
+		if (allowed != null && String(allowed) === key) return true;
+	}
+	return false;
 }
 
 // The Collector's path for a missing, empty or unreadable cluster map: the declared unitType only

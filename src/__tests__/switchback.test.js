@@ -395,6 +395,13 @@ describe("switchback serving", () => {
 		expect(resolveSwitchbackServing(types, p, [], both, reader({ session_store: "a" })).status).toEqual(
 			SWITCHBACK_ELIGIBLE
 		);
+		// Entries compare as text: a numeric entry admits its decimal key.
+		expect(resolveSwitchbackServing(types, p, [17], both, reader({ session_store: "17" })).status).toEqual(
+			SWITCHBACK_ELIGIBLE
+		);
+		expect(resolveSwitchbackServing(types, p, [null], both, reader({ session_store: "null" })).status).toEqual(
+			SWITCHBACK_INELIGIBLE
+		);
 		// A malformed allow-list admits nothing rather than everything.
 		expect(resolveSwitchbackServing(types, p, "a", both, reader({ session_store: "a" })).status).toEqual(
 			SWITCHBACK_INELIGIBLE
