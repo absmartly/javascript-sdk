@@ -950,10 +950,12 @@ export default class Context {
 		const hasOverride = experimentName in this._overrides;
 		const custom = experimentName in this._cassignments ? this._cassignments[experimentName] : undefined;
 
-		// `_assign` already dropped the slots of an earlier generation (see `_dropStaleSwitchbackEpoch`).
+		// The bare-name slot can still hold a unit assignment from before a refresh made the experiment a
+		// switchback, so only a slot of this generation is reused; `_assign` drops older switchback slots.
 		const cached: Assignment | undefined = this._assignments[cacheKey];
-		if (cached !== undefined && this._isSwitchbackAssignmentCurrent(experiment, cached, hasOverride, custom)) {
-			return cached;
+		const current = cached?.switchbackGeneration === switchback.generation ? cached : undefined;
+		if (current !== undefined && this._isSwitchbackAssignmentCurrent(experiment, current, hasOverride, custom)) {
+			return current;
 		}
 
 		const assignment: Assignment = {
@@ -978,7 +980,7 @@ export default class Context {
 
 		// Within one period slot the serving unit and cluster key are read once: a slot rebuilt in the
 		// same epoch, e.g. after an attribute change flipped the audience, keeps its cluster.
-		const cachedServing = cached?.switchbackServing;
+		const cachedServing = current?.switchbackServing;
 		const serving =
 			cachedServing !== undefined && cachedServing.status !== SWITCHBACK_ABSENT
 				? cachedServing

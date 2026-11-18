@@ -1216,6 +1216,30 @@ describe("switchback serving through Context", () => {
 		]);
 	});
 
+	// A unit experiment's cached assignment shares the bare-name key with the pre-anchor, unservable and
+	// legacy switchback slots, so it must not be served once a refresh makes the experiment a switchback.
+	it("does not reuse a unit assignment when a refresh makes the experiment a switchback without a period", async () => {
+		for (const changes of [
+			{ switchbackStartAt: ANCHOR + 10 * HOUR },
+			{ switchbackPeriodMs: 0 },
+			{ switchbackClusters: null },
+		]) {
+			publisher.publish.mockClear();
+			clock = ANCHOR + 10;
+			const unit = asUnit(sb(2, HOUR));
+			unit.seedHi = 1;
+			const context = createContext(dataOf(unit));
+			const expected = new VariantAssigner(hashUnit(UID)).assign(unit.split, unit.seedHi, unit.seedLo);
+			expect(expected).toEqual(1);
+			expect(context.treatment("exp_sb")).toEqual(1);
+
+			await refreshTo(context, { ...sb(2, HOUR), seedHi: 1, ...changes });
+			expect([changes, context.treatment("exp_sb")]).toEqual([changes, 0]);
+			expect([changes, context.variableValue("sb.arm", -1)]).toEqual([changes, 0]);
+			expect([changes, context.pending()]).toEqual([changes, 1]);
+		}
+	});
+
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {
 		const context = createContext(dataOf(sb(2, HOUR)));
 		clock = ANCHOR + 10;
