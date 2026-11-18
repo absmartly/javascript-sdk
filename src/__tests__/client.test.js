@@ -4,7 +4,6 @@ import fetch from "../fetch";
 // eslint-disable-next-line no-shadow
 import { AbortController } from "../abort";
 import { AbortError, RetryError, TimeoutError } from "../errors"; //eslint-disable-line no-shadow
-import { SDK_VERSION } from "../version";
 
 jest.mock("../fetch");
 
@@ -837,7 +836,7 @@ describe("Client", () => {
 			});
 	});
 
-	it("request() should still send headers when auth is explicitly true (deprecated)", (done) => {
+	it("request() should send headers without a warning when auth is explicitly true", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 		const warnSpy = jest.spyOn(console, "warn").mockImplementation();
 
@@ -866,9 +865,7 @@ describe("Client", () => {
 					signal: expect.any(Object),
 				});
 
-				expect(warnSpy).toHaveBeenCalledWith(
-					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
-				);
+				expect(warnSpy).not.toHaveBeenCalled();
 
 				expect(response).toEqual(defaultMockResponse);
 
@@ -934,7 +931,7 @@ describe("Client", () => {
 			});
 	});
 
-	it("getUnauthed() should forward to get()", (done) => {
+	it("getUnauthed() should retain its unauthenticated 1.13 behaviour", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
 		const client = new Client(clientOptions);
@@ -948,14 +945,7 @@ describe("Client", () => {
 				expect(fetch).toHaveBeenCalledTimes(1);
 				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
 					method: "GET",
-					headers: {
-						"Content-Type": "application/json",
-						"X-API-Key": apiKey,
-						"X-Agent": "javascript-client",
-						"X-Environment": "test",
-						"X-Application": "test_app",
-						"X-Application-Version": 1000000,
-					},
+					body: undefined,
 					keepalive: true,
 					signal: expect.any(Object),
 				});
@@ -975,7 +965,7 @@ describe("Client", () => {
 			.publish({
 				units,
 				publishedAt,
-				sdkVersion: SDK_VERSION,
+
 				goals,
 				exposures,
 				attributes,
@@ -996,7 +986,7 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt,
-						sdkVersion: SDK_VERSION,
+
 						goals,
 						exposures,
 						attributes,
@@ -1019,7 +1009,7 @@ describe("Client", () => {
 			.publish({
 				units,
 				publishedAt,
-				sdkVersion: SDK_VERSION,
+
 				goals: [],
 				exposures: [],
 			})
@@ -1039,7 +1029,6 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt,
-						sdkVersion: SDK_VERSION,
 					}),
 					signal: expect.any(Object),
 				});
@@ -1059,7 +1048,7 @@ describe("Client", () => {
 		client
 			.publish({
 				units,
-				sdkVersion: SDK_VERSION,
+
 				goals: [],
 				exposures: [],
 			})
@@ -1079,7 +1068,6 @@ describe("Client", () => {
 					body: JSON.stringify({
 						units,
 						publishedAt: publishedAt + 100,
-						sdkVersion: SDK_VERSION,
 					}),
 					signal: expect.any(Object),
 				});
@@ -1122,7 +1110,7 @@ describe("Client", () => {
 			});
 	});
 
-	it("publish() should include sdkVersion in body", (done) => {
+	it("publish() should retain the 1.13 body shape even for extra input metadata", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
 		const client = new Client(clientOptions);
@@ -1137,7 +1125,7 @@ describe("Client", () => {
 			})
 			.then(() => {
 				const body = JSON.parse(fetch.mock.calls[0][1].body);
-				expect(body.sdkVersion).toEqual("1.2.3");
+				expect(body).not.toHaveProperty("sdkVersion");
 
 				done();
 			});

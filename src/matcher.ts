@@ -86,7 +86,7 @@ export class AudienceMatcher {
 				if (!Array.isArray(rule.environments)) continue;
 
 				if (rule.environments.length > 0) {
-					if (environmentName == null || !rule.environments.includes(environmentName)) {
+					if (environmentName == null || rule.environments.indexOf(environmentName) === -1) {
 						continue;
 					}
 				}

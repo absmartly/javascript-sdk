@@ -4,9 +4,9 @@ import { AbortController } from "./abort";
 // eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import { type AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
-import { type ContextOptions, type ContextParams } from "./context";
-import { type PublishParams } from "./publisher";
+import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
+import { ContextOptions, ContextParams } from "./context";
+import { PublishParams } from "./publisher";
 import { toWellFormedString } from "./utils";
 
 export type FetchResponse = {
@@ -44,6 +44,16 @@ export type ClientOptions = {
 	timeout?: number;
 	keepalive?: boolean;
 };
+
+// The collector reads X-Application-Version as a 64-bit integer and rejects anything else with a 400,
+// so only a whole number of 1 to 18 digits is sent as-is; anything else (e.g. "1.2.3") is sent as 0.
+function applicationVersionHeader(version: number | string): number | string {
+	if (typeof version === "number") {
+		return /^[0-9]{1,18}$/.test(String(version)) ? version : 0;
+	}
+	const trimmed = typeof version === "string" ? version.trim() : "";
+	return /^[0-9]{1,18}$/.test(trimmed) ? trimmed : 0;
+}
 
 type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
 	application: ApplicationObject;
@@ -123,7 +133,6 @@ export default class Client {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
-			sdkVersion: params.sdkVersion,
 		};
 
 		if (Array.isArray(params.goals) && params.goals.length > 0) {
@@ -174,12 +183,6 @@ export default class Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			if (options.auth === true) {
-				console.warn(
-					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
-				);
-			}
-
 			if (options.auth !== false) {
 				opts.headers = {
 					"Content-Type": "application/json",
@@ -187,7 +190,7 @@ export default class Client {
 					"X-Agent": this._opts.agent,
 					"X-Environment": this._opts.environment,
 					"X-Application": this._opts.application.name,
-					"X-Application-Version": this._opts.application.version,
+					"X-Application-Version": applicationVersionHeader(this._opts.application.version),
 				};
 			}
 
@@ -330,8 +333,8 @@ export default class Client {
 		});
 	}
 
-	/** @deprecated Use get() instead. */
+	/** GET without authentication, retained for 1.x consumers. Use get() for SDK headers. */
 	getUnauthed(options: ClientRequestOptions) {
-		return this.get(options);
+		return this.get({ ...options, auth: false });
 	}
 }

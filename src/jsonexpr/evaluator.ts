@@ -3,7 +3,7 @@ import { isEqualsDeep, isObject } from "../utils";
 
 function parseSemver(version: string) {
 	let v = version;
-	if (v.startsWith("v") || v.startsWith("V")) {
+	if (v.charAt(0) === "v" || v.charAt(0) === "V") {
 		v = v.substring(1);
 	}
 

@@ -16,7 +16,7 @@ The A/B Smartly JavaScript SDK is an isomorphic library for Node.js (CommonJS an
 ### npm
 
 ```shell
-npm install @absmartly/javascript-sdk --save
+npm install @absmartly/javascript-sdk@1.14.0 --save
 ```
 
 ### Import in your JavaScript application
@@ -32,10 +32,10 @@ import absmartly from "@absmartly/javascript-sdk";
 
 You can include an optimized and pre-built package directly in your HTML code through [unpkg.com](https://www.unpkg.com).
 
-Simply add the following code to your `head` section to include the latest published version.
+Simply add the following code to your `head` section to include version 1.14.0.
 
 ```html
-<script src="https://unpkg.com/@absmartly/javascript-sdk/dist/absmartly.min.js"></script>
+<script src="https://unpkg.com/@absmartly/javascript-sdk@1.14.0/dist/absmartly.min.js"></script>
 ```
 
 ## Getting Started
@@ -55,7 +55,7 @@ const sdk = new absmartly.SDK({
 });
 ```
 
-The `application` option can also be an object with `name` and `version` to track which version of your application is generating events. The version can be a number or a semver string:
+The `application` option can also be an object with `name` and `version` to track which version of your application is generating events. The configured version can be a number or a string. The collector accepts only 1–18 ASCII digits in `X-Application-Version`; other values are sent as `0`. The getter retains the original configured value:
 ```javascript
 const sdk = new absmartly.SDK({
     endpoint: 'https://sandbox.absmartly.io/v1',
@@ -512,47 +512,21 @@ document.getElementById("checkout-btn").addEventListener("click", () => {
 });
 ```
 
-## Migration Guide (1.13.x → 1.14.0)
+## Upgrading from 1.13.4
 
-Version 1.14.0 contains a few breaking changes. Most applications will not need code changes, but review the items below.
+1.14.0 retains the 1.x API, error strings and unit hashing (including legacy surrogate
+encoding), Node 6 / npm 3 runtime floor and IE 10 browser target. The build and publish
+toolchain uses modern Node; that does not raise the consumer runtime floor.
 
-### `ready()` no longer resolves with the Error object on failure
+See [CHANGELOG.md](CHANGELOG.md) for the agreed targeting and wire changes and who is
+affected. `ready()` remains a wait signal (it resolves `true` even when loading fails);
+use `isFailed()` and the additive `readyError()` for diagnostics. The 1.13.4 implementation
+already behaved this way; earlier README migration text describing a changed return
+value was incorrect.
 
-**Before:** `ready()` resolved with the Error object on failure (e.g., `const result = await context.ready()` would give you the Error).
-
-**After:** `ready()` always resolves with `true`. It is a "wait for initialization" signal — you should always proceed with experiment code after it settles, even on failure. The SDK returns control variants (`0`) and default values gracefully when the API is down. Use `isFailed()` and `readyError()` to check for errors if needed.
-
-```javascript
-await context.ready();
-if (context.isFailed()) {
-    console.error("Context failed:", context.readyError());
-}
-const variant = context.treatment("exp_test"); // returns 0 (control) on failure
-```
-
-**When this might be a problem:** If your code used the return value as the Error object (e.g., `const err = await context.ready(); logError(err)`), it will now receive `true` instead. Use `context.readyError()` to access the error instead.
-
-### Unit IDs containing astral characters now hash to canonical UTF-8
-
-**Before:** `stringToUint8Array` (used to hash unit IDs for variant assignment) encoded each UTF-16 code unit independently. A character outside the Basic Multilingual Plane (≥ U+10000, e.g. an emoji) was encoded as an invalid CESU-8 byte sequence rather than canonical UTF-8.
-
-**After:** Unit IDs are encoded as canonical 4-byte UTF-8, matching the A/B Smartly collector (which hashes with `UTF_8`).
-
-**When this might be a problem:** A unit ID that contains an astral character (emoji, rare CJK, etc.) may now be assigned a **different variant** than it was in earlier versions. **Unit IDs composed entirely of BMP characters (≤ U+FFFF) — which covers essentially all typical session IDs, UUIDs, and user IDs — are unaffected.** This only changes assignment for units whose IDs contain astral characters.
-
-### `audienceMismatch` cache invalidation on indeterminate audiences
-
-When an audience cannot be evaluated to a boolean (a malformed or non-boolean filter), the cached assignment's `audienceMismatch` flag is now left unchanged instead of being reset to `false`. This keeps a previously valid cached assignment from being needlessly invalidated. Assignment results for well-formed audiences are unchanged.
-
-An audience filter that throws while being evaluated is treated as a mismatch, so with `audienceStrict` the unit gets variant 0.
-
-### Audiences always see `application` and `environment`; the automatic `app_version` is gone
-
-**Before:** audience filters and assignment-rule conditions saw only the attributes you set (and, in pre-releases of 1.14.0, `application`, `environment` and `app_version` when `includeSystemAttributes` was on). The Web Console offers `application` and `environment` as attributes because the collector adds them to every event, but the SDK never had them, so a condition on either evaluated against a missing value and never matched.
-
-**After:** the SDK always evaluates audiences and assignment-rule conditions with `application` and `environment` set to the names configured in the SDK. An attribute you set with the same name, at any time, overrides them. Names that are not configured or empty are left out. They are not published. The SDK no longer adds `app_version` for audiences or rules (one you set yourself with `context.attribute("app_version", ...)` is still used and published like any other attribute), and `includeSystemAttributes` now only adds `sdk_name` and `sdk_version` to the publish payload; the option is still accepted.
-
-**This changes assignment for running experiments.** In an experiment with Audience enforced (`audienceStrict`) and an `environment` or `application` condition, a unit whose context does not set that attribute itself currently gets variant 0, even when the configured name matches the condition and even when the experiment is full-on. After upgrading, such a unit is randomised normally (or gets the full-on variant) when the configured name matches. Those units are misassigned today; this release fixes them, but their exposures will change. An attribute your context sets itself still overrides the configured name, so its matching does not change. This protection is per attribute: if an audience uses both `application` and `environment` and the context sets only one of them, the configured name for the other can still change the result. An audience or rule on `app_version` no longer matches unless you set `app_version` yourself.
+All other API modernization is deferred to 2.0, preserved on `next/major`. After 2.0,
+1.x receives bug fixes for 12 months. Documentation-site updates wait for all SDK 2.0
+releases; this release changes only this repository's documentation.
 
 ## About A/B Smartly
 

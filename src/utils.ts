@@ -3,8 +3,11 @@ import { md5 } from "./md5";
 export const getApplicationName = (app: string | { name: string; version: number | string }): string =>
 	typeof app !== "string" ? app.name : app;
 
-export const getApplicationVersion = (app: string | { name: string; version: number | string }): number | string =>
-	typeof app !== "string" ? app.version : 0;
+export function getApplicationVersion(app: string | { name: string; version: number }): number;
+export function getApplicationVersion(app: string | { name: string; version: number | string }): number | string;
+export function getApplicationVersion(app: string | { name: string; version: number | string }): number | string {
+	return typeof app !== "string" ? app.version : 0;
+}
 
 function isBrowser() {
 	return typeof window !== "undefined" && typeof window.document !== "undefined";
@@ -175,38 +178,28 @@ export function toWellFormedString(value: string): string {
 	return result;
 }
 
+// Encodes each UTF-16 code unit on its own, exactly as 1.13 did, so unit hashes (and so variant
+// assignment) don't move in a 1.x release. A character outside the BMP is therefore encoded as two
+// 3-byte surrogate sequences, not 4-byte UTF-8; the canonical encoding is planned for 2.0.
 export function stringToUint8Array(value: string) {
-	if (typeof TextEncoder !== "undefined") {
-		return new Uint8Array(new TextEncoder().encode(value));
-	}
+	const n = value.length;
+	const array = new Array(value.length);
 
-	const utf8: number[] = [];
-	for (let i = 0; i < value.length; i++) {
-		let c = value.charCodeAt(i);
-		if (c >= 0xd800 && c <= 0xdbff) {
-			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
-			if (next >= 0xdc00 && next <= 0xdfff) {
-				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
-				i++;
-			} else {
-				// Unmatched high surrogate: not a valid UTF-8 code point, encode as U+FFFD.
-				c = 0xfffd;
-			}
-		} else if (c >= 0xdc00 && c <= 0xdfff) {
-			// Unmatched low surrogate: not a valid UTF-8 code point, encode as U+FFFD.
-			c = 0xfffd;
-		}
+	let k = 0;
+	for (let i = 0; i < n; ++i) {
+		const c = value.charCodeAt(i);
 		if (c < 0x80) {
-			utf8.push(c);
+			array[k++] = c;
 		} else if (c < 0x800) {
-			utf8.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-		} else if (c < 0x10000) {
-			utf8.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+			array[k++] = (c >> 6) | 192;
+			array[k++] = (c & 63) | 128;
 		} else {
-			utf8.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+			array[k++] = (c >> 12) | 224;
+			array[k++] = ((c >> 6) & 63) | 128;
+			array[k++] = (c & 63) | 128;
 		}
 	}
-	return new Uint8Array(utf8);
+	return Uint8Array.from(array);
 }
 
 const Base64URLNoPaddingChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

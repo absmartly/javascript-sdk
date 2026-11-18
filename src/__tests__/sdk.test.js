@@ -1,3 +1,4 @@
+import { SDK_VERSION } from "../version";
 import Client from "../client";
 import SDK from "../sdk";
 import Context from "../context";
@@ -40,7 +41,7 @@ describe("SDK", () => {
 			expect(sdk.getEventLogger()).toBe(SDK.defaultEventLogger);
 			expect(Client).toHaveBeenCalledTimes(1);
 			expect(Client).toHaveBeenCalledWith({
-				agent: "absmartly-javascript-sdk",
+				agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 			});
 
 			expect(ContextDataProvider).toHaveBeenCalledTimes(1);
@@ -117,7 +118,7 @@ describe("SDK", () => {
 				Object.assign(
 					{},
 					{
-						agent: "absmartly-javascript-sdk",
+						agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 					},
 					options
 				)

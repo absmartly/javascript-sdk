@@ -1,5 +1,5 @@
 import SDK from "./sdk";
-import { type ClientRequestOptions } from "./client";
+import { ClientRequestOptions } from "./client";
 
 export class ContextDataProvider {
 	getContextData(sdk: SDK, requestOptions?: Partial<ClientRequestOptions>) {

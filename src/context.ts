@@ -2,10 +2,10 @@ import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
-import SDK, { type EventLogger, type EventName } from "./sdk";
-import { ContextPublisher, type PublishParams } from "./publisher";
+import SDK, { EventLogger, EventName } from "./sdk";
+import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { type ClientRequestOptions } from "./client";
+import { ClientRequestOptions } from "./client";
 import { SDK_VERSION } from "./version";
 
 type JSONPrimitive = string | number | boolean | null;
@@ -119,7 +119,7 @@ export type Exposure = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
-	ruleOverride: boolean;
+	ruleOverride?: boolean;
 };
 
 export type Attribute = {
@@ -275,7 +275,7 @@ export default class Context {
 		return this._failedError;
 	}
 
-	ready() {
+	ready(): Promise<unknown> {
 		if (this.isReady()) {
 			return Promise.resolve(true);
 		}
@@ -379,8 +379,8 @@ export default class Context {
 		}
 	}
 
-	getUnits() {
-		return { ...this._units };
+	getUnits(): Units {
+		return this._units;
 	}
 
 	units(units: Record<string, number | string>) {
@@ -389,7 +389,8 @@ export default class Context {
 		}
 	}
 
-	getAttribute(attrName: string) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getAttribute(attrName: string): any {
 		for (let i = this._attrs.length - 1; i >= 0; i--) {
 			if (this._attrs[i].name === attrName) return this._attrs[i].value;
 		}
@@ -508,9 +509,9 @@ export default class Context {
 
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
-			throw new Error("ABsmartly Context is finalized.");
+			throw new Error("ABSmartly Context is finalized.");
 		} else if (this.isFinalizing()) {
-			throw new Error("ABsmartly Context is finalizing.");
+			throw new Error("ABSmartly Context is finalizing.");
 		}
 	}
 
@@ -542,7 +543,7 @@ export default class Context {
 
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
-			throw new Error("ABsmartly Context is not yet ready.");
+			throw new Error("ABSmartly Context is not yet ready.");
 		}
 
 		if (expectNotFinalized) {
@@ -555,6 +556,10 @@ export default class Context {
 	private _getSystemAttributes(): Record<string, string> {
 		const client = this._sdk.getClient();
 		const systemAttrs: Record<string, string> = {};
+		// A custom `client` passed to the SDK may predate these getters.
+		if (typeof client?.getApplication !== "function" || typeof client.getEnvironment !== "function") {
+			return systemAttrs;
+		}
 		const applicationName = client.getApplication()?.name;
 		if (typeof applicationName === "string" && applicationName.length > 0) {
 			systemAttrs["application"] = applicationName;
@@ -970,22 +975,14 @@ export default class Context {
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
 						} catch (e) {
-							this._logError(
-								new Error(
-									`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${
-										(e as Error).message
-									}`
-								)
-							);
+							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
 							return null;
 						}
 					case "boolean":
 						return field.value === "true";
 					default:
-						this._logError(
-							new Error(
-								`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
-							)
+						console.error(
+							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
 						);
 						return null;
 				}
@@ -1116,7 +1113,7 @@ export default class Context {
 				}
 			};
 
-			addSystemAttribute("sdk_name", client.getAgent());
+			addSystemAttribute("sdk_name", typeof client?.getAgent === "function" ? client.getAgent() : undefined);
 			addSystemAttribute("sdk_version", SDK_VERSION);
 		}
 
@@ -1164,18 +1161,7 @@ export default class Context {
 		}
 
 		if (this._failed) {
-			// _logError() isolates a throwing custom eventLogger internally, so it
-			// (and the internal `callback` below, which only calls resolve/reject
-			// and _logEvent()/_logError()) can't propagate an observer exception
-			// out of _flush() — that would skip clearing
-			// `_pending`/`_exposures`/`_goals` and, via `_finalize`'s callback never
-			// running, permanently strand `_finalizing` with no settlement.
-			this._logError(
-				new Error(
-					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
-				)
-			);
-
+			// Events of a context that failed to initialize are dropped silently, as in 1.13.
 			this._pending = 0;
 			this._exposures = [];
 			this._goals = [];
@@ -1195,7 +1181,6 @@ export default class Context {
 					uid: this._unitHash(entry[0]),
 				})),
 				hashed: true,
-				sdkVersion: SDK_VERSION,
 			};
 
 			if (this._goals.length > 0) {
@@ -1459,7 +1444,8 @@ export default class Context {
 
 	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
 		this._data = data;
-		this._environmentName = this._sdk.getClient().getEnvironment() ?? null;
+		const client = this._sdk.getClient();
+		this._environmentName = typeof client?.getEnvironment === "function" ? client.getEnvironment() ?? null : null;
 
 		const index: Record<string, Experiment> = {};
 		const indexVariables: Record<string, Experiment[]> = {};
