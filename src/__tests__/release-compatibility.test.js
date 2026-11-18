@@ -2,6 +2,7 @@ import SDK from "../sdk";
 import { SDK_VERSION } from "../version";
 import Client from "../client";
 import sdkFetch from "../fetch";
+import { AudienceMatcher } from "../matcher";
 
 jest.mock("../fetch");
 
@@ -64,6 +65,65 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		const request = sdkFetch.mock.calls[sdkFetch.mock.calls.length - 1][1];
 		if (sendsHeaders) expect(request.headers["X-API-Key"]).toBe("k");
 		else expect(request).not.toHaveProperty("headers");
+	});
+
+	it("does not re-evaluate assignment rules on cached reads after a same-outcome refresh", async () => {
+		const experiment = (rules) => ({
+			id: 7,
+			name: "ruled",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+			assignmentRules: JSON.stringify(rules),
+		});
+		const rule = { type: "assign", variant: 1, conditions: { eq: [{ var: "country" }, { value: "US" }] } };
+		// The refreshed rules JSON differs (an extra rule name) but still gives variant 1.
+		const refreshed = { experiments: [experiment({ rules: [{ ...rule, name: "renamed" }] })] };
+		const provider = { getContextData: () => Promise.resolve(refreshed) };
+		const sdk = new SDK({ ...options, provider });
+		const context = sdk.createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [experiment({ rules: [rule] })] }
+		);
+		context.attribute("country", "US");
+		expect(context.treatment("ruled")).toBe(1);
+
+		await context.refresh();
+		expect(context.treatment("ruled")).toBe(1);
+		expect(context.pending()).toBe(1);
+
+		const spy = jest.spyOn(AudienceMatcher.prototype, "evaluateParsedRules");
+		for (let i = 0; i < 100; i++) context.treatment("ruled");
+		expect(spy).toHaveBeenCalledTimes(0);
+		spy.mockRestore();
+	});
+
+	it("routes getContext() through a subclass's getUnauthed() override", async () => {
+		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
+		const seen = [];
+		class LoggingClient extends Client {
+			getUnauthed(requestOptions) {
+				seen.push(requestOptions.path);
+				return super.getUnauthed(requestOptions);
+			}
+		}
+		await new LoggingClient(options).getContext();
+		expect(seen).toEqual(["/context"]);
+		expect(sdkFetch.mock.calls[0][1].headers["X-API-Key"]).toBe("k");
 	});
 
 	describe("a released duck-typed custom client without the new getters", () => {

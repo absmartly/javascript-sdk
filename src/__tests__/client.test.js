@@ -1212,40 +1212,45 @@ describe("Client", () => {
 	});
 
 	describe("timeout option", () => {
-		it("should accept an explicit timeout of 0 (nullish coalescing, not falsy)", () => {
-			const client = new Client({
-				endpoint,
-				agent,
-				environment,
-				apiKey,
-				application,
-				timeout: 0,
-			});
-
+		it("should accept an explicit timeout of 0", () => {
+			const client = new Client({ endpoint, agent, environment, apiKey, application, timeout: 0 });
 			expect(client).toBeInstanceOf(Client);
 		});
 
-		it("should still retry a failing-then-succeeding request when timeout is 0 (no deadline)", (done) => {
-			fetch
-				.mockResolvedValueOnce(responseMock(500, "server error", "server error text"))
-				.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
-
+		it("should not retry when the client timeout is 0, as in 1.13.4", (done) => {
+			fetch.mockRejectedValue(new Error("connection refused"));
 			const client = new Client(Object.assign({}, clientOptions, { timeout: 0, retries: 5 }));
 
-			client
-				.request({
-					auth: true,
-					method: "GET",
-					path: "/context",
-				})
-				.then((response) => {
-					expect(fetch).toHaveBeenCalledTimes(2);
-					expect(response).toEqual(defaultMockResponse);
+			client.request({ method: "PUT", path: "/context" }).catch(() => {
+				expect(fetch).toHaveBeenCalledTimes(1);
+				done();
+			});
+		});
 
+		it("should fall back to the client timeout when a request timeout is 0", (done) => {
+			// Like a real fetch, reject once the request's signal aborts.
+			fetch.mockImplementation(
+				(_url, opts) =>
+					new Promise((_resolve, reject) => {
+						opts.signal.addEventListener("abort", () => {
+							const error = new Error("aborted");
+							error.name = "AbortError";
+							reject(error);
+						});
+					})
+			);
+			const client = new Client(Object.assign({}, clientOptions, { timeout: 200, retries: 0 }));
+
+			// The client's 200 ms deadline still aborts the request; it doesn't hang.
+			client.request({ method: "GET", path: "/context", timeout: 0 }).then(
+				() => done(new Error("expected the request to be aborted")),
+				(error) => {
+					expect(error.message).toBe("aborted");
 					done();
-				});
+				}
+			);
 
-			advanceFakeTimers();
+			jest.advanceTimersByTime(200);
 		});
 	});
 });

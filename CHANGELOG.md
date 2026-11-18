@@ -50,9 +50,11 @@
   promises or lose/duplicate successfully delivered events.
 - Malformed variant configs are isolated rather than failing the entire context;
   audience evaluation exceptions fail strict audiences closed.
-- Per-request timeouts now govern the retry budget consistently; zero explicitly
-  disables the deadline. Affected: callers overriding timeouts or using zero, whose
-  configured limit was previously ignored by part of the retry path.
+- A per-request `timeout` now also bounds the retry budget (previously only the
+  client timeout did). A `timeout` of 0 keeps its 1.13.4 meaning: a request value
+  of 0 falls back to the client timeout, and a client timeout of 0 means no retries.
+- The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
+  it is now transpiled, and the build fails if `dist/` is not ES5.
 - Query keys are encoded and unmatched query surrogates no longer throw URIError.
 - Preserve published 1.13.4 error strings, custom-field console diagnostics,
   live `getUnits()` return, legacy unit hashing, old TypeScript parser support,

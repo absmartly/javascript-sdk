@@ -106,8 +106,10 @@ export default class Client {
 	}
 
 	getContext(options?: Partial<ClientRequestOptions>) {
-		return this.get({
+		// Routed through getUnauthed() as in 1.13.4, so a subclass overriding it is still called.
+		return this.getUnauthed({
 			...options,
+			auth: options?.auth !== false,
 			path: "/context",
 			query: {
 				application: this._opts.application.name,
@@ -240,15 +242,11 @@ export default class Client {
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
 				console.warn(reason);
 
-				// timeout <= 0 means "no deadline": the retry budget is governed by
-				// `retries` alone, so the elapsed-time check below must not apply.
-				const hasDeadline = timeout > 0;
-
 				if (reason._bail || retries <= 0) {
 					throw new Error(reason.message);
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
-				} else if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
+				} else if (waited >= timeout || reason.name === "AbortError") {
 					if (tryWith.timedout) {
 						throw new TimeoutError(timeout);
 					}
@@ -257,7 +255,7 @@ export default class Client {
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (hasDeadline && waited + delay > timeout) {
+				if (waited + delay > timeout) {
 					delay = timeout - waited;
 				}
 
@@ -277,7 +275,8 @@ export default class Client {
 			options.signal.addEventListener("abort", abort);
 		}
 
-		const timeout = options.timeout ?? this._opts.timeout ?? 0;
+		// `||`, as in 1.13.4: a request timeout of 0 falls back to the client timeout rather than disabling it.
+		const timeout = options.timeout || this._opts.timeout || 0;
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
