@@ -20,7 +20,7 @@ only. If opted in, the owner must supply that secret; it is not needed for OIDC.
 A manual dry run does not prove npm will accept OIDC on a real tag: the owner must
 retain the npm publisher configuration and approve any environment protections.
 
-When this package's major is lower than `npm latest`, the workflow uses `v1-lts`
+Prereleases (for example `1.15.0-beta.0`) publish under their prerelease id (`beta`), never `latest`. A stable version that is not newer than `npm latest` in the same major (for example a 1.13.x backport after 1.14.0) fails the check, so the owner chooses its tag. When this package's major is lower than `npm latest`, the workflow uses `v1-lts`
 (or `v<major>-lts`), leaving latest alone. **Owner deviation to approve:** the
 requested `--tag v1` is impossible: npm 11.6.2 rejects it with `Tag name must not
 be a valid SemVer range: v1`. `v1-lts` passes the same dry run. For 1.14.0 today,

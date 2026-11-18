@@ -224,6 +224,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -272,6 +273,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -315,6 +317,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -365,6 +368,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1 },
@@ -584,6 +588,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "POST",
 				path: "/context",
 				query: { a: 1 },
@@ -621,6 +626,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "POST",
 				path: "/context",
 				query: { a: 1 },
@@ -658,6 +664,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: { a: 1, b: "ã=á" },
@@ -716,6 +723,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 				query: {},
@@ -751,6 +759,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 			})
@@ -784,6 +793,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 			})
@@ -1086,6 +1096,7 @@ describe("Client", () => {
 
 		client
 			.request({
+				auth: true,
 				method: "PUT",
 				path: "/context",
 			})
@@ -1223,6 +1234,7 @@ describe("Client", () => {
 
 			client
 				.request({
+					auth: true,
 					method: "GET",
 					path: "/context",
 				})

@@ -16,13 +16,34 @@ function majorOf(value) {
 	return BigInt(value.split(".")[0]);
 }
 
+function compareCore(a, b) {
+	const x = a.split(/[-+]/)[0].split(".").map(BigInt);
+	const y = b.split(/[-+]/)[0].split(".").map(BigInt);
+	for (let i = 0; i < 3; i++) {
+		if (x[i] !== y[i]) return x[i] > y[i] ? 1 : -1;
+	}
+	return 0;
+}
+
+// A prerelease goes to its own tag (1.15.0-beta.0 -> "beta"), never "latest". A stable release goes to
+// "latest" only when it is newer than the current latest; an older major goes to v<major>-lts, and an
+// older version in the same major line (e.g. a 1.13.x backport after 1.14.0) is refused.
 function releaseTag(packageVersion, latestVersion, gitTag) {
 	const major = majorOf(packageVersion);
 	const latestMajor = majorOf(latestVersion);
 	if (gitTag !== `v${packageVersion}`) {
 		throw new Error("Git tag must match v<package.version>");
 	}
-	return major < latestMajor ? `v${major}-lts` : "latest";
+	const prerelease = packageVersion.split("+")[0].split("-").slice(1).join("-");
+	if (prerelease) {
+		const id = prerelease.split(".")[0];
+		return /^[a-z][a-z0-9]*$/i.test(id) ? id.toLowerCase() : "next";
+	}
+	if (major < latestMajor) return `v${major}-lts`;
+	if (compareCore(packageVersion, latestVersion) <= 0) {
+		throw new Error(`${packageVersion} is not newer than latest ${latestVersion}; choose a dist tag manually`);
+	}
+	return "latest";
 }
 
 function main() {

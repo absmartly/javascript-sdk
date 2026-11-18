@@ -1113,7 +1113,8 @@ export default class Context {
 				}
 			};
 
-			addSystemAttribute("sdk_name", typeof client?.getAgent === "function" ? client.getAgent() : undefined);
+			const agent = typeof client?.getAgent === "function" ? client.getAgent() : undefined;
+			if (typeof agent === "string" && agent.length > 0) addSystemAttribute("sdk_name", agent);
 			addSystemAttribute("sdk_version", SDK_VERSION);
 		}
 

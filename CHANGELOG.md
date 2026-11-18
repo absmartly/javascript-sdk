@@ -33,7 +33,8 @@
   `absmartly-javascript-sdk`. Affected: export/dashboard filters matching the old
   agent exactly. Explicit customer agent strings are preserved.
 - `GET /context` sends SDK authentication/metadata headers as well as the existing
-  query parameters, like PUT. Explicit `getUnauthed()` retains its old behaviour.
+  query parameters, like PUT. The low-level `request()`, `post()`, `put()` and
+  `getUnauthed()` keep their 1.13.4 header rules.
   `X-Application-Version` sends only 1–18 ASCII digits (trimmed), or `0` otherwise.
   Affected: proxies inspecting GET headers and apps configuring invalid version
   headers that previously caused collector HTTP 400 errors.

@@ -48,7 +48,73 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		const client = new Client({ ...options, agent: "customer-agent" });
 		await client.get({ path: "/custom" });
 		expect(sdkFetch.mock.calls[0][1].headers["X-Agent"]).toBe("customer-agent");
-		await client.getUnauthed({ path: "/custom", auth: true });
-		expect(sdkFetch.mock.calls[1][1]).not.toHaveProperty("headers");
+	});
+
+	it.each([
+		["request() without auth", (c) => c.request({ path: "/x", method: "GET" }), false],
+		["request() with auth true", (c) => c.request({ path: "/x", method: "GET", auth: true }), true],
+		["post() with auth false", (c) => c.post({ path: "/x", auth: false }), true],
+		["put() with auth false", (c) => c.put({ path: "/x", auth: false }), true],
+		["getUnauthed()", (c) => c.getUnauthed({ path: "/x" }), false],
+		["getUnauthed() with auth true", (c) => c.getUnauthed({ path: "/x", auth: true }), true],
+		["get() with auth false", (c) => c.get({ path: "/x", auth: false }), false],
+	])("keeps the 1.13.4 auth header rule for %s", async (_label, call, sendsHeaders) => {
+		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+		await call(new Client(options));
+		const request = sdkFetch.mock.calls[sdkFetch.mock.calls.length - 1][1];
+		if (sendsHeaders) expect(request.headers["X-API-Key"]).toBe("k");
+		else expect(request).not.toHaveProperty("headers");
+	});
+
+	describe("a released duck-typed custom client without the new getters", () => {
+		const legacyClient = () => ({
+			getContext: () => Promise.resolve({ experiments: [] }),
+			publish: jest.fn(() => Promise.resolve()),
+		});
+		const strictCountryExperiment = {
+			id: 1,
+			name: "exp",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 3603515,
+			seedLo: 233373850,
+			split: [0, 1],
+			trafficSeedHi: 449867249,
+			trafficSeedLo: 455443629,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: JSON.stringify({ filter: [{ eq: [{ var: "country" }, { value: "US" }] }] }),
+			audienceStrict: true,
+			customFieldValues: null,
+		};
+
+		it("still evaluates audiences", () => {
+			const sdk = new SDK({ ...options, client: legacyClient() });
+			const context = sdk.createContextWith(
+				{ units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" } },
+				{ experiments: [strictCountryExperiment] }
+			);
+			context.attribute("country", "US");
+			expect(context.treatment("exp")).toBe(1);
+		});
+
+		it("publishes sdk_version but no empty sdk_name", async () => {
+			const client = legacyClient();
+			const sdk = new SDK({ ...options, client });
+			const context = sdk.createContextWith(
+				{ units: { session_id: "u" } },
+				{ experiments: [] },
+				{ includeSystemAttributes: true, publishDelay: -1 }
+			);
+			context.track("goal");
+			await context.publish();
+			const names = client.publish.mock.calls[0][0].attributes.map((a) => a.name);
+			expect(names).toEqual(["sdk_version"]);
+		});
 	});
 });

@@ -22,7 +22,7 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
-	/** @deprecated The API key is sent by default; set to false to suppress auth headers. */
+	// Sends the SDK auth/metadata headers. post(), put() and get() set it; request() sends none unless true.
 	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
@@ -183,7 +183,7 @@ export default class Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			if (options.auth !== false) {
+			if (options.auth) {
 				opts.headers = {
 					"Content-Type": "application/json",
 					"X-API-Key": this._opts.apiKey,
@@ -307,6 +307,7 @@ export default class Client {
 	post(options: ClientRequestOptions) {
 		return this.request({
 			...options,
+			auth: true,
 			method: "POST",
 		});
 	}
@@ -314,6 +315,7 @@ export default class Client {
 	put(options: ClientRequestOptions) {
 		return this.request({
 			...options,
+			auth: true,
 			method: "PUT",
 		});
 	}
@@ -329,12 +331,16 @@ export default class Client {
 	get(options: ClientRequestOptions) {
 		return this.request({
 			...options,
+			auth: options.auth !== false,
 			method: "GET",
 		});
 	}
 
-	/** GET without authentication, retained for 1.x consumers. Use get() for SDK headers. */
+	// Plain GET with 1.13 semantics: headers only when `auth: true` is passed. Use get() for SDK headers.
 	getUnauthed(options: ClientRequestOptions) {
-		return this.get({ ...options, auth: false });
+		return this.request({
+			...options,
+			method: "GET",
+		});
 	}
 }
