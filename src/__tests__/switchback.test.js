@@ -396,6 +396,9 @@ describe("switchback serving", () => {
 			SWITCHBACK_ELIGIBLE
 		);
 		// Entries compare as text: a numeric entry admits its decimal key.
+		expect(resolveSwitchbackServing(types, p, [true], both, reader({ session_store: "true" })).status).toEqual(
+			SWITCHBACK_ELIGIBLE
+		);
 		expect(resolveSwitchbackServing(types, p, [17], both, reader({ session_store: "17" })).status).toEqual(
 			SWITCHBACK_ELIGIBLE
 		);

@@ -1240,6 +1240,20 @@ describe("switchback serving through Context", () => {
 		}
 	});
 
+	// A new epoch drops every slot of the old one on the next resolution, not only the one it replaces.
+	it("does not retain the slots of an earlier epoch", async () => {
+		const context = createContext(dataOf(sb(2, HOUR)));
+		clock = ANCHOR + 10;
+		context.treatment("exp_sb");
+		clock = ANCHOR + HOUR;
+		context.treatment("exp_sb");
+		expect(Object.keys(context._assignments).sort()).toEqual(["exp_sb\u001f0", "exp_sb\u001f1"]);
+
+		await refreshTo(context, { ...sb(2, HOUR), switchbackDesignType: "other" });
+		context.treatment("exp_sb");
+		expect(Object.keys(context._assignments)).toEqual(["exp_sb\u001f1"]);
+	});
+
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {
 		const context = createContext(dataOf(sb(2, HOUR)));
 		clock = ANCHOR + 10;
