@@ -534,13 +534,15 @@ describe("switchback cluster keys in Context", () => {
 			unitType: "user_id",
 			assignmentRules: '{"rules":[{"type":"split","environments":[],"percentages":"34/33/33"}]}',
 		};
-		for (let u = 0; u < 8; ++u) {
+		// store-20's draw differs between the rule's 34/33/33 and the experiment's equal thirds.
+		const rule = [0.34, 0.33, 0.33];
+		const store20 = new VariantAssigner(hashUnit("store-20"));
+		expect(store20.assign(rule, SEED_HI, SEED_LO)).not.toEqual(store20.assign(experiment.split, SEED_HI, SEED_LO));
+		for (const u of [0, 1, 2, 3, 20]) {
 			const context = createContext(dataOf(experiment), { [UNIT_TYPE]: `store-${u}`, user_id: `user-${u}` });
 			context.attribute("city", "Lisboa");
 			const variant = context.treatment("exp_sb");
-			expect(variant).toEqual(
-				new VariantAssigner(hashUnit(`store-${u}`)).assign(experiment.split, SEED_HI, SEED_LO)
-			);
+			expect(variant).toEqual(new VariantAssigner(hashUnit(`store-${u}`)).assign(rule, SEED_HI, SEED_LO));
 			context.attribute("unrelated", u);
 			expect(context.treatment("exp_sb")).toEqual(variant);
 			expect(context.pending()).toEqual(1);

@@ -11,4 +11,4 @@ Earlier release notes are on the [GitHub releases page](https://github.com/absma
 
 ### Changed
 
-- Switchback experiments that are already running change assignment for this SDK: before, they were served as a sticky unit assignment on their `unitType` (or not at all), which did not follow the switchback schedule. Now each unit gets its cluster's variant for the current period, and exposures are recorded once per period under the serving unit. Who moves: customers who run switchback experiments. Unit experiments and context data without switchbacks are unchanged.
+- Switchback experiments that are already running change assignment for this SDK: before, they were served as a sticky unit assignment on their `unitType` (or not at all), which did not follow the switchback schedule. Now each unit gets its cluster's variant for the current period, and exposures are recorded once per period under the serving unit, while that period's assignment stays cached. Who moves: customers who run switchback experiments. Unit experiments and context data without switchbacks are unchanged.

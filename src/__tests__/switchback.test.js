@@ -175,7 +175,9 @@ describe("switchback assigner", () => {
 	// The key is utf8(clusterUnit + U+001F + cycleIndex), as the platform's String.getBytes(UTF_8),
 	// which encodes a lone surrogate as '?'. Values computed with an independent Python reference.
 	it("encodes the cluster key as the platform does", () => {
-		expect(assignSwitchback("café", "0", "0", 10)).toEqual(assignSwitchback("café", "0", "0", 10));
+		// The decomposed "cafe\u0301" keeps its combining mark: it is not "cafe".
+		expect(switchbackPermutation("cafe\u0301", "0", "0", 10)).toEqual([7, 2, 9, 3, 5, 4, 6, 1, 8, 0]);
+		expect(switchbackPermutation("cafe", "0", "0", 10)).toEqual([7, 3, 0, 4, 6, 9, 1, 8, 5, 2]);
 		expect([
 			switchbackPermutation("x\ud800y", "0", "0", 10),
 			switchbackPermutation("x?y", "0", "0", 10),

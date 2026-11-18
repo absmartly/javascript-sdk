@@ -136,9 +136,10 @@ function createContext(attributes, experiments, units) {
 
 // The cached "sbc" resolution at the clock's current reading (Java's switchbackResolutionForTest).
 function resolution(context) {
-	const slots = Object.keys(context._assignments).filter((key) => key === "sbc" || key.indexOf("sbc\u001f") === 0);
+	const periods = Object.values(context._switchbackEpochs?.sbc?.slots ?? {});
+	const slots = "sbc" in context._assignments ? [context._assignments.sbc, ...periods] : periods;
 	expect(slots.length).toEqual(1);
-	return context._assignments[slots[0]];
+	return slots[0];
 }
 
 // The Collector's ExperimentAssignment for "sbc", or null when it lists none (not applicable). Every

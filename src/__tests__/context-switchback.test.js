@@ -898,7 +898,9 @@ describe("switchback serving through Context", () => {
 			context.treatment("exp_sb");
 			context.peek("exp_other");
 		}
-		expect(Object.keys(context._assignments).length).toEqual(4);
+		const retained = (experimentName) => Object.keys(context._switchbackEpochs[experimentName].slots).length;
+		expect([retained("exp_sb"), retained("exp_other")]).toEqual([2, 2]);
+		expect(Object.keys(context._assignments)).toEqual([]);
 		expect(context.pending()).toEqual(50);
 	});
 
@@ -1196,11 +1198,8 @@ describe("switchback serving through Context", () => {
 		expect(context.peek("exp_periods")).toEqual(EXPECTED_2_ARMS[0]);
 		clock = ANCHOR + HOUR;
 		expect(context.peek("exp_periods")).toEqual(EXPECTED_2_ARMS[1]);
-		expect(Object.keys(context._assignments).sort()).toEqual([
-			"exp_periods\u001f0",
-			"exp_periods\u001f1",
-			"exp_sb",
-		]);
+		expect(Object.keys(context._assignments)).toEqual(["exp_sb"]);
+		expect(Object.keys(context._switchbackEpochs.exp_periods.slots)).toEqual(["0", "1"]);
 
 		const unit = asUnit(sb(2, HOUR));
 		const periodsUnit = asUnit(switchback(2, "exp_periods", 2, HOUR));
@@ -1210,6 +1209,7 @@ describe("switchback serving through Context", () => {
 		context.treatment("exp_periods");
 		expect(context.pending()).toEqual(2);
 		expect(Object.keys(context._assignments).sort()).toEqual(["exp_periods", "exp_sb"]);
+		expect(Object.keys(context._switchbackEpochs)).toEqual([]);
 		expect((await publishExposures(context)).map((e) => [e.name, e.variant, e.assigned])).toEqual([
 			["exp_sb", expected, true],
 			["exp_periods", expect.any(Number), true],
@@ -1247,11 +1247,24 @@ describe("switchback serving through Context", () => {
 		context.treatment("exp_sb");
 		clock = ANCHOR + HOUR;
 		context.treatment("exp_sb");
-		expect(Object.keys(context._assignments).sort()).toEqual(["exp_sb\u001f0", "exp_sb\u001f1"]);
+		expect(Object.keys(context._switchbackEpochs.exp_sb.slots)).toEqual(["0", "1"]);
 
 		await refreshTo(context, { ...sb(2, HOUR), switchbackDesignType: "other" });
 		context.treatment("exp_sb");
-		expect(Object.keys(context._assignments)).toEqual(["exp_sb\u001f1"]);
+		expect(Object.keys(context._switchbackEpochs.exp_sb.slots)).toEqual(["1"]);
+	});
+
+	// Period slots are kept apart from unit assignments, so an experiment named like a period slot key
+	// cannot replace one.
+	it("keeps a unit experiment named like a period slot apart from the switchback", async () => {
+		const unit = { ...asUnit(switchback(2, "exp_sb\u001f0", 2, HOUR)), seedHi: 1 };
+		const context = createContext(dataOf(sb(2, HOUR), unit));
+		clock = ANCHOR + 10;
+		for (let i = 0; i < 3; ++i) {
+			expect(context.treatment("exp_sb")).toEqual(EXPECTED_2_ARMS[0]);
+			context.treatment("exp_sb\u001f0");
+		}
+		expect((await publishExposures(context)).map((e) => e.name)).toEqual(["exp_sb", "exp_sb\u001f0"]);
 	});
 
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {

@@ -118,6 +118,8 @@ type Assignment = {
 type SwitchbackEpoch = {
 	generation: number;
 	periods: number[];
+	// Period index -> slot, kept apart from `_assignments` so no experiment name can collide with it.
+	slots: Record<number, Assignment>;
 };
 
 const SWITCHBACK_RETAINED_PERIODS = 2;
@@ -415,15 +417,20 @@ export default class Context {
 	// the assignment was resolved. Evict so `_assign()` rebuilds it; already-exposed ones are kept
 	// since re-resolving would queue a second, conflicting exposure.
 	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
+		const epochs = this._switchbackEpochs;
+		if (epochs !== undefined) {
+			for (const experimentName in epochs) {
+				const slots = epochs[experimentName].slots;
+				for (const period in slots) {
+					if (this._isSwitchbackSlotWithoutUnit(slots[period])) delete slots[period];
+				}
+			}
+		}
+
 		for (const experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
-			const serving = assignment.switchbackServing;
-			if (serving !== undefined) {
-				// A switchback resolved with no linked unit set is resolved again now that one may be. Unless
-				// overridden it published nothing, so it is dropped even when exposed.
-				if (serving.status === SWITCHBACK_ABSENT && (!assignment.overridden || !assignment.exposed)) {
-					delete this._assignments[experimentName];
-				}
+			if (assignment.switchbackServing !== undefined) {
+				if (this._isSwitchbackSlotWithoutUnit(assignment)) delete this._assignments[experimentName];
 				continue;
 			}
 			if (assignment.unitType !== unitType || assignment.exposed) continue;
@@ -436,6 +443,14 @@ export default class Context {
 				delete this._assignments[experimentName];
 			}
 		}
+	}
+
+	// A switchback resolved with no linked unit set is resolved again once one may be. Unless overridden
+	// it published nothing, so it is dropped even when exposed.
+	private _isSwitchbackSlotWithoutUnit(assignment: Assignment): boolean {
+		return (
+			assignment.switchbackServing?.status === SWITCHBACK_ABSENT && (!assignment.overridden || !assignment.exposed)
+		);
 	}
 
 	getUnits() {
@@ -946,13 +961,15 @@ export default class Context {
 		const switchback = experiment.switchback as { generation: number; sources: SwitchbackSources | null };
 		const data = experiment.data;
 		const periodIndex = switchback.sources !== null ? switchbackPeriodIndex(data, now) : null;
-		const cacheKey = periodIndex === null ? experimentName : `${experimentName}\u001f${periodIndex}`;
 		const hasOverride = experimentName in this._overrides;
 		const custom = experimentName in this._cassignments ? this._cassignments[experimentName] : undefined;
 
 		// The bare-name slot can still hold a unit assignment from before a refresh made the experiment a
 		// switchback, so only a slot of this generation is reused; `_assign` drops older switchback slots.
-		const cached: Assignment | undefined = this._assignments[cacheKey];
+		const cached: Assignment | undefined =
+			periodIndex === null
+				? this._assignments[experimentName]
+				: this._switchbackEpochs?.[experimentName]?.slots[periodIndex];
 		const current = cached?.switchbackGeneration === switchback.generation ? cached : undefined;
 		if (current !== undefined && this._isSwitchbackAssignmentCurrent(experiment, current, hasOverride, custom)) {
 			return current;
@@ -1000,8 +1017,7 @@ export default class Context {
 			assignment.variables = experiment.variables[assignment.variant];
 		}
 
-		this._assignments[cacheKey] = assignment;
-		this._retainSwitchbackPeriod(experimentName, switchback.generation, periodIndex);
+		this._retainSwitchbackSlot(experimentName, switchback.generation, periodIndex, assignment);
 		return assignment;
 	}
 
@@ -1172,21 +1188,29 @@ export default class Context {
 		const epoch = epochs[experimentName];
 		if (epoch === undefined || experiment?.switchback?.generation === epoch.generation) return;
 
-		for (const period of epoch.periods) {
-			delete this._assignments[`${experimentName}\u001f${period}`];
-		}
 		delete this._assignments[experimentName];
 		delete epochs[experimentName];
 	}
 
-	// Keeps at most SWITCHBACK_RETAINED_PERIODS period slots per experiment, evicting the lowest index
-	// other than the one just installed. Re-entering an evicted period (a clock moved back by two or
-	// more periods) resolves and exposes it once more.
-	private _retainSwitchbackPeriod(experimentName: string, generation: number, periodIndex: number | null) {
+	// Installs a slot: the bare-name slot in `_assignments`, a period slot in its epoch. At most
+	// SWITCHBACK_RETAINED_PERIODS period slots are kept per experiment, evicting the lowest index other
+	// than the one just installed. Re-entering an evicted period (a clock moved back by two or more
+	// periods) resolves and exposes it once more.
+	private _retainSwitchbackSlot(
+		experimentName: string,
+		generation: number,
+		periodIndex: number | null,
+		assignment: Assignment
+	) {
 		const epochs = this._switchbackEpochs ?? (this._switchbackEpochs = {});
-		const epoch = epochs[experimentName] ?? (epochs[experimentName] = { generation, periods: [] });
-		if (periodIndex === null || epoch.periods.indexOf(periodIndex) >= 0) return;
+		const epoch = epochs[experimentName] ?? (epochs[experimentName] = { generation, periods: [], slots: {} });
+		if (periodIndex === null) {
+			this._assignments[experimentName] = assignment;
+			return;
+		}
 
+		epoch.slots[periodIndex] = assignment;
+		if (epoch.periods.indexOf(periodIndex) >= 0) return;
 		epoch.periods.push(periodIndex);
 		while (epoch.periods.length > SWITCHBACK_RETAINED_PERIODS) {
 			let evicted = -1;
@@ -1195,7 +1219,7 @@ export default class Context {
 					evicted = i;
 				}
 			}
-			delete this._assignments[`${experimentName}\u001f${epoch.periods[evicted]}`];
+			delete epoch.slots[epoch.periods[evicted]];
 			epoch.periods.splice(evicted, 1);
 		}
 	}
