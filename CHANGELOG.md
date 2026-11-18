@@ -47,6 +47,10 @@
   differs from the client one, who now get more (or fewer) retries to match it.
   `timeout: 0` keeps its 1.13.4 meaning: a request value of 0 falls back to the
   client timeout, and a client timeout of 0 means no retries.
+- An audience whose evaluation throws now counts as a mismatch (fail closed) and
+  emits one logger `error` event; 1.13.4 treated it as a match. Affected: strict
+  audiences move such units to control (variant 0); non-strict exposures publish
+  `audienceMismatch: true` instead of `false`.
 
 ### Fixed
 
@@ -55,7 +59,7 @@
 - Custom publisher failures and throwing event loggers no longer strand lifecycle
   promises or lose/duplicate successfully delivered events.
 - Malformed variant configs are isolated rather than failing the entire context;
-  audience evaluation exceptions fail strict audiences closed.
+  audience evaluation exceptions are logged instead of thrown.
 - The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
   it is now transpiled, and the build fails if `dist/` is not ES5.
 - Query keys are encoded and unmatched query surrogates no longer throw URIError.

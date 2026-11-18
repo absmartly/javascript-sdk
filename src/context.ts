@@ -621,9 +621,10 @@ export default class Context {
 			}
 
 			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
-				const attrs = this._getAttributesMap();
-
 				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
+					// Built only when there are rules: the no-rule path must not rebuild the attribute map
+					// after every setAttribute (1.13.4 never built it there).
+					const attrs = this._getAttributesMap();
 					// An exposed split resolved without its unit keeps resolving as if the unit were still
 					// missing, so a unit set afterwards cannot switch the variant the user already saw.
 					const isUnitPinnedMissing = assignment.exposed && assignment.isRuleMissingUnit === true;
@@ -767,7 +768,6 @@ export default class Context {
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
-				const attrs = this._getAttributesMap();
 
 				// Set even when suppressed, or `audienceMatches` rebuilds (losing `exposed`) on every call.
 				assignment.ruleKey = experiment.data.assignmentRules
@@ -776,7 +776,7 @@ export default class Context {
 
 				const rule =
 					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
-						? this._resolveRule(experiment, attrs, false)
+						? this._resolveRule(experiment, this._getAttributesMap(), false)
 						: null;
 				const ruleVariant = rule?.variant ?? null;
 

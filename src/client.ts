@@ -292,7 +292,8 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout)
+		// The retry budget falls back to the default when the client timeout is null/undefined, as in 1.13.4.
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, options.timeout || (this._opts.timeout ?? DEFAULT_TIMEOUT_MS))
 			.then((value: string) => {
 				finalCleanUp();
 				return value;

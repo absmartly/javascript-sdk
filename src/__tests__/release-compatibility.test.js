@@ -1,6 +1,10 @@
 import SDK from "../sdk";
 import { SDK_VERSION } from "../version";
 import pkg from "../../package.json";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { execFileSync } from "child_process";
 import Client from "../client";
 import sdkFetch from "../fetch";
 import { AudienceMatcher } from "../matcher";
@@ -10,6 +14,10 @@ jest.mock("../fetch");
 const options = { endpoint: "https://collector/v1", apiKey: "k", application: "web", environment: "prod" };
 
 describe("1.13.4 source and behaviour compatibility", () => {
+	beforeEach(() => {
+		sdkFetch.mockReset();
+	});
+
 	it("keeps the live units map and released error strings", async () => {
 		const sdk = new SDK(options);
 		const context = sdk.createContextWith({ units: { user: "one" } }, { experiments: [] });
@@ -94,6 +102,72 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(errorSpy).toHaveBeenCalledWith(expect.any(SyntaxError));
 		expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
 		errorSpy.mockRestore();
+	});
+
+	it("does not build the attribute map on the no-rule, no-audience path after setAttribute", () => {
+		const sdk = new SDK(options);
+		const plain = {
+			id: 10,
+			name: "plain",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+		};
+		const context = sdk.createContextWith({ units: { session_id: "u1" } }, { experiments: [plain] });
+		const first = context.treatment("plain");
+
+		const spy = jest.spyOn(context, "_getAttributesMap");
+		for (let i = 0; i < 50; i++) {
+			context.attribute(`a${i}`, i);
+			for (let j = 0; j < 5; j++) expect(context.treatment("plain")).toBe(first);
+		}
+		expect(spy).toHaveBeenCalledTimes(0);
+		spy.mockRestore();
+	});
+
+	it.each([undefined, null])("retries like 1.13.4 when the client timeout is %p", async (timeout) => {
+		sdkFetch.mockResolvedValue({
+			ok: false,
+			status: 503,
+			statusText: "Unavailable",
+			text: () => Promise.resolve(""),
+		});
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		const client = new Client({ ...options, timeout, retries: 2 });
+		const error = await client.request({ method: "GET", path: "/context" }).catch((e) => e);
+		warn.mockRestore();
+		expect(error.name).toBe("RetryError");
+		expect(sdkFetch).toHaveBeenCalledTimes(3);
+	});
+
+	it("generates the SDK version from package.json, so a hardcoded version cannot pass", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdk-version-"));
+		fs.mkdirSync(path.join(dir, "scripts"));
+		fs.mkdirSync(path.join(dir, "src"));
+		fs.copyFileSync(
+			path.join(__dirname, "../../scripts/generate-version.js"),
+			path.join(dir, "scripts/generate-version.js")
+		);
+		fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ version: "9.8.7-fixture.1" }));
+		execFileSync(process.execPath, [path.join(dir, "scripts/generate-version.js")]);
+		expect(fs.readFileSync(path.join(dir, "src/version.ts"), "utf8")).toBe(
+			'export const SDK_VERSION = "9.8.7-fixture.1";\n'
+		);
+		fs.rmSync(dir, { recursive: true, force: true });
 	});
 
 	it("derives the SDK agent version from package.json, not a literal", () => {
