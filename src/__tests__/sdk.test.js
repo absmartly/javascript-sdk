@@ -101,6 +101,26 @@ describe("SDK", () => {
 			done();
 		});
 
+		it("should ignore inherited and non-enumerable option keys, as 1.13.4 did", (done) => {
+			const base = {
+				application: "application",
+				apiKey: "apikey",
+				endpoint: "localhost:8080",
+				environment: "test",
+			};
+			const options = Object.assign(Object.create({ timeout: 777, agent: undefined }), base);
+			Object.defineProperty(options, "retries", { value: 9, enumerable: false });
+
+			new SDK(options); // eslint-disable-line no-new
+
+			const passed = Client.mock.calls[Client.mock.calls.length - 1][0];
+			expect(Object.prototype.hasOwnProperty.call(passed, "timeout")).toBe(false);
+			expect(Object.prototype.hasOwnProperty.call(passed, "retries")).toBe(false);
+			expect(passed.agent).toBe(`absmartly-javascript-sdk/${SDK_VERSION}`);
+
+			done();
+		});
+
 		it("should pass explicitly undefined client options through, as 1.13.4 did", (done) => {
 			const options = {
 				application: "application",
