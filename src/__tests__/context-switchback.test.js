@@ -1297,6 +1297,89 @@ describe("switchback serving through Context", () => {
 		}
 	});
 
+	// A unit assignment cached before a switchback stint is not served again when the experiment returns
+	// to a unit experiment: it is resolved and exposed again, as Java's dropSwitchbackEpoch does.
+	it("re-resolves a unit experiment after a switchback stint", async () => {
+		for (const startAt of [ANCHOR, ANCHOR + 10 * HOUR]) {
+			const context = createContext(dataOf(asUnit(sb(2, HOUR))));
+			clock = ANCHOR + 10;
+			context.treatment("exp_sb");
+			expect(context.pending()).toEqual(1);
+
+			await refreshTo(context, { ...sb(2, HOUR), switchbackStartAt: startAt });
+			context.treatment("exp_sb");
+			const afterSwitchback = startAt === ANCHOR ? 2 : 1;
+			expect([startAt, context.pending()]).toEqual([startAt, afterSwitchback]);
+
+			await refreshTo(context, asUnit(sb(2, HOUR)));
+			context.treatment("exp_sb");
+			expect([startAt, context.pending()]).toEqual([startAt, afterSwitchback + 1]);
+		}
+	});
+
+	it("re-resolves an overridden experiment removed after a switchback stint", async () => {
+		const context = createContext(dataOf(asUnit(sb(2, HOUR))));
+		context.override("exp_sb", 1);
+		clock = ANCHOR + 10;
+		context.treatment("exp_sb");
+		await refreshTo(context, sb(2, HOUR));
+		context.treatment("exp_sb");
+		await refreshTo(context);
+		context.treatment("exp_sb");
+		expect(context.pending()).toEqual(3);
+	});
+
+	// Setting a unit later re-resolves a period-less slot read without any linked unit, and only that.
+	it("re-resolves a period-less slot without a linked unit once the unit is set", async () => {
+		const preAnchor = { ...sb(2, HOUR), switchbackStartAt: ANCHOR + 10 * HOUR, fullOnVariant: 1 };
+		const context = createContext(dataOf(preAnchor), {});
+		clock = ANCHOR + 10;
+		expect(context.treatment("exp_sb")).toEqual(0);
+		expect(context.pending()).toEqual(0);
+		context.unit(UNIT_TYPE, UID);
+		expect(context.treatment("exp_sb")).toEqual(1);
+		expect(context.pending()).toEqual(1);
+		// A slot that already had its unit is kept when an unrelated unit is set.
+		context.unit("user_id", "u");
+		expect(context.treatment("exp_sb")).toEqual(1);
+		expect(context.pending()).toEqual(1);
+	});
+
+	// Before the anchor there is no period: a clock moved back from period 0 does not reuse its slot.
+	it("does not serve a period slot before the anchor", () => {
+		const context = createContext(dataOf(sb(2, HOUR)));
+		const seeds = { ...sb(2, HOUR), seedLo: -6 };
+		expect(assignSwitchbackPeriod(CLUSTER_KEY, 0, seeds.seedHi, seeds.seedLo, 2)).toEqual(1);
+		const drawn = createContext(dataOf(seeds));
+		clock = ANCHOR + 10;
+		expect(drawn.treatment("exp_sb")).toEqual(1);
+		clock = ANCHOR - 10;
+		expect(drawn.treatment("exp_sb")).toEqual(0);
+		expect(drawn.pending()).toEqual(1);
+		expect(context.peek("exp_sb")).toEqual(0);
+	});
+
+	// An overridden period-less slot exposed without a linked unit is kept when a unit is set; an
+	// unexposed one is re-resolved.
+	it("keeps an exposed overridden period-less slot when a unit is set", () => {
+		const preAnchor = { ...sb(2, HOUR), switchbackStartAt: ANCHOR + 10 * HOUR };
+		const exposed = createContext(dataOf(preAnchor), {});
+		exposed.override("exp_sb", 1);
+		clock = ANCHOR + 10;
+		expect(exposed.treatment("exp_sb")).toEqual(1);
+		const slot = exposed._switchbackEpochs.exp_sb.periodless;
+		exposed.unit(UNIT_TYPE, UID);
+		expect(exposed._switchbackEpochs.exp_sb.periodless).toBe(slot);
+		expect(exposed.treatment("exp_sb")).toEqual(1);
+		expect(exposed.pending()).toEqual(1);
+
+		const peeked = createContext(dataOf(preAnchor), {});
+		peeked.override("exp_sb", 1);
+		expect(peeked.peek("exp_sb")).toEqual(1);
+		peeked.unit(UNIT_TYPE, UID);
+		expect(peeked._switchbackEpochs.exp_sb.periodless).toBeUndefined();
+	});
+
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {
 		const context = createContext(dataOf(sb(2, HOUR)));
 		clock = ANCHOR + 10;

@@ -1188,6 +1188,8 @@ export default class Context {
 		const epoch = epochs[experimentName];
 		if (epoch === undefined || experiment?.switchback?.generation === epoch.generation) return;
 
+		// A unit assignment cached before the experiment became a switchback must not outlive the stint.
+		delete this._assignments[experimentName];
 		delete epochs[experimentName];
 	}
 
