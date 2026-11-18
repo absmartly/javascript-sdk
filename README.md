@@ -252,6 +252,29 @@ context.overrides({
 });
 ```
 
+### Switchback Experiments
+
+A switchback experiment randomizes *clusters* over time instead of units. A cluster is a value of a context attribute, for example a store's region. Every unit in the same cluster sees the same variant during a period, and the variant changes on a fixed time grid. There is nothing new to call: `treatment()`, `peek()`, `variableValue()` and `peekVariableValue()` serve switchback experiments, and the A/B Smartly collector sends their configuration with the context data.
+
+```javascript
+context.units({ store_id: "store-1234" });
+// The experiment links the store_id unit type to the attribute path "region".
+context.attribute("region", "lisbon");
+
+const variant = context.treatment("exp_delivery_fee"); // the "lisbon" cluster's variant for this period
+```
+
+How a switchback is served (the contract the A/B Smartly collector serves; java-sdk implements the same):
+
+- **Cluster.** The experiment lists linked unit types, each with an attribute path, in a significant order. For each linked type the context has a unit of, in that order, the SDK reads the attribute at the path. The first unit that gives a value serves, and its value is the cluster key. If a later unit gives a different value, the cluster is ineligible.
+- **Values.** A non-empty string is used as-is, and a whole number as its decimal text (`17` and `"17"` are the same cluster). Fractions, booleans, objects, arrays, empty strings and `null` give no value. **JavaScript cannot tell `3.0` from `3`**, so a number written as `3.0` is the cluster `"3"`, like the integer; other SDKs give a float no value. Set cluster attributes as strings or integers.
+- **Paths.** `/` separates segments (`profile/region`, `items/0/region`), a quoted segment is a literal key (`'a/b'`), and a number indexes an array. A `.` anywhere makes the path unreadable: nest with `/`. The first segment names an attribute set with `attribute()`; the value read is the latest one set at or before the call.
+- **No linked unit:** the experiment does not apply (variant 0, nothing recorded). **Ineligible cluster** (no value, units disagree, or a value outside the experiment's allowed values): variant 0 and no exposure.
+- **Precedence** for an eligible cluster: `override()`, then assignment rules (a `split` rule randomizes over the serving unit), a strict audience mismatch (variant 0, recorded), full-on, then the schedule. Before the schedule starts, or when it cannot be served, the result is variant 0 with no exposure. Then traffic (on the serving unit; a miss is recorded as not eligible), `customAssignment()`, and the schedule draw over the cluster key. **Holdouts never apply to switchback experiments.**
+- **Exposures.** One exposure per experiment and period, under the serving unit's type, with the same fields as any other exposure. Its `exposedAt` is the time at which the call chose the period. The cluster is read once per period: setting the attribute again later in the same period does not move the unit to another cluster, and the next period reads it again. Attributes are published as usual; the collector reads the cluster from them.
+
+The schedule follows the device clock (`Date.now()`), so a device whose clock is wrong is served another period's variant.
+
 ## Advanced
 
 ### Context Attributes
@@ -553,6 +576,12 @@ An audience filter that throws while being evaluated is treated as a mismatch, s
 **After:** the SDK always evaluates audiences and assignment-rule conditions with `application` and `environment` set to the names configured in the SDK. An attribute you set with the same name, at any time, overrides them. Names that are not configured or empty are left out. They are not published. The SDK no longer adds `app_version` for audiences or rules (one you set yourself with `context.attribute("app_version", ...)` is still used and published like any other attribute), and `includeSystemAttributes` now only adds `sdk_name` and `sdk_version` to the publish payload; the option is still accepted.
 
 **This changes assignment for running experiments.** In an experiment with Audience enforced (`audienceStrict`) and an `environment` or `application` condition, a unit whose context does not set that attribute itself currently gets variant 0, even when the configured name matches the condition and even when the experiment is full-on. After upgrading, such a unit is randomised normally (or gets the full-on variant) when the configured name matches. Those units are misassigned today; this release fixes them, but their exposures will change. An attribute your context sets itself still overrides the configured name, so its matching does not change. This protection is per attribute: if an audience uses both `application` and `environment` and the context sets only one of them, the configured name for the other can still change the result. An audience or rule on `app_version` no longer matches unless you set `app_version` yourself.
+
+### Switchback experiments are served
+
+**Before:** this SDK ignored the switchback fields the collector sends. A switchback experiment was served as a sticky unit assignment on its `unitType` (or not at all without one), so its exposures did not follow the switchback schedule.
+
+**After:** switchback experiments are served by cluster and period, as described in [Switchback Experiments](#switchback-experiments). **This changes assignment for switchback experiments that are already running**: their units move from the sticky unit assignment to the cluster's schedule, and exposures are recorded once per period under the serving unit. Unit experiments, and context data without switchback experiments, are not affected.
 
 ## About A/B Smartly
 

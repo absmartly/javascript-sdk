@@ -950,12 +950,9 @@ export default class Context {
 		const hasOverride = experimentName in this._overrides;
 		const custom = experimentName in this._cassignments ? this._cassignments[experimentName] : undefined;
 
+		// `_assign` already dropped the slots of an earlier generation (see `_dropStaleSwitchbackEpoch`).
 		const cached: Assignment | undefined = this._assignments[cacheKey];
-		if (
-			cached !== undefined &&
-			cached.switchbackGeneration === switchback.generation &&
-			this._isSwitchbackAssignmentCurrent(experiment, cached, hasOverride, custom)
-		) {
+		if (cached !== undefined && this._isSwitchbackAssignmentCurrent(experiment, cached, hasOverride, custom)) {
 			return cached;
 		}
 
@@ -981,7 +978,7 @@ export default class Context {
 
 		// Within one period slot the serving unit and cluster key are read once: a slot rebuilt in the
 		// same epoch, e.g. after an attribute change flipped the audience, keeps its cluster.
-		const cachedServing = cached?.switchbackGeneration === switchback.generation ? cached.switchbackServing : undefined;
+		const cachedServing = cached?.switchbackServing;
 		const serving =
 			cachedServing !== undefined && cachedServing.status !== SWITCHBACK_ABSENT
 				? cachedServing
@@ -1223,7 +1220,8 @@ export default class Context {
 	}
 
 	// A switchback exposure is stamped with `now`, the reading that selected its period, since analysis
-	// derives the period from `exposedAt`; a later reading could fall in the next period.
+	// derives the period from `exposedAt`; a later reading could fall in the next period. Holdouts
+	// never apply to a switchback, so its assignment has none to trigger.
 	private _triggerExposures(experimentName: string, assignment: Assignment, now?: number): void {
 		if (assignment.switchbackGeneration !== undefined) {
 			if (!assignment.switchbackSilent) {
@@ -1875,8 +1873,6 @@ export default class Context {
 			};
 
 			if (experiment.randomizationType === "switchback") {
-				// Holdouts never apply to a switchback.
-				entry.holdouts = null;
 				const sources = switchbackSources(experiment.switchbackClusters);
 				const previous = this._index?.[experiment.name]?.switchback;
 				const keepsGeneration =

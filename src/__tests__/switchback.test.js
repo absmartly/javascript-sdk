@@ -1,14 +1,12 @@
+import { assignSwitchback, parseInt64, switchbackPermutation } from "../switchback-long";
 import {
-	assignSwitchback,
 	assignSwitchbackPeriod,
-	parseInt64,
 	parseSwitchbackPath,
 	resolveSwitchbackPath,
 	resolveSwitchbackServing,
 	sameSwitchbackIdentity,
 	switchbackClusterKey,
 	switchbackPeriodIndex,
-	switchbackPermutation,
 	switchbackSources,
 	tryParseInt,
 	SWITCHBACK_ABSENT,
@@ -460,7 +458,7 @@ describe("switchback schedule", () => {
 		expect(
 			switchbackPeriodIndex(schedule(1704067200000, 1440000000000), 1704067200000 + 1440000000000 - 1)
 		).toEqual(0);
-		// An exact division that rounds up as a double is corrected down.
+		// The double quotient's floor is the exact floor for every integer below 2^53.
 		for (let periodMs = 7; periodMs < 2 ** 40; periodMs = periodMs * 3 + 1) {
 			for (const elapsed of [periodMs * 1000 - 1, 2 ** 53 - 1 - ((2 ** 53 - 1) % periodMs) - 1]) {
 				const index = switchbackPeriodIndex(schedule(0, periodMs), elapsed);
