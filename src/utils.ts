@@ -152,7 +152,7 @@ export function arrayEqualsShallow(a?: unknown[], b?: unknown[]) {
 // `String.prototype.toWellFormed()` (ES2024, not assumed available under the
 // declared Node 6 / IE 10 targets) so `encodeURIComponent` — which throws
 // `URIError: URI malformed` on a lone surrogate — never sees one.
-export function toWellFormedString(value: string): string {
+export function toWellFormedString(value: string, replacement = "\ufffd"): string {
 	let result = "";
 
 	for (let i = 0; i < value.length; i++) {
@@ -163,10 +163,10 @@ export function toWellFormedString(value: string): string {
 				result += value[i] + value[i + 1];
 				i++;
 			} else {
-				result += "�";
+				result += replacement;
 			}
 		} else if (c >= 0xdc00 && c <= 0xdfff) {
-			result += "�";
+			result += replacement;
 		} else {
 			result += value[i];
 		}
