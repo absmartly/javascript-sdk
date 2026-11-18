@@ -140,6 +140,9 @@ describe("switchback assigner", () => {
 	// periodIndex = floorDiv(p, arms) and floorMod(p, arms) on the 64-bit value, never a double: a
 	// period one below a cycle boundary differs from the boundary only past 2^53.
 	it("keeps 64-bit periods and seeds exact past 2^53", () => {
+		// Golden vector: replacing this seed with 0 draws 0, not 2.
+		expect(assignSwitchback("market_1", LONG_MAX, LONG_MAX, 3)).toEqual(2);
+		expect(assignSwitchback("market_1", LONG_MAX, "0", 3)).toEqual(0);
 		const max = goldenVectors.assignSwitchback.filter((c) => c.periodIndex === LONG_MAX);
 		expect(max.length).toBeGreaterThan(0);
 		let differs = 0;
