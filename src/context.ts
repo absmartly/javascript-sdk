@@ -556,15 +556,12 @@ export default class Context {
 	private _getSystemAttributes(): Record<string, string> {
 		const client = this._sdk.getClient();
 		const systemAttrs: Record<string, string> = {};
-		// A custom `client` passed to the SDK may predate these getters.
-		if (typeof client?.getApplication !== "function" || typeof client.getEnvironment !== "function") {
-			return systemAttrs;
-		}
-		const applicationName = client.getApplication()?.name;
+		// A custom `client` passed to the SDK may predate either getter.
+		const applicationName = typeof client?.getApplication === "function" ? client.getApplication()?.name : undefined;
 		if (typeof applicationName === "string" && applicationName.length > 0) {
 			systemAttrs["application"] = applicationName;
 		}
-		const environmentName = client.getEnvironment();
+		const environmentName = typeof client?.getEnvironment === "function" ? client.getEnvironment() : undefined;
 		if (typeof environmentName === "string" && environmentName.length > 0) {
 			systemAttrs["environment"] = environmentName;
 		}
@@ -682,6 +679,17 @@ export default class Context {
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
+
+		const cached = this._assignments[experimentName];
+		if (
+			cached &&
+			!cached.exposed &&
+			cached.unitType != null &&
+			cached.unitType in this._units &&
+			(cached.isRuleMissingUnit || cached.holdoutAssignments?.some((assignment) => assignment === null))
+		) {
+			this._invalidateAssignmentsPinnedWithMissingUnit(cached.unitType);
+		}
 
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];

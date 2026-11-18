@@ -19,6 +19,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: npm
+    concurrency:
+      group: npm-publish-absmartly-javascript-sdk
+      cancel-in-progress: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

@@ -22,7 +22,6 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
-	// Sends the SDK auth/metadata headers. post(), put() and get() set it; request() sends none unless true.
 	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
@@ -48,11 +47,8 @@ export type ClientOptions = {
 // The collector reads X-Application-Version as a 64-bit integer and rejects anything else with a 400,
 // so only a whole number of 1 to 18 digits is sent as-is; anything else (e.g. "1.2.3") is sent as 0.
 function applicationVersionHeader(version: number | string): number | string {
-	if (typeof version === "number") {
-		return /^[0-9]{1,18}$/.test(String(version)) ? version : 0;
-	}
-	const trimmed = typeof version === "string" ? version.trim() : "";
-	return /^[0-9]{1,18}$/.test(trimmed) ? trimmed : 0;
+	const candidate = typeof version === "number" ? version : typeof version === "string" ? version.trim() : "";
+	return /^[0-9]{1,18}$/.test(String(candidate)) ? candidate : 0;
 }
 
 type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {

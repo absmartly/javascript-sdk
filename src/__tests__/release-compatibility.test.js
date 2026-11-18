@@ -337,6 +337,38 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(sdkFetch.mock.calls[0][1].headers["X-API-Key"]).toBe("k");
 	});
 
+	it("invalidates a cached missing-unit assignment when the live units map gains the unit", () => {
+		const sdk = new SDK(options);
+		const holdout = { id: 99, name: "h", iteration: 1, unitType: "user_id", seedHi: 1, seedLo: 2, split: [1, 0] };
+		const exp = {
+			id: 13,
+			name: "covered",
+			iteration: 1,
+			unitType: "user_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+			holdoutIds: [99],
+		};
+		const context = sdk.createContextWith({ units: {} }, { experiments: [exp], holdouts: [holdout] });
+		expect(context.peek("covered")).toBe(0);
+		context.getUnits().user_id = "u1";
+		context.treatment("covered");
+		expect(context.pending()).toBeGreaterThan(0);
+	});
+
 	describe("a released duck-typed custom client without the new getters", () => {
 		const legacyClient = () => ({
 			getContext: () => Promise.resolve({ experiments: [] }),
@@ -372,6 +404,20 @@ describe("1.13.4 source and behaviour compatibility", () => {
 				{ experiments: [strictCountryExperiment] }
 			);
 			context.attribute("country", "US");
+			expect(context.treatment("exp")).toBe(1);
+		});
+
+		it.each(["application", "environment"])("uses %s when only its getter exists", (attributeName) => {
+			const client = legacyClient();
+			if (attributeName === "application") client.getApplication = () => ({ name: "web", version: 0 });
+			else client.getEnvironment = () => "prod";
+			const sdk = new SDK({ ...options, client });
+			const value = attributeName === "application" ? "web" : "prod";
+			const exp = {
+				...strictCountryExperiment,
+				audience: JSON.stringify({ filter: [{ eq: [{ var: attributeName }, { value }] }] }),
+			};
+			const context = sdk.createContextWith({ units: { session_id: "u1" } }, { experiments: [exp] });
 			expect(context.treatment("exp")).toBe(1);
 		});
 

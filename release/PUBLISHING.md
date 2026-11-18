@@ -13,6 +13,10 @@ The workflow installs Node 22 and npm 11.6.2, installs with scripts disabled, ch
 the registry latest major and exact tag, runs the full build/tests, inspects the
 package, and publishes with provenance/public access. npm rejects an already
 published version; it is never overwritten. A failed latest lookup fails closed.
+All publish jobs, including manual dry runs, share the fixed package-wide concurrency
+group `npm-publish-absmartly-javascript-sdk`, with `cancel-in-progress: false`.
+Registry/tag validation and publishing run inside that same locked job, so concurrent
+release tags cannot both validate against a stale `latest` and then move it backwards.
 
 `workflow_dispatch` is **always a dry run**. Its optional `use_npm_token` input
 uses `secrets.NPM_TOKEN` as `NODE_AUTH_TOKEN` for a fallback authentication test
@@ -20,7 +24,15 @@ only. If opted in, the owner must supply that secret; it is not needed for OIDC.
 A manual dry run does not prove npm will accept OIDC on a real tag: the owner must
 retain the npm publisher configuration and approve any environment protections.
 
-Prereleases (for example `1.15.0-beta.0`) publish under their prerelease id (`beta`), never `latest`. A stable version that is not newer than `npm latest` in the same major (for example a 1.13.x backport after 1.14.0) fails the check, so the owner chooses its tag. When this package's major is lower than `npm latest`, the workflow uses `v1-lts`
+Prereleases use a bounded set of distribution channels: `alpha`, `beta`, `rc`, and
+`next`. The first prerelease identifier is matched case-insensitively and normalized
+to lowercase (for example `1.15.0-BETA.0` uses `beta`). Every other identifier maps
+to `next`, including `latest`, `LATEST`, `v1`, and numeric identifiers. A prerelease
+never publishes to `latest` or an arbitrary npm tag.
+
+A stable version that is not newer than `npm latest` in the same major (for example
+a 1.13.x backport after 1.14.0) fails the check, so the owner chooses its tag. When
+this package's major is lower than `npm latest`, the workflow uses `v1-lts`
 (or `v<major>-lts`), leaving latest alone. **Owner deviation to approve:** the
 requested `--tag v1` is impossible: npm 11.6.2 rejects it with `Tag name must not
 be a valid SemVer range: v1`. `v1-lts` passes the same dry run. For 1.14.0 today,

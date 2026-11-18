@@ -14,6 +14,7 @@ function usage() {
 Package arguments are directories containing package.json, built JS and declarations.
 Example: npm pack @absmartly/javascript-sdk@1.13.4 --ignore-scripts
          mkdir -p /tmp/sdk-baseline && tar -xzf absmartly-javascript-sdk-1.13.4.tgz -C /tmp/sdk-baseline
+         npm install --prefix /tmp/sdk-baseline/package --omit=dev --ignore-scripts
          node scripts/compatibility/run.js /tmp/sdk-baseline/package . --report /tmp/sdk-compat.json
 
 By default, three pinned TypeScript versions are installed into a temporary directory
