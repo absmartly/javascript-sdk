@@ -214,9 +214,12 @@ function isAllowed(allowedValues: unknown, key: string) {
 	if (allowedValues == null) return true;
 	if (!Array.isArray(allowedValues)) return false;
 	if (allowedValues.length === 0) return true;
-	// Compared as text, as Java reads a JSON number in this string list.
-	for (const allowed of allowedValues) {
-		if (allowed != null && String(allowed) === key) return true;
+	// A string entry is compared as-is, and a number or boolean as its text, as Java reads one in this
+	// string list.
+	for (let i = 0; i < allowedValues.length; ++i) {
+		const allowed = allowedValues[i];
+		const type = typeof allowed;
+		if ((type === "string" || type === "number" || type === "boolean") && String(allowed) === key) return true;
 	}
 	return false;
 }

@@ -402,6 +402,11 @@ describe("switchback serving", () => {
 		expect(resolveSwitchbackServing(types, p, [null], both, reader({ session_store: "null" })).status).toEqual(
 			SWITCHBACK_INELIGIBLE
 		);
+		for (const entry of [{}, ["a"], null]) {
+			expect(
+				resolveSwitchbackServing(types, p, [entry], both, reader({ session_store: String(entry) })).status
+			).toEqual(SWITCHBACK_INELIGIBLE);
+		}
 		// A malformed allow-list admits nothing rather than everything.
 		expect(resolveSwitchbackServing(types, p, "a", both, reader({ session_store: "a" })).status).toEqual(
 			SWITCHBACK_INELIGIBLE
@@ -441,6 +446,11 @@ describe("switchback serving", () => {
 		// A lone array-index unit type has no order to lose.
 		expect(switchbackSources({ 7: "x" })).toEqual({ types: ["7"], paths: paths("x") });
 		expect(switchbackSources({ "07": "x", a: "y" })).toEqual({ types: ["07", "a"], paths: paths("x", "y") });
+		// 2^32 - 1 is not an array index, so JS keeps it in its declared position.
+		expect(switchbackSources({ store: "a", 4294967295: "b" })).toEqual({
+			types: ["store", "4294967295"],
+			paths: paths("a", "b"),
+		});
 	});
 });
 
