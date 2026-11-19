@@ -75,6 +75,12 @@ describe("publish workflow", () => {
 	const job = workflow.jobs.publish;
 	const publishSteps = job.steps.filter((step) => /npm publish\b/.test(step.run || ""));
 
+	test("pins every action to a commit SHA, since the job can mint an OIDC token", () => {
+		for (const step of job.steps.filter((step) => step.uses)) {
+			expect(step.uses).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
+		}
+	});
+
 	test("serializes all releases with one fixed package-wide lock without cancelling a running publish", () => {
 		expect(Object.keys(workflow.jobs)).toEqual(["publish"]);
 		expect(job.concurrency).toEqual({

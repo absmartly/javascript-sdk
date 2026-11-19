@@ -469,6 +469,37 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		});
 	});
 
+	it("lets an unconditional assign rule win over excluded traffic on every read API", () => {
+		const experiment = {
+			id: 14,
+			name: "excluded",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [1, 0],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: '{"color":"blue"}' },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+			assignmentRules: JSON.stringify({ rules: [{ name: "all", type: "assign", variant: 1, conditions: null }] }),
+		};
+		const make = () =>
+			new SDK(options).createContextWith({ units: { session_id: "u1" } }, { experiments: [experiment] });
+		expect(make().peek("excluded")).toBe(1);
+		expect(make().treatment("excluded")).toBe(1);
+		expect(make().variableValue("color", "none")).toBe("blue");
+		expect(make().peekVariableValue("color", "none")).toBe("blue");
+	});
+
 	it("publishes an app_version the user set, like any other attribute", async () => {
 		const publisher = { publish: jest.fn(() => Promise.resolve()) };
 		const sdk = new SDK({ ...options, publisher });

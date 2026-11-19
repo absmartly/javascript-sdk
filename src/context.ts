@@ -409,8 +409,9 @@ export default class Context {
 
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
-		for (const attr of this._attrs) {
-			attributes[attr.name] = attr.value;
+		// Index loops: the compiled for...of adds an iterator helper per call on these hot paths.
+		for (let i = 0; i < this._attrs.length; i++) {
+			attributes[this._attrs[i].name] = this._attrs[i].value;
 		}
 		return attributes;
 	}
@@ -578,8 +579,8 @@ export default class Context {
 			return this._attrsMapCache;
 		}
 		const attrs: Record<string, unknown> = this._getSystemAttributes();
-		for (const attr of this._attrs) {
-			attrs[attr.name] = attr.value;
+		for (let i = 0; i < this._attrs.length; i++) {
+			attrs[this._attrs[i].name] = this._attrs[i].value;
 		}
 		this._attrsMapCache = attrs;
 		this._attrsMapCacheSeq = this._attrsSeq;
@@ -1120,7 +1121,7 @@ export default class Context {
 			const client = this._sdk.getClient();
 			// A plain object, not a Set: the browser bundle still supports IE 10, which has no Set.
 			const userNames: Record<string, true> = {};
-			for (const x of this._attrs) userNames[x.name] = true;
+			for (let i = 0; i < this._attrs.length; i++) userNames[this._attrs[i].name] = true;
 			const addSystemAttribute = (attrName: string, value: unknown) => {
 				if (!Object.prototype.hasOwnProperty.call(userNames, attrName)) {
 					allAttributes.push({ name: attrName, value, setAt: systemSetAt });
@@ -1132,7 +1133,8 @@ export default class Context {
 			addSystemAttribute("sdk_version", SDK_VERSION);
 		}
 
-		for (const x of this._attrs) {
+		for (let i = 0; i < this._attrs.length; i++) {
+			const x = this._attrs[i];
 			allAttributes.push({ name: x.name, value: x.value, setAt: x.setAt });
 		}
 
