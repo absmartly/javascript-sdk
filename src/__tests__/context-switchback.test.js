@@ -1380,20 +1380,22 @@ describe("switchback serving through Context", () => {
 		expect(peeked._switchbackEpochs.exp_sb.periodless).toBeUndefined();
 	});
 
-	it("removes invalidated period indices when a linked unit arrives", () => {
+	// Java keeps a dropped slot's period index retained after a late unit, so a rollback past the two
+	// retained indices re-exposes as in java-sdk (3 exposures for periods 0, 1, 0).
+	it("keeps invalidated period indices retained when a linked unit arrives, as Java does", () => {
 		const context = createContext(dataOf(sb(2, HOUR)), {});
 		for (const period of [2, 3]) {
 			clock = ANCHOR + period * HOUR;
 			context.treatment("exp_sb");
 		}
 		context.unit(UNIT_TYPE, UID);
-		expect(context._switchbackEpochs.exp_sb.periods).toEqual([]);
+		expect(context._switchbackEpochs.exp_sb.periods).toEqual([2, 3]);
+		expect(Object.keys(context._switchbackEpochs.exp_sb.slots)).toEqual([]);
 		for (const period of [0, 1, 0]) {
 			clock = ANCHOR + period * HOUR;
 			context.treatment("exp_sb");
 		}
-		expect(context.pending()).toEqual(2);
-		expect(context._switchbackEpochs.exp_sb.periods).toEqual([0, 1]);
+		expect(context.pending()).toEqual(3);
 	});
 
 	it("drops the slots of an earlier epoch when the same period is resolved again", async () => {
@@ -1466,6 +1468,27 @@ describe("switchback serving through Context", () => {
 		expect(await publishExposures(context)).toEqual([
 			{ ...exposure(1, "exp_sb", 1, ANCHOR + 10, false, true, { overridden: true }), unit: "user_id" },
 		]);
+	});
+
+	// Port of Java's staleRuleTransitionEvaluatesTheRulesTwice for a switchback: a rule outcome that changes
+	// after an attribute is set is evaluated once to find the slot stale and once to rebuild it, and the
+	// rebuilt slot is current afterwards.
+	it("evaluates the rules twice on a stale rule transition", () => {
+		const experiment = sb(2, HOUR);
+		experiment.assignmentRules =
+			'{"rules":[{"type":"assign","environments":[],"variant":1,"conditions":{"and":[{"eq":[{"var":"country"},{"value":"US"}]}]}}]}';
+		const context = createContext(dataOf(experiment));
+		const rules = jest.spyOn(context._audienceMatcher, "evaluateParsedRules");
+		clock = ANCHOR + 5;
+		expect(context.peek("exp_sb")).toEqual(EXPECTED_2_ARMS[0]);
+		expect(rules).toHaveBeenCalledTimes(1);
+
+		context.attribute("country", "US");
+		rules.mockClear();
+		expect(context.peek("exp_sb")).toEqual(1);
+		expect(rules).toHaveBeenCalledTimes(2);
+		expect(context.peek("exp_sb")).toEqual(1);
+		expect(rules).toHaveBeenCalledTimes(2);
 	});
 
 	// An ineligible or absent switchback slot never consulted its rules, so neither a set attribute nor
