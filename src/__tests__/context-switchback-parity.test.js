@@ -16,8 +16,8 @@ jest.mock("../publisher");
 // Port of java-sdk's SwitchbackServerParityTest: replays the Collector's R33 serving rules
 // (ContextAPI.switchbackServing and switchbackVariant) through the public Context API. Each case states,
 // independently of SDK code, the serving unit type and the raw cluster key the Collector picks, or that
-// it records nothing; the expected variant is the assigner over that raw key, pinned by the golden
-// vectors, and a few schedules are pinned to an independent murmur3 reference.
+// it records nothing; the expected variant comes from REFERENCE_SCHEDULES, computed by an independent
+// murmur3 reference, never by the SDK.
 const HOUR = 3600000;
 const ANCHOR = 1767225600000;
 const PERIODS = 4;
