@@ -221,6 +221,18 @@ describe("switchback server parity", () => {
 		);
 	});
 
+	// An ineligible cluster is listed under the first linked unit present, not the unit that gave the
+	// rejected value: an override shows that unit.
+	it("records an override on an ineligible cluster under the first linked unit", () => {
+		clock = ANCHOR;
+		const { context, exposures } = createContext([experiment(TWO_SOURCES, ["Lisboa"])], twoUnits());
+		context.attribute("geo", { city: "Porto" });
+		context.override("exp_sb", 2);
+		clock = ANCHOR + 1;
+		expect(context.treatment("exp_sb")).toEqual(2);
+		expect(exposures.map((e) => [e.unit, e.variant, e.overridden])).toEqual([[STORE, 2, true]]);
+	});
+
 	it("rejects a second uid of the same type", () => {
 		const { context } = createContext([], { [STORE]: "s1" });
 		expect(() => context.unit(STORE, "s2")).toThrow("Unit 'store_id' UID already set.");
