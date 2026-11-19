@@ -190,6 +190,8 @@ export default class Context {
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
+	// Assignments resolved while their unit was missing; while zero, _assign() skips the live-units check.
+	private _missingUnitPins: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
 	private _hashes?: Record<string, string | null>;
@@ -219,6 +221,7 @@ export default class Context {
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
 		this._attrsSeq = 0;
+		this._missingUnitPins = 0;
 		this._attrsMapCache = null;
 		this._attrsMapCacheSeq = -1;
 
@@ -633,6 +636,7 @@ export default class Context {
 
 					assignment.ruleVariant = ruleVariant;
 					assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
+					if (assignment.isRuleMissingUnit) this._missingUnitPins++;
 				}
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
@@ -680,7 +684,7 @@ export default class Context {
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
 
-		const cached = this._assignments[experimentName];
+		const cached = this._missingUnitPins > 0 ? this._assignments[experimentName] : undefined;
 		if (
 			cached &&
 			!cached.exposed &&
@@ -757,6 +761,7 @@ export default class Context {
 
 			assignment.holdouts = holdouts;
 			assignment.holdoutAssignments = holdoutAssignments;
+			if (holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null)) this._missingUnitPins++;
 
 			assignment.suppressed = holdoutAssignments.some(
 				(holdoutAssignment) =>
@@ -790,6 +795,7 @@ export default class Context {
 
 				assignment.ruleVariant = ruleVariant;
 				assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
+				if (assignment.isRuleMissingUnit) this._missingUnitPins++;
 
 				// A matching assignment rule wins over holdout suppression, the same way override()
 				// does: it's an explicit, author-specified assignment (flagged `ruleOverride`,

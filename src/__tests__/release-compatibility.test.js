@@ -337,6 +337,116 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(sdkFetch.mock.calls[0][1].headers["X-API-Key"]).toBe("k");
 	});
 
+	describe("live units map additions", () => {
+		const liveExp = (extra) => ({
+			id: 13,
+			name: "covered",
+			iteration: 1,
+			unitType: "user_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+			...extra,
+		});
+		const splitRules = JSON.stringify({
+			rules: [{ name: "s", type: "split", percentages: "0/100", conditions: null }],
+		});
+
+		it("re-resolves a peeked missing-unit split rule once the live map gains the unit", () => {
+			const context = new SDK(options).createContextWith(
+				{ units: {} },
+				{ experiments: [liveExp({ assignmentRules: splitRules })] }
+			);
+			expect(context.peek("covered")).toBe(0);
+			context.getUnits().user_id = "u1";
+			expect(context.peek("covered")).toBe(1);
+		});
+
+		it("matches unit() for a holdout-covered experiment peeked before the unit existed", () => {
+			const holdout = {
+				id: 99,
+				name: "h",
+				iteration: 1,
+				unitType: "user_id",
+				seedHi: 1,
+				seedLo: 2,
+				split: [0, 1],
+			};
+			const data = { experiments: [liveExp({ holdoutIds: [99] })], holdouts: [holdout] };
+			const viaUnit = new SDK(options).createContextWith({ units: {} }, data);
+			viaUnit.peek("covered");
+			viaUnit.unit("user_id", "u1");
+			viaUnit.treatment("covered");
+			const viaMap = new SDK(options).createContextWith({ units: {} }, data);
+			viaMap.peek("covered");
+			viaMap.getUnits().user_id = "u1";
+			viaMap.treatment("covered");
+			const shape = (c) => c._exposures.map((x) => [x.name, x.variant, x.assigned]);
+			expect(shape(viaMap)).toEqual(shape(viaUnit));
+		});
+
+		it("keeps the cached assignment while the unit is still missing", () => {
+			const context = new SDK(options).createContextWith(
+				{ units: {} },
+				{ experiments: [liveExp({ assignmentRules: splitRules })] }
+			);
+			context.peek("covered");
+			const first = context._assignments.covered;
+			context.peek("covered");
+			expect(context._assignments.covered).toBe(first);
+		});
+
+		it("does no live-units work on cached reads when nothing was resolved without its unit", () => {
+			const context = new SDK(options).createContextWith(
+				{ units: { user_id: "u1" } },
+				{ experiments: [liveExp({})] }
+			);
+			context.peek("covered");
+			const cached = context._assignments.covered;
+			let reads = 0;
+			let value = cached.isRuleMissingUnit;
+			Object.defineProperty(cached, "isRuleMissingUnit", {
+				get: () => {
+					reads++;
+					return value;
+				},
+				set: (v) => {
+					value = v;
+				},
+			});
+			for (let i = 0; i < 50; i++) context.peek("covered");
+			expect(context._missingUnitPins).toBe(0);
+			expect(reads).toBe(0);
+		});
+	});
+
+	it("publishes an app_version the user set, like any other attribute", async () => {
+		const publisher = { publish: jest.fn(() => Promise.resolve()) };
+		const sdk = new SDK({ ...options, publisher });
+		const context = sdk.createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [] },
+			{ publishDelay: -1 }
+		);
+		context.attribute("app_version", "2.3.4");
+		context.track("goal");
+		await context.publish();
+		const attributes = publisher.publish.mock.calls[0][0].attributes;
+		expect(attributes).toEqual([expect.objectContaining({ name: "app_version", value: "2.3.4" })]);
+	});
+
 	it("invalidates a cached missing-unit assignment when the live units map gains the unit", () => {
 		const sdk = new SDK(options);
 		const holdout = { id: 99, name: "h", iteration: 1, unitType: "user_id", seedHi: 1, seedLo: 2, split: [1, 0] };
