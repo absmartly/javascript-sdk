@@ -140,7 +140,10 @@ context.customAssignments({ example: 1 });
 context.track("purchase", { amount: 5 });
 context.publish();
 context.refresh();
-context.finalize();
+const finalized: true | Promise<void> = context.finalize();
+if (finalized === true) {
+	void finalized;
+}
 context.experiments();
 context.customFieldKeys();
 context.customFieldValue("example", "key");

@@ -12,20 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           path: javascript-sdk
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           repository: absmartly/cross-sdk-tests
           ref: ada8952293a8d4ebf81f8de038f4e7a406d98870
           path: cross-sdk-tests
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: javascript-sdk/package-lock.json
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.11'
       - name: Build SDK and install reference wrapper
@@ -46,7 +46,7 @@ jobs:
           wrapper=$!
           trap 'kill "$wrapper" 2>/dev/null || true' EXIT
           python -u orchestrator/test_runner.py --sdk javascript --report report.json
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: cross-sdk-javascript

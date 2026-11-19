@@ -440,7 +440,8 @@ export default class Context {
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions?: ClientRequestOptions) {
+	// Declared as in 1.13.4 so existing `=== true` checks still compile; it only ever returns a promise.
+	finalize(requestOptions?: ClientRequestOptions): true | Promise<void> {
 		return this._finalize(requestOptions);
 	}
 

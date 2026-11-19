@@ -469,6 +469,38 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		});
 	});
 
+	it("treats a nested audience path under a null attribute as missing, not a mismatch, as 1.13.4 did", () => {
+		const eventLogger = jest.fn();
+		const experiment = {
+			id: 15,
+			name: "nested",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 3603515,
+			seedLo: 233373850,
+			split: [0, 1],
+			trafficSeedHi: 449867249,
+			trafficSeedLo: 455443629,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: JSON.stringify({ filter: [{ not: [{ eq: [{ var: "user/plan" }, { value: "free" }] }] }] }),
+			audienceStrict: true,
+			customFieldValues: null,
+		};
+		const context = new SDK({ ...options, eventLogger }).createContextWith(
+			{ units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" } },
+			{ experiments: [experiment] }
+		);
+		context.attribute("user", null);
+		expect(context.treatment("nested")).toBe(1);
+		expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
+	});
+
 	it("returns the latest value for a repeated attribute from getAttributes()", () => {
 		const context = new SDK(options).createContextWith({ units: { session_id: "u1" } }, { experiments: [] });
 		context.attribute("age", 10);

@@ -51,6 +51,9 @@
   emits one logger `error` event; 1.13.4 treated it as a match. Affected: strict
   audiences move such units to control (variant 0); non-strict exposures publish
   `audienceMismatch: true` instead of `false`.
+- New runtime dependency `@babel/runtime` (shared Babel helpers, which shrink the
+  browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
+  Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
 
 ### Fixed
 

@@ -125,6 +125,7 @@ export class Evaluator {
 		let target = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
+			if (target == null) return null;
 
 			const value = target[frag];
 			if (value !== undefined) {
