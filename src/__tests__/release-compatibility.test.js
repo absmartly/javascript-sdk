@@ -469,6 +469,14 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		});
 	});
 
+	it("returns the latest value for a repeated attribute from getAttributes()", () => {
+		const context = new SDK(options).createContextWith({ units: { session_id: "u1" } }, { experiments: [] });
+		context.attribute("age", 10);
+		context.attribute("country", "US");
+		context.attribute("age", 30);
+		expect(context.getAttributes()).toEqual({ age: 30, country: "US" });
+	});
+
 	it("lets an unconditional assign rule win over excluded traffic on every read API", () => {
 		const experiment = {
 			id: 14,
