@@ -53,6 +53,7 @@ function compareIdentifiers(a: string, b: string) {
 }
 
 export class Evaluator {
+	nullParentEncountered = false;
 	private readonly operators: any;
 	private readonly vars: any;
 
@@ -125,7 +126,10 @@ export class Evaluator {
 		let target = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
-			if (target == null) return null;
+			if (target == null) {
+				this.nullParentEncountered = true;
+				return null;
+			}
 
 			const value = target[frag];
 			if (value !== undefined) {

@@ -42,7 +42,7 @@ export class AudienceMatcher {
 
 		if (audience && audience.filter) {
 			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-				return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
+				return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars, true);
 			}
 		}
 
