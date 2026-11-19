@@ -397,6 +397,43 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			expect(shape(viaMap)).toEqual(shape(viaUnit));
 		});
 
+		it("re-resolves via the live map after revalidation turns an assignment into a missing-unit pin", () => {
+			const rules = JSON.stringify({
+				rules: [
+					{
+						name: "us",
+						type: "assign",
+						variant: 0,
+						conditions: { eq: [{ var: "country" }, { value: "US" }] },
+					},
+					{
+						name: "gb",
+						type: "split",
+						percentages: "0/100",
+						conditions: { eq: [{ var: "country" }, { value: "GB" }] },
+					},
+				],
+			});
+			const sequence = (setUnit) => {
+				const context = new SDK(options).createContextWith(
+					{ units: {} },
+					{ experiments: [liveExp({ assignmentRules: rules })] }
+				);
+				context.attribute("country", "US");
+				expect(context.peek("covered")).toBe(0);
+				context.attribute("country", "GB");
+				expect(context.peek("covered")).toBe(0);
+				setUnit(context);
+				return context.peek("covered");
+			};
+			expect(sequence((context) => context.unit("user_id", "u1"))).toBe(1);
+			expect(
+				sequence((context) => {
+					context.getUnits().user_id = "u1";
+				})
+			).toBe(1);
+		});
+
 		it("keeps the cached assignment while the unit is still missing", () => {
 			const context = new SDK(options).createContextWith(
 				{ units: {} },
