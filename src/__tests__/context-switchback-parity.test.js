@@ -105,7 +105,22 @@ function serve(exp, units, attributes) {
 	return { variants, exposures };
 }
 
-const collectorVariant = (key, period) => assignSwitchbackPeriod(key, period, SEED_HI, SEED_LO, ARMS);
+// Periods 0..3 of each raw key under SEED with 3 arms, from an independent Python murmur3 reference that
+// reproduces every platform golden vector; never computed by the SDK.
+const REFERENCE_SCHEDULES = {
+	Lisboa: [0, 1, 2, 2],
+	Porto: [2, 1, 0, 1],
+	42: [0, 2, 1, 2],
+	Faro: [0, 1, 2, 1],
+	"-7": [2, 0, 1, 0],
+	Lisbon: [2, 0, 1, 1],
+	"plus-one-key": [2, 1, 0, 0],
+};
+
+function collectorVariant(key, period) {
+	expect(Object.prototype.hasOwnProperty.call(REFERENCE_SCHEDULES, key)).toBe(true);
+	return REFERENCE_SCHEDULES[key][period];
+}
 
 // The Collector served `key` under a unit of `servingType`: one eligible exposure per period under that
 // unit, variant from the raw key.
@@ -144,10 +159,15 @@ describe("switchback server parity", () => {
 			"Lisboa",
 			"Lisboa"
 		);
-		for (let p = 0; p < PERIODS; ++p) {
-			expect(collectorVariant("Lisboa", p)).toEqual([0, 1, 2, 2][p]);
-			expect(collectorVariant("Porto", p)).toEqual([2, 1, 0, 1][p]);
-			expect(collectorVariant("42", p)).toEqual([0, 2, 1, 2][p]);
+		// The SDK's own period draw agrees with the reference for every key the suite uses.
+		for (const key of Object.keys(REFERENCE_SCHEDULES)) {
+			for (let p = 0; p < PERIODS; ++p) {
+				expect([key, p, assignSwitchbackPeriod(key, p, SEED_HI, SEED_LO, ARMS)]).toEqual([
+					key,
+					p,
+					collectorVariant(key, p),
+				]);
+			}
 		}
 	});
 
