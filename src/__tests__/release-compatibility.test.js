@@ -408,6 +408,27 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		spy.mockRestore();
 	});
 
+	it("builds the attribute map, getAttributes() and the publish list with one pass over the history", async () => {
+		const publisher = { publish: jest.fn(() => Promise.resolve()) };
+		const context = new SDK({ ...options, publisher }).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [] },
+			{ publishDelay: -1 }
+		);
+		for (let i = 0; i < 5; i++) context.attribute(`a${i}`, i);
+		// Count iterator use: a for...of over the history calls Symbol.iterator, forEach/map do not.
+		const iterator = jest.spyOn(context._attrs, Symbol.iterator);
+		const forEach = jest.spyOn(context._attrs, "forEach");
+		const map = jest.spyOn(context._attrs, "map");
+		context._getAttributesMap();
+		context.getAttributes();
+		context.track("g");
+		await context.publish();
+		expect(iterator).not.toHaveBeenCalled();
+		expect(forEach).toHaveBeenCalledTimes(2);
+		expect(map).toHaveBeenCalledTimes(1);
+	});
+
 	it("sends no SDK headers from getContext() when auth is false, as 1.13.4 did", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
 		await new Client(options).getContext({ auth: false });

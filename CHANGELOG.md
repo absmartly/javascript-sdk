@@ -59,9 +59,10 @@
   browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
   Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
 - Re-evaluating an audience after `setAttribute` now also checks the assignment-rule
-  and holdout state, so it costs slightly more with very long attribute histories
-  (measured about 10% at 3,000 attributes; unchanged at 1,000 and below). Ordinary
-  cached reads are unaffected.
+  and holdout state. Measured on Node 22 (synthetic, one audience experiment): about
+  4% faster than 1.13.4 with 300 attributes, about 6% slower with 1,000 and about
+  16% slower with 3,000. Ordinary cached reads, `getAttributes()` and publishing are
+  at or below 1.13.4 cost.
 
 ### Fixed
 
