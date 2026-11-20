@@ -1,6 +1,5 @@
 import { isObject } from "./utils";
 import { JsonExpr } from "./jsonexpr/jsonexpr";
-import { NullParentError } from "./jsonexpr/evaluator";
 
 export type RuleAction = { variant: number } | { split: number[] };
 
@@ -48,7 +47,7 @@ export class AudienceMatcher {
 				try {
 					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
 				} catch (error) {
-					if (!(error instanceof NullParentError)) throw error;
+					if (!(error && (error as { nullParent?: boolean }).nullParent === true)) throw error;
 					console.error(error);
 					return null;
 				}
