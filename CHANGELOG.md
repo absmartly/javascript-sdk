@@ -47,10 +47,11 @@
   differs from the client one, who now get more (or fewer) retries to match it.
   `timeout: 0` keeps its 1.13.4 meaning: a request value of 0 falls back to the
   client timeout, and a client timeout of 0 means no retries.
-- If the audience matcher itself fails unexpectedly, the audience now counts as a
-  mismatch (fail closed) and emits one logger `error` event. Errors inside an
-  audience expression (for example a path through a `null` attribute) are still
-  logged to the console and the audience ignored, as in 1.13.4.
+- An audience whose evaluation throws now counts as a mismatch (fail closed) and
+  emits one logger `error` event; in 1.13.4 it was ignored, so strict audiences
+  could let users through. Affected: strict audiences with, for example, a throwing
+  attribute getter now serve control. Only a path through a `null` attribute is
+  still logged to the console and the audience ignored, as in 1.13.4.
 - New runtime dependency `@babel/runtime` (shared Babel helpers, which shrink the
   browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
   Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
