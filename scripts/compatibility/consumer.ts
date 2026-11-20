@@ -7,7 +7,7 @@ import absmartly, {
 	mergeConfig,
 	AbortController,
 } from "@absmartly/javascript-sdk";
-import { ClientRequestOptions, ClientOptions } from "@absmartly/javascript-sdk/types/client";
+import Client, { ClientRequestOptions, ClientOptions } from "@absmartly/javascript-sdk/types/client";
 import {
 	ContextData,
 	ContextOptions,
@@ -170,3 +170,14 @@ function readReleasedApplicationVersion(options: ClientOptions): number {
 	return typeof options.application === "string" ? 0 : options.application.version;
 }
 void readReleasedApplicationVersion;
+
+type ReleasedSdkOptions = ConstructorParameters<typeof SDK>[0];
+type ReleasedClientOptions = ConstructorParameters<typeof Client>[0];
+function readSdkCtorVersion(options: ReleasedSdkOptions): number {
+	return typeof options.application === "string" ? 0 : options.application.version;
+}
+function readClientCtorVersion(options: ReleasedClientOptions): number {
+	return typeof options.application === "string" ? 0 : options.application.version;
+}
+void readSdkCtorVersion;
+void readClientCtorVersion;

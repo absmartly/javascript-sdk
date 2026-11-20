@@ -1,4 +1,4 @@
-import Client, { ClientInputOptions, ClientRequestOptions } from "./client";
+import Client, { ClientInputOptions, ClientOptions, ClientRequestOptions } from "./client";
 import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
 import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
@@ -33,6 +33,10 @@ export default class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
+	// The released signature is declared last, so ConstructorParameters<typeof SDK> keeps its 1.13.4 type;
+	// the first overload additionally accepts a string application version.
+	constructor(options: ClientInputOptions & SDKOptions);
+	constructor(options: ClientOptions & SDKOptions);
 	constructor(options: ClientInputOptions & SDKOptions) {
 		const clientOptions = SDK._extractClientOptions(options);
 		options = Object.assign({}, options);

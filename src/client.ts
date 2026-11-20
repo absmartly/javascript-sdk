@@ -63,6 +63,9 @@ export default class Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
 
+	// The released signature is declared last, so ConstructorParameters<typeof Client> keeps its 1.13.4 type.
+	constructor(opts: ClientInputOptions);
+	constructor(opts: ClientOptions);
 	constructor(opts: ClientInputOptions) {
 		const merged: Record<string, unknown> = Object.assign(
 			{
