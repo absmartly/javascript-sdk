@@ -14,6 +14,19 @@ jest.mock("../fetch");
 const options = { endpoint: "https://collector/v1", apiKey: "k", application: "web", environment: "prod" };
 
 describe("1.13.4 source and behaviour compatibility", () => {
+	it("uses the client retry budget for request timeout zero", async () => {
+		sdkFetch.mockRejectedValue(new Error("connection refused"));
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const client = new Client({ ...options, timeout: 3000, retries: 1 });
+			const error = await client.request({ path: "/context", method: "GET", timeout: 0 }).catch((e) => e);
+			expect(sdkFetch).toHaveBeenCalledTimes(2);
+			expect(error.name).toBe("RetryError");
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
 	beforeEach(() => {
 		sdkFetch.mockReset();
 	});
