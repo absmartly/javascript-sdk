@@ -623,23 +623,33 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			}
 		});
 
-		it("fails a strict audience closed when an attribute getter throws, and logs one error event", () => {
-			const eventLogger = jest.fn();
-			const context = new SDK({ ...options, eventLogger }).createContextWith(
-				{ units: { session_id: uid } },
-				{ experiments: [strictExp([{ eq: [{ var: "user/plan" }, { value: "pro" }] }])] }
-			);
-			const user = {};
-			Object.defineProperty(user, "plan", {
-				get() {
-					throw new Error("getter boom");
-				},
-			});
-			context.attribute("user", user);
-			expect(context.treatment("aud")).toBe(0);
-			expect(context._exposures[0].audienceMismatch).toBe(true);
-			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(1);
-		});
+		it.each([
+			["an Error", () => new Error("getter boom")],
+			["a TypeError", () => new TypeError("getter boom")],
+			[
+				"an error object marked nullParent: 1",
+				() => Object.assign(new TypeError("getter boom"), { nullParent: 1 }),
+			],
+		])(
+			"fails a strict audience closed when an attribute getter throws %s, and logs one error event",
+			(_label, makeError) => {
+				const eventLogger = jest.fn();
+				const context = new SDK({ ...options, eventLogger }).createContextWith(
+					{ units: { session_id: uid } },
+					{ experiments: [strictExp([{ eq: [{ var: "user/plan" }, { value: "pro" }] }])] }
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw makeError();
+					},
+				});
+				context.attribute("user", user);
+				expect(context.treatment("aud")).toBe(0);
+				expect(context._exposures[0].audienceMismatch).toBe(true);
+				expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(1);
+			}
+		);
 
 		it("logs a null-parent audience path to the console, without an error event", () => {
 			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
