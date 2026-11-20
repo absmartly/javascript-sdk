@@ -1,5 +1,6 @@
 import { isObject } from "./utils";
 import { JsonExpr } from "./jsonexpr/jsonexpr";
+import { NullParentError } from "./jsonexpr/evaluator";
 
 export type RuleAction = { variant: number } | { split: number[] };
 
@@ -42,11 +43,12 @@ export class AudienceMatcher {
 
 		if (audience && audience.filter) {
 			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-				// As in 1.13.4, an audience whose evaluation throws (e.g. a path through a null
-				// attribute) is ignored rather than counted as a mismatch.
+				// As in 1.13.4, an audience whose path reads below a null attribute is ignored rather than
+				// counted as a mismatch. Any other evaluation error propagates, so strict audiences fail closed.
 				try {
 					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
 				} catch (error) {
+					if (!(error instanceof NullParentError)) throw error;
 					console.error(error);
 					return null;
 				}

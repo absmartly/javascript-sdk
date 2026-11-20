@@ -1,9 +1,12 @@
 /* eslint-disable */
 import { isEqualsDeep, isObject } from "../utils";
 
+/** @internal Thrown when a `var` path reads below an attribute whose value is null or undefined. */
+export class NullParentError extends TypeError {}
+
 function parseSemver(version: string) {
 	let v = version;
-	if (v.startsWith("v") || v.startsWith("V")) {
+	if (v.charAt(0) === "v" || v.charAt(0) === "V") {
 		v = v.substring(1);
 	}
 
@@ -125,6 +128,9 @@ export class Evaluator {
 		let target = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
+			if (target == null) {
+				throw new NullParentError(`Cannot read '${frag}' of ${target} in var path '${path}'`);
+			}
 
 			const value = target[frag];
 			if (value !== undefined) {

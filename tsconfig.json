@@ -13,6 +13,7 @@
 		"isolatedModules": true,
 		"moduleResolution": "node",
 		"removeComments": true,
+		"stripInternal": true,
 		"noImplicitAny": true,
 		"strictNullChecks": true,
 		"strictFunctionTypes": true,

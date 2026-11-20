@@ -575,6 +575,129 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		warn.mockRestore();
 	});
 
+	describe("audience and rule evaluation errors", () => {
+		const strictExp = (audience) => ({
+			id: 17,
+			name: "aud",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 3603515,
+			seedLo: 233373850,
+			split: [0, 1],
+			trafficSeedHi: 449867249,
+			trafficSeedLo: 455443629,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: JSON.stringify({ filter: audience }),
+			audienceStrict: true,
+			customFieldValues: null,
+		});
+		const uid = "e791e240fcd3df7d238cfc285f475e8152fcc0ec";
+
+		it("evaluates semver audiences without String.prototype.startsWith (IE 10/11)", () => {
+			const original = String.prototype.startsWith;
+			// eslint-disable-next-line no-extend-native
+			delete String.prototype.startsWith;
+			try {
+				const context = new SDK(options).createContextWith(
+					{ units: { session_id: uid } },
+					{ experiments: [strictExp([{ semver_gte: [{ var: "app_version" }, { value: "v2.0.0" }] }])] }
+				);
+				context.attribute("app_version", "v1.0.0");
+				expect(context.treatment("aud")).toBe(0);
+
+				const matching = new SDK(options).createContextWith(
+					{ units: { session_id: uid } },
+					{ experiments: [strictExp([{ semver_gte: [{ var: "app_version" }, { value: "v2.0.0" }] }])] }
+				);
+				matching.attribute("app_version", "v3.0.0");
+				expect(matching.treatment("aud")).toBe(1);
+			} finally {
+				// eslint-disable-next-line no-extend-native
+				String.prototype.startsWith = original;
+			}
+		});
+
+		it("fails a strict audience closed when an attribute getter throws, and logs one error event", () => {
+			const eventLogger = jest.fn();
+			const context = new SDK({ ...options, eventLogger }).createContextWith(
+				{ units: { session_id: uid } },
+				{ experiments: [strictExp([{ eq: [{ var: "user/plan" }, { value: "pro" }] }])] }
+			);
+			const user = {};
+			Object.defineProperty(user, "plan", {
+				get() {
+					throw new Error("getter boom");
+				},
+			});
+			context.attribute("user", user);
+			expect(context.treatment("aud")).toBe(0);
+			expect(context._exposures[0].audienceMismatch).toBe(true);
+			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(1);
+		});
+
+		it("logs a null-parent audience path to the console, without an error event", () => {
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			const eventLogger = jest.fn();
+			const context = new SDK({ ...options, eventLogger }).createContextWith(
+				{ units: { session_id: uid } },
+				{ experiments: [strictExp([{ eq: [{ var: "user/plan" }, { value: "pro" }] }])] }
+			);
+			context.attribute("user", null);
+			expect(context.treatment("aud")).toBe(1);
+			expect(errorSpy).toHaveBeenCalledWith(expect.any(TypeError));
+			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
+			errorSpy.mockRestore();
+		});
+
+		it("rebuilds a cached mismatch when a later null-parent read is indeterminate, as 1.13.4 did", () => {
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			const context = new SDK(options).createContextWith(
+				{ units: { session_id: uid } },
+				{ experiments: [strictExp([{ eq: [{ var: "user/plan" }, { value: "pro" }] }])] }
+			);
+			context.attribute("user", { plan: "free" });
+			expect(context.peek("aud")).toBe(0);
+			context.attribute("user", null);
+			expect(context.peek("aud")).toBe(1);
+			errorSpy.mockRestore();
+		});
+
+		it("logs a failing rule condition with console.warn, not console.error", () => {
+			const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			const exp = {
+				...strictExp(null),
+				audience: null,
+				audienceStrict: false,
+				assignmentRules: JSON.stringify({
+					rules: [
+						{
+							name: "r",
+							type: "assign",
+							variant: 1,
+							conditions: { eq: [{ var: "user/plan" }, { value: "pro" }] },
+						},
+					],
+				}),
+			};
+			const context = new SDK(options).createContextWith({ units: { session_id: uid } }, { experiments: [exp] });
+			context.attribute("user", null);
+			context.treatment("aud");
+			expect(warn).toHaveBeenCalledWith(
+				expect.stringContaining("Failed to evaluate assignment rule conditions for rule r")
+			);
+			expect(errorSpy).not.toHaveBeenCalled();
+			warn.mockRestore();
+			errorSpy.mockRestore();
+		});
+	});
+
 	it("returns the latest value for a repeated attribute from getAttributes()", () => {
 		const context = new SDK(options).createContextWith({ units: { session_id: "u1" } }, { experiments: [] });
 		context.attribute("age", 10);

@@ -643,12 +643,9 @@ export default class Context {
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
 					const result = this._evaluateAudience(experiment.audience);
-					// An indeterminate (null) audience result leaves the cached
-					// `audienceMismatch` flag as-is rather than forcing it to `false`,
-					// so a cached mismatch=true assignment isn't wrongly treated as
-					// stale — this only affects the cache-validity check below, not
-					// the flag's value.
-					const newAudienceMismatch = result !== null ? !result : assignment.audienceMismatch;
+					// As in 1.13.4, an indeterminate (null) result counts as a match, so a cached mismatch is
+					// rebuilt and the unit gets what a fresh context with the same attributes would.
+					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
