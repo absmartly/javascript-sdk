@@ -42,7 +42,14 @@ export class AudienceMatcher {
 
 		if (audience && audience.filter) {
 			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-				return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars, true);
+				// As in 1.13.4, an audience whose evaluation throws (e.g. a path through a null
+				// attribute) is ignored rather than counted as a mismatch.
+				try {
+					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
+				} catch (error) {
+					console.error(error);
+					return null;
+				}
 			}
 		}
 

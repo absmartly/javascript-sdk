@@ -47,10 +47,10 @@
   differs from the client one, who now get more (or fewer) retries to match it.
   `timeout: 0` keeps its 1.13.4 meaning: a request value of 0 falls back to the
   client timeout, and a client timeout of 0 means no retries.
-- An audience whose evaluation throws now counts as a mismatch (fail closed) and
-  emits one logger `error` event; 1.13.4 treated it as a match. Affected: strict
-  audiences move such units to control (variant 0); non-strict exposures publish
-  `audienceMismatch: true` instead of `false`.
+- If the audience matcher itself fails unexpectedly, the audience now counts as a
+  mismatch (fail closed) and emits one logger `error` event. Errors inside an
+  audience expression (for example a path through a `null` attribute) are still
+  logged to the console and the audience ignored, as in 1.13.4.
 - New runtime dependency `@babel/runtime` (shared Babel helpers, which shrink the
   browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
   Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
@@ -66,6 +66,3 @@
 - The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
   it is now transpiled, and the build fails if `dist/` is not ES5.
 - Query keys are encoded and unmatched query surrogates no longer throw URIError.
-- Preserve published 1.13.4 error strings, custom-field console diagnostics,
-  live `getUnits()` return, legacy unit hashing, old TypeScript parser support,
-  and existing model literals rather than shipping main-era compatibility breaks.

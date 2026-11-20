@@ -40,15 +40,9 @@ const operators = {
 };
 
 export class JsonExpr {
-	evaluateBooleanExpr<TData>(
-		expr: TData[] | Record<string, TData>,
-		vars: Record<string, TData>,
-		preserveNullParentAudience = false
-	) {
+	evaluateBooleanExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
 		const evaluator = new Evaluator(operators, vars);
-		const result = evaluator.booleanConvert(evaluator.evaluate(expr));
-		// Released audiences ignored an expression whose path crossed a null parent.
-		return preserveNullParentAudience && evaluator.nullParentEncountered ? null : result;
+		return evaluator.booleanConvert(evaluator.evaluate(expr));
 	}
 
 	evaluateExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {

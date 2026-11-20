@@ -536,6 +536,45 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
 	});
 
+	it("skips a rule whose condition path crosses a null attribute, as main (the JS reference) does", () => {
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		const experiment = {
+			id: 16,
+			name: "rulenull",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.34, 0.33, 0.33],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+				{ name: "C", config: null },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+			assignmentRules: JSON.stringify({
+				rules: [
+					{ name: "nullplan", type: "assign", variant: 2, conditions: { null: { var: "user/plan" } } },
+					{ name: "fallback", type: "assign", variant: 1, conditions: null },
+				],
+			}),
+		};
+		const context = new SDK(options).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [experiment] }
+		);
+		context.attribute("user", null);
+		expect(context.treatment("rulenull")).toBe(1);
+		warn.mockRestore();
+	});
+
 	it("returns the latest value for a repeated attribute from getAttributes()", () => {
 		const context = new SDK(options).createContextWith({ units: { session_id: "u1" } }, { experiments: [] });
 		context.attribute("age", 10);
