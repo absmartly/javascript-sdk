@@ -1,3 +1,4 @@
+import { JsonExpr } from "../jsonexpr/jsonexpr";
 import SDK from "../sdk";
 import { SDK_VERSION } from "../version";
 import pkg from "../../package.json";
@@ -14,6 +15,25 @@ jest.mock("../fetch");
 const options = { endpoint: "https://collector/v1", apiKey: "k", application: "web", environment: "prod" };
 
 describe("1.13.4 source and behaviour compatibility", () => {
+	it("preserves the runtime's native null-indexing error text and shape", () => {
+		let native;
+		try {
+			const nullValue = null;
+			nullValue["plan"];
+		} catch (error) {
+			native = error;
+		}
+		let actual;
+		try {
+			new JsonExpr().evaluateExpr({ var: "user/plan" }, { user: null });
+		} catch (error) {
+			actual = error;
+		}
+		expect(actual).toBeInstanceOf(TypeError);
+		expect(actual.message).toBe(native.message);
+		expect(Object.keys(actual)).toEqual(Object.keys(native));
+	});
+
 	it("uses the client retry budget for request timeout zero", async () => {
 		sdkFetch.mockRejectedValue(new Error("connection refused"));
 		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});

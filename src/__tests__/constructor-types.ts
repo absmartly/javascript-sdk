@@ -9,3 +9,8 @@ export function sdkApplicationVersion(options: ConstructorParameters<typeof SDK>
 export function clientApplicationVersion(options: ConstructorParameters<typeof Client>[0]): number {
 	return typeof options.application === "string" ? 0 : options.application.version;
 }
+
+import { getApplicationVersion } from "../utils";
+export function releasedUtilityReturnType(value: ReturnType<typeof getApplicationVersion>): number {
+	return value + 1;
+}

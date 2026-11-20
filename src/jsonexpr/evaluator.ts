@@ -125,16 +125,14 @@ export class Evaluator {
 		let target = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
-			if (target == null) {
-				// A plain TypeError with a marker, not a subclass: subclassing built-ins breaks instanceof on IE 10.
-				const error: TypeError & { nullParent?: boolean } = new TypeError(
-					`Cannot read '${frag}' of ${target} in var path '${path}'`
-				);
-				error.nullParent = true;
+			let value;
+			try {
+				value = target[frag];
+			} catch (error) {
+				if (target == null) Object.defineProperty(error, "nullParent", { value: true });
 				throw error;
 			}
 
-			const value = target[frag];
 			if (value !== undefined) {
 				target = value;
 				continue;
