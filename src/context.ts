@@ -580,9 +580,10 @@ export default class Context {
 			return this._attrsMapCache;
 		}
 		const attrs: Record<string, unknown> = this._getSystemAttributes();
-		for (let i = 0; i < this._attrs.length; i++) {
-			attrs[this._attrs[i].name] = this._attrs[i].value;
-		}
+		// forEach, as in 1.13.4: measurably faster here than the compiled for...of or an index loop.
+		this._attrs.forEach((attr) => {
+			attrs[attr.name] = attr.value;
+		});
 		this._attrsMapCache = attrs;
 		this._attrsMapCacheSeq = this._attrsSeq;
 		return attrs;

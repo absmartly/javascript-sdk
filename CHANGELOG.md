@@ -58,6 +58,10 @@
 - New runtime dependency `@babel/runtime` (shared Babel helpers, which shrink the
   browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
   Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
+- Re-evaluating an audience after `setAttribute` now also checks the assignment-rule
+  and holdout state, so it costs slightly more with very long attribute histories
+  (measured about 10% at 3,000 attributes; unchanged at 1,000 and below). Ordinary
+  cached reads are unaffected.
 
 ### Fixed
 
@@ -69,3 +73,8 @@
 - The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
   it is now transpiled, and the build fails if `dist/` is not ES5.
 - Query keys are encoded and unmatched query surrogates no longer throw URIError.
+- The bundled `AbortController` shim matches the native one: a second `abort()` is
+  a no-op (listeners fire once) and `signal.reason` is set.
+- `fetch` is detected through `globalThis` as well as `window`/`self`/`global`, and
+  a missing implementation now throws "No fetch implementation found" instead of an
+  undefined-call TypeError.

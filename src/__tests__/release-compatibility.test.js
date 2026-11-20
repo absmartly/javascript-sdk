@@ -408,6 +408,12 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		spy.mockRestore();
 	});
 
+	it("sends no SDK headers from getContext() when auth is false, as 1.13.4 did", async () => {
+		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
+		await new Client(options).getContext({ auth: false });
+		expect(sdkFetch.mock.calls[0][1]).not.toHaveProperty("headers");
+	});
+
 	it("routes getContext() through a subclass's getUnauthed() override", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
 		const seen = [];

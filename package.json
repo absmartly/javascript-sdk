@@ -40,7 +40,7 @@
 		"pretest": "npm run -s generate-version",
 		"test": "jest --coverage",
 		"prepack": "npm run -s build",
-		"compile": "tsc",
+		"compile": "tsc && tsc -p tsconfig.typecheck.json",
 		"generate-version": "node scripts/generate-version.js",
 		"prepare": "husky && npm run -s compile && npm run -s build-es && npm run -s build-cjs && npm run -s build-browser"
 	},
