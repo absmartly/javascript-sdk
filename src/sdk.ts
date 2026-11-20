@@ -1,4 +1,4 @@
-import Client, { ClientOptions, ClientRequestOptions } from "./client";
+import Client, { ClientInputOptions, ClientRequestOptions } from "./client";
 import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
 import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
@@ -33,7 +33,7 @@ export default class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
-	constructor(options: ClientOptions & SDKOptions) {
+	constructor(options: ClientInputOptions & SDKOptions) {
 		const clientOptions = SDK._extractClientOptions(options);
 		options = Object.assign({}, options);
 
@@ -43,8 +43,8 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
-		const clientOptionKeys: (keyof ClientOptions)[] = [
+	private static _extractClientOptions(options: ClientInputOptions & SDKOptions): ClientInputOptions {
+		const clientOptionKeys: (keyof ClientInputOptions)[] = [
 			"application",
 			"agent",
 			"apiKey",
@@ -54,7 +54,7 @@ export default class SDK {
 			"retries",
 			"timeout",
 		];
-		const extracted: Partial<ClientOptions> = {
+		const extracted: Partial<ClientInputOptions> = {
 			agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 		};
 
@@ -66,7 +66,7 @@ export default class SDK {
 			}
 		}
 
-		return extracted as ClientOptions;
+		return extracted as ClientInputOptions;
 	}
 
 	getContextData(requestOptions: ClientRequestOptions) {

@@ -36,7 +36,7 @@ const RETRY_DELAY_MS = 50;
 export type ClientOptions = {
 	agent?: string;
 	apiKey: string;
-	application: string | ApplicationObject;
+	application: string | { name: string; version: number };
 	endpoint: string;
 	environment: string;
 	retries?: number;
@@ -51,6 +51,10 @@ function applicationVersionHeader(version: number | string): number | string {
 	return /^[0-9]{1,18}$/.test(String(candidate)) ? candidate : 0;
 }
 
+export type ClientInputOptions = Omit<ClientOptions, "application"> & {
+	application: string | ApplicationObject;
+};
+
 type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
 	application: ApplicationObject;
 };
@@ -59,7 +63,7 @@ export default class Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
 
-	constructor(opts: ClientOptions) {
+	constructor(opts: ClientInputOptions) {
 		const merged: Record<string, unknown> = Object.assign(
 			{
 				agent: "javascript-client",

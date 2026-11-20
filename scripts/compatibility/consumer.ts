@@ -165,3 +165,8 @@ void payload;
 void namedSdk;
 void ready;
 void value;
+
+function readReleasedApplicationVersion(options: ClientOptions): number {
+	return typeof options.application === "string" ? 0 : options.application.version;
+}
+void readReleasedApplicationVersion;
