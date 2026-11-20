@@ -15,6 +15,58 @@ jest.mock("../fetch");
 const options = { endpoint: "https://collector/v1", apiKey: "k", application: "web", environment: "prod" };
 
 describe("1.13.4 source and behaviour compatibility", () => {
+	it("ignores unknown context-data fields at every payload level, including after refresh", async () => {
+		const eventLogger = jest.fn();
+		const experiment = (id, experimentName) => ({
+			id,
+			name: experimentName,
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 3603515 + id,
+			seedLo: 233373850 + id,
+			split: [0.5, 0.5],
+			trafficSeedHi: 449867249,
+			trafficSeedLo: 455443629,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web", futureApplication: [1] }],
+			audience: null,
+			audienceStrict: false,
+			variants: [
+				{ name: "A", config: null, futureVariant: { nested: true } },
+				{ name: "B", config: null, futureVariant: 2 },
+			],
+			customFieldValues: [{ name: "f", type: "string", value: "x", futureField: [1, { y: 2 }] }],
+			futureExperiment: "scalar",
+			futureObject: { a: [1] },
+			futureArray: [{ b: 2 }],
+		});
+		const data = {
+			experiments: [experiment(21, "unknownA"), experiment(22, "unknownB")],
+			futureRoot: { nested: [1] },
+			futureList: [1, "x"],
+		};
+		const provider = { getContextData: () => Promise.resolve(data) };
+		const uids = ["u1", "u2", "u3", "u4"];
+		const assigned = () =>
+			uids.map((uid) => {
+				const context = new SDK({ ...options, provider, eventLogger }).createContextWith(
+					{ units: { session_id: uid } },
+					data
+				);
+				return [context.treatment("unknownA"), context.treatment("unknownB")];
+			});
+		const before = assigned();
+		const context = new SDK({ ...options, provider, eventLogger }).createContextWith(
+			{ units: { session_id: "u1" } },
+			data
+		);
+		await context.refresh();
+		expect(assigned()).toEqual(before);
+		expect([context.treatment("unknownA"), context.treatment("unknownB")]).toEqual(before[0]);
+		expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
+	});
+
 	it("preserves the runtime's native null-indexing error text and shape", () => {
 		let native;
 		try {

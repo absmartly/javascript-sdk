@@ -14,3 +14,9 @@ import { getApplicationVersion } from "../utils";
 export function releasedUtilityReturnType(value: ReturnType<typeof getApplicationVersion>): number {
 	return value + 1;
 }
+
+export const releasedDirectUtilityTypes: [number, number, number | string] = [
+	getApplicationVersion("web"),
+	getApplicationVersion({ name: "web", version: 3 }),
+	getApplicationVersion({ name: "web", version: "1.2.3" }),
+];
