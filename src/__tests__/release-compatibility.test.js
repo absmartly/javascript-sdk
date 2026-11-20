@@ -678,6 +678,30 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			errorSpy.mockRestore();
 		});
 
+		it.each([true, false])(
+			"keeps one exposure for a null-parent audience across unrelated setAttribute calls (strict=%p)",
+			(strict) => {
+				const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+				const exp = {
+					...strictExp([{ eq: [{ var: "user/plan" }, { value: "pro" }] }]),
+					audienceStrict: strict,
+				};
+				const context = new SDK(options).createContextWith(
+					{ units: { session_id: uid } },
+					{ experiments: [exp] },
+					{ publishDelay: -1 }
+				);
+				context.attribute("user", null);
+				expect(context.treatment("aud")).toBe(1);
+				context.attribute("other", 1);
+				expect(context.treatment("aud")).toBe(1);
+				context.attribute("other", 2);
+				expect(context.treatment("aud")).toBe(1);
+				expect(context.pending()).toBe(1);
+				errorSpy.mockRestore();
+			}
+		);
+
 		it("logs a failing rule condition with console.warn, not console.error", () => {
 			const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
 			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});

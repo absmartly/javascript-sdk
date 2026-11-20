@@ -62,8 +62,7 @@
   can be retried. Concurrent flush/finalize waits for in-flight delivery.
 - Custom publisher failures and throwing event loggers no longer strand lifecycle
   promises or lose/duplicate successfully delivered events.
-- Malformed variant configs are isolated rather than failing the entire context;
-  audience evaluation exceptions are logged instead of thrown.
+- Malformed variant configs are isolated rather than failing the entire context.
 - The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
   it is now transpiled, and the build fails if `dist/` is not ES5.
 - Query keys are encoded and unmatched query surrogates no longer throw URIError.
