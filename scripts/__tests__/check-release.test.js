@@ -108,14 +108,19 @@ describe("publish workflow", () => {
 	// Asks the workflow's pinned npm how it parses each publish command's flags, so a later negating
 	// flag (for example --no-dry-run after --dry-run) is caught, not just the presence of --dry-run.
 	const pinnedNpm = /npm@(\d+\.\d+\.\d+)/.exec(job.steps.map((step) => step.run || "").join("\n"))[1];
-	// Needs the pinned npm from the registry or cache. Offline builds skip it; CI is online and runs it.
+	// Needs the pinned npm from the registry or cache. Local offline builds skip it; in CI it always runs,
+	// so a registry failure there fails the gate instead of silently skipping it.
 	let pinnedNpmAvailable = true;
 	try {
-		execFileSync("npx", ["-y", `npm@${pinnedNpm}`, "--version"], { encoding: "utf8", stdio: "pipe" });
+		execFileSync("npx", ["-y", `npm@${pinnedNpm}`, "--version"], {
+			encoding: "utf8",
+			stdio: "pipe",
+			timeout: 30000,
+		});
 	} catch (_) {
 		pinnedNpmAvailable = false;
 	}
-	(pinnedNpmAvailable ? test : test.skip)(
+	(pinnedNpmAvailable || process.env.CI ? test : test.skip)(
 		"npm 11.6.2 parses every manual publish command as an effective dry run",
 		() => {
 			const npmVersion = pinnedNpm;
@@ -135,6 +140,7 @@ describe("publish workflow", () => {
 				return execFileSync("npx", ["-y", `npm@${npmVersion}`, "config", "get", "dry-run", ...args], {
 					encoding: "utf8",
 					env,
+					timeout: 30000,
 				}).trim();
 			};
 			const manual = publishSteps.filter((step) => step.if && step.if.includes("workflow_dispatch"));
