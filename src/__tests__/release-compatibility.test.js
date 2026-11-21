@@ -108,7 +108,8 @@ describe("1.13.4 source and behaviour compatibility", () => {
 	it.each(["fetch", "with-data", "refresh"])(
 		"treats non-string assignment rules as no rules via %s",
 		async (creation) => {
-			const malformed = [{ toString: null }, ["x"], 1, true, { rules: [] }];
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			const malformed = ["", { toString: null }, ["x"], 1, true, { rules: [] }];
 			const experiments = malformed.map((assignmentRules, i) => ({
 				...cacheProbeExperiment({ assignmentRules }),
 				id: 50 + i,
@@ -128,6 +129,9 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			context.attribute("age", 1);
 			experiments.forEach((experiment) => expect(context.treatment(experiment.name)).toBe(1));
 			expect(context.treatment("ordinary")).toBe(1);
+			// Nothing tried to parse a rule set that is not a non-empty string.
+			expect(errorSpy).not.toHaveBeenCalled();
+			errorSpy.mockRestore();
 		}
 	);
 
