@@ -428,7 +428,7 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(map).toHaveBeenCalledTimes(1);
 	});
 
-	it("publishes with includeSystemAttributes without an iterator loop over the history", async () => {
+	it("publishes with includeSystemAttributes in one pass over the history", async () => {
 		const publisher = { publish: jest.fn(() => Promise.resolve()) };
 		const context = new SDK({ ...options, publisher }).createContextWith(
 			{ units: { session_id: "u1" } },
@@ -437,11 +437,33 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		);
 		for (let i = 0; i < 5; i++) context.attribute(`a${i}`, i);
 		const iterator = jest.spyOn(context._attrs, Symbol.iterator);
+		const forEach = jest.spyOn(context._attrs, "forEach");
+		const map = jest.spyOn(context._attrs, "map");
 		context.track("g");
 		await context.publish();
 		expect(iterator).not.toHaveBeenCalled();
+		expect(forEach).not.toHaveBeenCalled();
+		expect(map).toHaveBeenCalledTimes(1);
 		const names = publisher.publish.mock.calls[0][0].attributes.map((a) => a.name);
 		expect(names.slice(0, 2)).toEqual(["sdk_name", "sdk_version"]);
+	});
+
+	it.each([
+		["sdk_name", ["sdk_version", "sdk_name"]],
+		["sdk_version", ["sdk_name", "sdk_version"]],
+	])("keeps a user-set %s instead of the system one", async (userName, expectedNames) => {
+		const publisher = { publish: jest.fn(() => Promise.resolve()) };
+		const context = new SDK({ ...options, publisher }).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [] },
+			{ publishDelay: -1, includeSystemAttributes: true }
+		);
+		context.attribute(userName, "mine");
+		context.track("g");
+		await context.publish();
+		const attributes = publisher.publish.mock.calls[0][0].attributes;
+		expect(attributes.map((a) => a.name)).toEqual(expectedNames);
+		expect(attributes.find((a) => a.name === userName).value).toBe("mine");
 	});
 
 	it("does not read the assignment-rules JSON on cached reads", () => {
@@ -988,8 +1010,6 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(context.peek("covered")).toBe(0);
 		context.getUnits().user_id = "u1";
 		context.treatment("covered");
-		// The holdout must now resolve with the unit and queue its own exposure (it holds the unit out, so
-		// the covered experiment is suppressed and queues none).
 		expect(context._exposures.map((x) => x.name)).toEqual(["h"]);
 	});
 

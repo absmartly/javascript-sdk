@@ -1120,29 +1120,28 @@ export default class Context {
 	// among duplicates, so system attributes are stamped with the earliest event in the batch and left
 	// out when the user set the same name.
 	private _buildAttributes(systemSetAt: number): Attribute[] {
-		const allAttributes: Attribute[] = [];
-
-		if (this._opts.includeSystemAttributes === true) {
-			const client = this._sdk.getClient();
-			// A plain object, not a Set: the browser bundle still supports IE 10, which has no Set.
-			const userNames: Record<string, true> = {};
-			this._attrs.forEach((attr) => {
-				userNames[attr.name] = true;
-			});
-			const addSystemAttribute = (attrName: string, value: unknown) => {
-				if (!Object.prototype.hasOwnProperty.call(userNames, attrName)) {
-					allAttributes.push({ name: attrName, value, setAt: systemSetAt });
-				}
-			};
-
-			const agent = typeof client?.getAgent === "function" ? client.getAgent() : undefined;
-			if (typeof agent === "string" && agent.length > 0) addSystemAttribute("sdk_name", agent);
-			addSystemAttribute("sdk_version", SDK_VERSION);
+		// Built with map(), as 1.13.4 did; pushing one element at a time is measurably slower here.
+		if (this._opts.includeSystemAttributes !== true) {
+			return this._attrs.map((x) => ({ name: x.name, value: x.value, setAt: x.setAt }));
 		}
 
-		// Built with map(), as 1.13.4 did; pushing one element at a time is measurably slower here.
-		const userAttributes = this._attrs.map((x) => ({ name: x.name, value: x.value, setAt: x.setAt }));
-		return allAttributes.length === 0 ? userAttributes : allAttributes.concat(userAttributes);
+		// Opt-in path: detect user-set sdk_name/sdk_version in the same pass instead of a separate name set.
+		let userSetSdkName = false;
+		let userSetSdkVersion = false;
+		const userAttributes = this._attrs.map((x) => {
+			if (x.name === "sdk_name") userSetSdkName = true;
+			else if (x.name === "sdk_version") userSetSdkVersion = true;
+			return { name: x.name, value: x.value, setAt: x.setAt };
+		});
+
+		const client = this._sdk.getClient();
+		const systemAttributes: Attribute[] = [];
+		const agent = typeof client?.getAgent === "function" ? client.getAgent() : undefined;
+		if (!userSetSdkName && typeof agent === "string" && agent.length > 0) {
+			systemAttributes.push({ name: "sdk_name", value: agent, setAt: systemSetAt });
+		}
+		if (!userSetSdkVersion) systemAttributes.push({ name: "sdk_version", value: SDK_VERSION, setAt: systemSetAt });
+		return systemAttributes.length === 0 ? userAttributes : systemAttributes.concat(userAttributes);
 	}
 
 	// A caught exception or a rejected promise's reason can be any value. Only

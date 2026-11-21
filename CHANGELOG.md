@@ -14,8 +14,8 @@
   (`application: { name, version: "1.2.3" }`) through the new `ClientInputOptions`
   overload. `ClientOptions` and the constructors' released signatures are unchanged.
 - Tag-driven npm Trusted Publishing, a manual dry-run package preflight (it does
-  not exercise authentication), and a `repository` field in `package.json`, which
-  npm provenance requires.
+  not prove authentication works: npm may try to obtain an OIDC token but skips the
+  upload), and a `repository` field in `package.json`, which npm provenance requires.
 
 ### Changed
 
@@ -64,10 +64,10 @@
   `peek` costs about 2 ns more than 1.13.4 (16.5 vs 14.6 ns) and a cached `treatment`
   about 7 ns more (47.8 vs 40.8 ns). Re-evaluating an audience after `setAttribute`
   matches 1.13.4 with 300 attributes and is about 6% slower with 1,000 and 10% slower
-  with 3,000. `getAttributes()` and default publishing are at or below 1.13.4 cost.
-  With the new opt-in `includeSystemAttributes`, publishing also builds a set of
-  attribute names (about 1.9x the default publish at 3,000 attributes); the option
-  did not exist in 1.13.4.
+  with 3,000. `getAttributes()` is faster than 1.13.4. A default `track()` +
+  `publish()` matches 1.13.4 up to a few hundred attributes (7.3 vs 7.1 µs at 300)
+  and costs about 30% more at 3,000 (about 52 vs 40 µs; unreleased main was about
+  77 µs). The new opt-in `includeSystemAttributes` adds about 10% on top.
 
 ### Fixed
 

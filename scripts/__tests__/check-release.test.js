@@ -125,7 +125,7 @@ describe("publish workflow", () => {
 		() => {
 			const npmVersion = pinnedNpm;
 			const effectiveDryRun = (run) => {
-				const line = run.split("\n").find((l) => /^\s*npm publish\b/.test(l));
+				const line = run.split("\n").filter((l) => /\bnpm\s+publish\b/.test(l))[0];
 				const args = line
 					.trim()
 					.split(/\s+/)
@@ -151,6 +151,16 @@ describe("publish workflow", () => {
 		},
 		120000
 	);
+
+	// Every publish step must contain exactly one `npm publish` (on its own line), so the effective dry-run
+	// check above covers all of them: a second command in a manual step could otherwise publish for real.
+	test("each publish step runs exactly one npm publish command", () => {
+		for (const step of job.steps.filter((s) => /\bnpm\s+publish\b/.test(s.run || ""))) {
+			const commands = step.run.split("\n").filter((l) => /\bnpm\s+publish\b/.test(l));
+			expect({ step: step.name, commands: commands.length }).toEqual({ step: step.name, commands: 1 });
+			expect(commands[0]).toMatch(/^\s*npm publish\b/);
+		}
+	});
 
 	test("keeps manual runs to one dry-run preflight and publishes only on a pushed tag, with no token", () => {
 		expect(workflow.on.push.tags).toEqual(["v*"]);

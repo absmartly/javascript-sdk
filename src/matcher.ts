@@ -42,7 +42,6 @@ export class AudienceMatcher {
 
 		if (audience && audience.filter) {
 			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-				// A null-parent read is ignored as in 1.13.4; any other error propagates so strict audiences fail closed.
 				return this._jsonExpr.evaluateAudienceExpr(audience.filter, vars);
 			}
 		}
