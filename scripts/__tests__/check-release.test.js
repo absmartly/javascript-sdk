@@ -107,25 +107,44 @@ describe("publish workflow", () => {
 
 	// Asks the workflow's pinned npm how it parses each publish command's flags, so a later negating
 	// flag (for example --no-dry-run after --dry-run) is caught, not just the presence of --dry-run.
-	test("npm 11.6.2 parses every manual publish command as an effective dry run", () => {
-		const npmVersion = /npm@(\d+\.\d+\.\d+)/.exec(job.steps.map((step) => step.run || "").join("\n"))[1];
-		const effectiveDryRun = (run) => {
-			const line = run.split("\n").find((l) => /^\s*npm publish\b/.test(l));
-			const args = line
-				.trim()
-				.split(/\s+/)
-				.slice(2)
-				.map((arg) => arg.replace(/^"\$DIST_TAG"$/, "latest"));
-			return execFileSync("npx", ["-y", `npm@${npmVersion}`, "config", "get", "dry-run", ...args], {
-				encoding: "utf8",
-			}).trim();
-		};
-		const manual = publishSteps.filter((step) => step.if && step.if.includes("workflow_dispatch"));
-		expect(manual.length).toBeGreaterThan(0);
-		for (const step of manual) expect(effectiveDryRun(step.run)).toBe("true");
-		const live = publishSteps.filter((step) => step.if === "github.event_name == 'push'");
-		expect(live.map((step) => effectiveDryRun(step.run))).toEqual(["false"]);
-	}, 120000);
+	const pinnedNpm = /npm@(\d+\.\d+\.\d+)/.exec(job.steps.map((step) => step.run || "").join("\n"))[1];
+	// Needs the pinned npm from the registry or cache. Offline builds skip it; CI is online and runs it.
+	let pinnedNpmAvailable = true;
+	try {
+		execFileSync("npx", ["-y", `npm@${pinnedNpm}`, "--version"], { encoding: "utf8", stdio: "pipe" });
+	} catch (_) {
+		pinnedNpmAvailable = false;
+	}
+	(pinnedNpmAvailable ? test : test.skip)(
+		"npm 11.6.2 parses every manual publish command as an effective dry run",
+		() => {
+			const npmVersion = pinnedNpm;
+			const effectiveDryRun = (run) => {
+				const line = run.split("\n").find((l) => /^\s*npm publish\b/.test(l));
+				const args = line
+					.trim()
+					.split(/\s+/)
+					.slice(2)
+					.map((arg) => arg.replace(/^"\$DIST_TAG"$/, "latest"));
+				// npm exports npm_config_* to scripts (e.g. npm_config_dry_run=true under `npm pack --dry-run`);
+				// drop them so only the flags in the workflow command decide the answer.
+				const env = {};
+				for (const [key, value] of Object.entries(process.env)) {
+					if (!/^npm_config_/i.test(key)) env[key] = value;
+				}
+				return execFileSync("npx", ["-y", `npm@${npmVersion}`, "config", "get", "dry-run", ...args], {
+					encoding: "utf8",
+					env,
+				}).trim();
+			};
+			const manual = publishSteps.filter((step) => step.if && step.if.includes("workflow_dispatch"));
+			expect(manual.length).toBeGreaterThan(0);
+			for (const step of manual) expect(effectiveDryRun(step.run)).toBe("true");
+			const live = publishSteps.filter((step) => step.if === "github.event_name == 'push'");
+			expect(live.map((step) => effectiveDryRun(step.run))).toEqual(["false"]);
+		},
+		120000
+	);
 
 	test("keeps manual runs to one dry-run preflight and publishes only on a pushed tag, with no token", () => {
 		expect(workflow.on.push.tags).toEqual(["v*"]);

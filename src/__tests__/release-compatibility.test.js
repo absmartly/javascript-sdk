@@ -761,6 +761,7 @@ describe("1.13.4 source and behaviour compatibility", () => {
 				"a TypeError marked nullParent: true",
 				() => Object.assign(new TypeError("getter boom"), { nullParent: true }),
 			],
+			["undefined", () => undefined],
 		])(
 			"fails a strict audience closed when an attribute getter throws %s, and logs one error event",
 			(_label, makeError) => {
