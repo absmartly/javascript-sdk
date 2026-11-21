@@ -41,7 +41,6 @@ function snapshot(value) {
 	if (value && typeof value === "object") {
 		const out = {};
 		for (const key of Object.keys(value).sort()) {
-			// Newer SDKs include this optional field on exposure records.
 			if (key === "ruleOverride" && value[key] === false) continue;
 			out[key] = snapshot(value[key]);
 		}

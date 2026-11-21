@@ -315,7 +315,6 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			assignmentRules: JSON.stringify(rules),
 		});
 		const rule = { type: "assign", variant: 1, conditions: { eq: [{ var: "country" }, { value: "US" }] } };
-		// The refreshed rules JSON differs (an extra rule name) but still gives variant 1.
 		const refreshed = { experiments: [experiment({ rules: [{ ...rule, name: "renamed" }] })] };
 		const provider = { getContextData: () => Promise.resolve(refreshed) };
 		const sdk = new SDK({ ...options, provider });
@@ -758,6 +757,10 @@ describe("1.13.4 source and behaviour compatibility", () => {
 				"an error object marked nullParent: 1",
 				() => Object.assign(new TypeError("getter boom"), { nullParent: 1 }),
 			],
+			[
+				"a TypeError marked nullParent: true",
+				() => Object.assign(new TypeError("getter boom"), { nullParent: true }),
+			],
 		])(
 			"fails a strict audience closed when an attribute getter throws %s, and logs one error event",
 			(_label, makeError) => {
@@ -943,7 +946,9 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(context.peek("covered")).toBe(0);
 		context.getUnits().user_id = "u1";
 		context.treatment("covered");
-		expect(context.pending()).toBeGreaterThan(0);
+		// The holdout must now resolve with the unit and queue its own exposure (it holds the unit out, so
+		// the covered experiment is suppressed and queues none).
+		expect(context._exposures.map((x) => x.name)).toEqual(["h"]);
 	});
 
 	describe("a released duck-typed custom client without the new getters", () => {

@@ -5,11 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      use_npm_token:
-        description: 'Opt in to NPM_TOKEN authentication for the manual dry run only'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -49,24 +44,12 @@ jobs:
       - name: Inspect package
         run: npm pack --dry-run --ignore-scripts
 
-      # Manual runs are always dry runs. NPM_TOKEN is an opt-in fallback for
-      # testing token authentication, never a replacement for tag-triggered OIDC.
-      - name: Dry-run publish with OIDC
-        if: github.event_name == 'workflow_dispatch' && !inputs.use_npm_token
+      # A manual run is a package preflight only: npm's dry run skips the authenticated publish request,
+      # so it cannot prove OIDC or any token works. Only a pushed v* tag publishes.
+      - name: Dry-run publish (package preflight)
+        if: github.event_name == 'workflow_dispatch'
         run: npm publish --dry-run --ignore-scripts --provenance --access public --tag "$DIST_TAG"
         env:
-          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
-
-      - name: Dry-run publish with token fallback
-        if: github.event_name == 'workflow_dispatch' && inputs.use_npm_token
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo 'NPM_TOKEN must be configured for the token fallback.' >&2
-            exit 1
-          fi
-          npm publish --dry-run --ignore-scripts --provenance --access public --tag "$DIST_TAG"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           DIST_TAG: ${{ steps.release.outputs.dist_tag }}
 
       - name: Publish with trusted publishing

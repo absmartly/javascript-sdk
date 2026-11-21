@@ -13,8 +13,9 @@
 - The `SDK` and `Client` constructors also accept a string application version
   (`application: { name, version: "1.2.3" }`) through the new `ClientInputOptions`
   overload. `ClientOptions` and the constructors' released signatures are unchanged.
-- Tag-driven npm Trusted Publishing and a manual publish dry run, plus a
-  `repository` field in `package.json`, which npm provenance requires.
+- Tag-driven npm Trusted Publishing, a manual dry-run package preflight (it does
+  not exercise authentication), and a `repository` field in `package.json`, which
+  npm provenance requires.
 
 ### Changed
 

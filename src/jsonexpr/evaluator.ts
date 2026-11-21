@@ -55,6 +55,8 @@ function compareIdentifiers(a: string, b: string) {
 export class Evaluator {
 	private readonly operators: any;
 	private readonly vars: any;
+	/** @internal Set only when this evaluation read below a null/undefined value; never taken from a thrown error. */
+	nullParentError: unknown = undefined;
 
 	constructor(operators: any, vars: any) {
 		this.operators = operators;
@@ -129,7 +131,7 @@ export class Evaluator {
 			try {
 				value = target[frag];
 			} catch (error) {
-				if (target == null) Object.defineProperty(error, "nullParent", { value: true });
+				if (target == null) this.nullParentError = error;
 				throw error;
 			}
 

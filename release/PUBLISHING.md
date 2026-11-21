@@ -18,11 +18,11 @@ group `npm-publish-absmartly-javascript-sdk`, with `cancel-in-progress: false`.
 Registry/tag validation and publishing run inside that same locked job, so concurrent
 release tags cannot both validate against a stale `latest` and then move it backwards.
 
-`workflow_dispatch` is **always a dry run**. Its optional `use_npm_token` input
-uses `secrets.NPM_TOKEN` as `NODE_AUTH_TOKEN` for a fallback authentication test
-only. If opted in, the owner must supply that secret; it is not needed for OIDC.
-A manual dry run does not prove npm will accept OIDC on a real tag: the owner must
-retain the npm publisher configuration and approve any environment protections.
+`workflow_dispatch` is **always a dry run** and is a package preflight only: it checks
+the version, tag selection, build and package contents. npm's dry run skips the
+authenticated publish request, so it does not prove OIDC (or any token) works; the
+owner must keep the npm trusted-publisher configuration and approve any environment
+protections. No `NPM_TOKEN` secret is used or needed.
 
 Prereleases use a bounded set of distribution channels: `alpha`, `beta`, `rc`, and
 `next`. The first prerelease identifier is matched case-insensitively and normalized

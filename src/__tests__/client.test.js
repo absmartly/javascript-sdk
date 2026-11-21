@@ -1241,7 +1241,6 @@ describe("Client", () => {
 			);
 			const client = new Client(Object.assign({}, clientOptions, { timeout: 200, retries: 0 }));
 
-			// The client's 200 ms deadline still aborts the request; it doesn't hang.
 			client.request({ method: "GET", path: "/context", timeout: 0 }).then(
 				() => done(new Error("expected the request to be aborted")),
 				(error) => {

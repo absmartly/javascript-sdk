@@ -25,9 +25,6 @@ function compareCore(a, b) {
 	return 0;
 }
 
-// Prereleases use alpha, beta, rc or next (case-insensitive), with all other ids mapped to next.
-// A stable release goes to "latest" only when it is newer than the current latest; an older major
-// goes to v<major>-lts, and an older version in the same major line is refused.
 function releaseTag(packageVersion, latestVersion, gitTag) {
 	const major = majorOf(packageVersion);
 	const latestMajor = majorOf(latestVersion);

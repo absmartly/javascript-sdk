@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires, no-shadow, no-template-curly-in-string */
 /* global BigInt */
 const { readFileSync } = require("fs");
+const { execFileSync } = require("child_process");
 const path = require("path");
 const yaml = require("js-yaml");
 const { majorOf, releaseTag, checkRepository } = require("../check-release");
@@ -95,7 +96,7 @@ describe("publish workflow", () => {
 		expect(validationIndex).toBeGreaterThanOrEqual(0);
 		expect(job.steps[validationIndex].id).toBe("release");
 		expect(job.steps[validationIndex].if).toBeUndefined();
-		expect(publishSteps).toHaveLength(3);
+		expect(publishSteps).toHaveLength(2);
 		for (const step of publishSteps) {
 			expect(job.steps.indexOf(step)).toBeGreaterThan(validationIndex);
 			expect(step.env.DIST_TAG).toBe("${{ steps.release.outputs.dist_tag }}");
@@ -104,20 +105,38 @@ describe("publish workflow", () => {
 		}
 	});
 
-	test("keeps manual runs dry and token-free trusted publishing restricted to pushes", () => {
+	// Asks the workflow's pinned npm how it parses each publish command's flags, so a later negating
+	// flag (for example --no-dry-run after --dry-run) is caught, not just the presence of --dry-run.
+	test("npm 11.6.2 parses every manual publish command as an effective dry run", () => {
+		const npmVersion = /npm@(\d+\.\d+\.\d+)/.exec(job.steps.map((step) => step.run || "").join("\n"))[1];
+		const effectiveDryRun = (run) => {
+			const line = run.split("\n").find((l) => /^\s*npm publish\b/.test(l));
+			const args = line
+				.trim()
+				.split(/\s+/)
+				.slice(2)
+				.map((arg) => arg.replace(/^"\$DIST_TAG"$/, "latest"));
+			return execFileSync("npx", ["-y", `npm@${npmVersion}`, "config", "get", "dry-run", ...args], {
+				encoding: "utf8",
+			}).trim();
+		};
+		const manual = publishSteps.filter((step) => step.if && step.if.includes("workflow_dispatch"));
+		expect(manual.length).toBeGreaterThan(0);
+		for (const step of manual) expect(effectiveDryRun(step.run)).toBe("true");
+		const live = publishSteps.filter((step) => step.if === "github.event_name == 'push'");
+		expect(live.map((step) => effectiveDryRun(step.run))).toEqual(["false"]);
+	}, 120000);
+
+	test("keeps manual runs to one dry-run preflight and publishes only on a pushed tag, with no token", () => {
 		expect(workflow.on.push.tags).toEqual(["v*"]);
-		expect(workflow.on.workflow_dispatch.inputs.use_npm_token.default).toBe(false);
+		expect(workflow.on.workflow_dispatch).toBeNull();
 		expect(workflow.permissions["id-token"]).toBe("write");
-		const liveSteps = publishSteps.filter((step) => !step.run.includes("--dry-run"));
-		expect(liveSteps).toHaveLength(1);
-		expect(liveSteps[0].if).toBe("github.event_name == 'push'");
-		expect(liveSteps[0].env.NODE_AUTH_TOKEN).toBeUndefined();
-		const drySteps = publishSteps.filter((step) => step.run.includes("--dry-run"));
-		expect(drySteps.map((step) => step.if)).toEqual([
-			"github.event_name == 'workflow_dispatch' && !inputs.use_npm_token",
-			"github.event_name == 'workflow_dispatch' && inputs.use_npm_token",
+		expect(publishSteps).toHaveLength(2);
+		expect(publishSteps.map((step) => step.if)).toEqual([
+			"github.event_name == 'workflow_dispatch'",
+			"github.event_name == 'push'",
 		]);
-		expect(drySteps[0].env.NODE_AUTH_TOKEN).toBeUndefined();
-		expect(drySteps[1].env.NODE_AUTH_TOKEN).toBe("${{ secrets.NPM_TOKEN }}");
+		for (const step of publishSteps) expect(step.env.NODE_AUTH_TOKEN).toBeUndefined();
+		expect(JSON.stringify(workflow)).not.toContain("NPM_TOKEN");
 	});
 });

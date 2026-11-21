@@ -42,15 +42,8 @@ export class AudienceMatcher {
 
 		if (audience && audience.filter) {
 			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-				// As in 1.13.4, an audience whose path reads below a null attribute is ignored rather than
-				// counted as a mismatch. Any other evaluation error propagates, so strict audiences fail closed.
-				try {
-					return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
-				} catch (error) {
-					if (!(error && (error as { nullParent?: boolean }).nullParent === true)) throw error;
-					console.error(error);
-					return null;
-				}
+				// A null-parent read is ignored as in 1.13.4; any other error propagates so strict audiences fail closed.
+				return this._jsonExpr.evaluateAudienceExpr(audience.filter, vars);
 			}
 		}
 

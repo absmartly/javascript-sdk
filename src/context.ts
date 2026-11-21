@@ -190,7 +190,8 @@ export default class Context {
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
-	// Assignments resolved while their unit was missing; while zero, _assign() skips the live-units check.
+	// Never decremented: a stale positive only costs the cheap per-read check, while a missed increment
+	// would skip a needed re-resolution. While zero, _assign() skips the live-units check entirely.
 	private _missingUnitPins: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
@@ -1176,7 +1177,6 @@ export default class Context {
 		}
 
 		if (this._failed) {
-			// Events of a context that failed to initialize are dropped silently, as in 1.13.
 			this._pending = 0;
 			this._exposures = [];
 			this._goals = [];

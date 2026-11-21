@@ -45,6 +45,22 @@ export class JsonExpr {
 		return evaluator.booleanConvert(evaluator.evaluate(expr));
 	}
 
+	/**
+	 * @internal Like evaluateBooleanExpr, but returns null (and logs) when this evaluation read below a
+	 * null/undefined attribute, as 1.13.4 audiences did. Any other error, including one thrown by an attribute
+	 * getter, propagates. The match is by identity with the error the evaluator caught, not by a property on it.
+	 */
+	evaluateAudienceExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
+		const evaluator = new Evaluator(operators, vars);
+		try {
+			return evaluator.booleanConvert(evaluator.evaluate(expr));
+		} catch (error) {
+			if (evaluator.nullParentError === undefined || error !== evaluator.nullParentError) throw error;
+			console.error(error);
+			return null;
+		}
+	}
+
 	evaluateExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
 		const evaluator = new Evaluator(operators, vars);
 		return evaluator.evaluate(expr);
