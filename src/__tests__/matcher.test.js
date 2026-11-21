@@ -32,6 +32,17 @@ describe("AudienceMatcher", () => {
 			expect(matcher.evaluateRules('{"filter":[]}', "production", {})).toBe(null);
 		});
 
+		it("should return null and log the parse error once for invalid rules JSON", () => {
+			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+			try {
+				expect(matcher.evaluateRules("{not json", "production", {})).toBe(null);
+				expect(errorSpy).toHaveBeenCalledTimes(1);
+				expect(errorSpy.mock.calls[0][0]).toBeInstanceOf(SyntaxError);
+			} finally {
+				errorSpy.mockRestore();
+			}
+		});
+
 		it("should return null when rules is empty array", () => {
 			expect(matcher.evaluateRules('{"rules":[]}', "production", {})).toBe(null);
 		});

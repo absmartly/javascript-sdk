@@ -109,29 +109,32 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		"treats non-string assignment rules as no rules via %s",
 		async (creation) => {
 			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-			const malformed = ["", { toString: null }, ["x"], 1, true, { rules: [] }];
-			const experiments = malformed.map((assignmentRules, i) => ({
-				...cacheProbeExperiment({ assignmentRules }),
-				id: 50 + i,
-				name: `malformed${i}`,
-				split: [0, 1],
-			}));
-			const ordinary = { ...cacheProbeExperiment(), id: 41, name: "ordinary", split: [0, 1] };
-			const data = { experiments: [...experiments, ordinary] };
-			const provider = { getContextData: () => Promise.resolve(data) };
-			const sdk = new SDK({ ...options, provider });
-			const params = { units: { session_id: "u1" } };
-			const context = creation === "fetch" ? sdk.createContext(params) : sdk.createContextWith(params, data);
-			await context.ready();
-			if (creation === "refresh") await context.refresh();
-			expect(context.isFailed()).toBe(false);
-			experiments.forEach((experiment) => expect(context.treatment(experiment.name)).toBe(1));
-			context.attribute("age", 1);
-			experiments.forEach((experiment) => expect(context.treatment(experiment.name)).toBe(1));
-			expect(context.treatment("ordinary")).toBe(1);
-			// Nothing tried to parse a rule set that is not a non-empty string.
-			expect(errorSpy).not.toHaveBeenCalled();
-			errorSpy.mockRestore();
+			try {
+				const malformed = ["", { toString: null }, ["x"], 1, true, { rules: [] }];
+				const experiments = malformed.map((assignmentRules, i) => ({
+					...cacheProbeExperiment({ assignmentRules }),
+					id: 50 + i,
+					name: `malformed${i}`,
+					split: [0, 1],
+				}));
+				const ordinary = { ...cacheProbeExperiment(), id: 41, name: "ordinary", split: [0, 1] };
+				const data = { experiments: [...experiments, ordinary] };
+				const provider = { getContextData: () => Promise.resolve(data) };
+				const sdk = new SDK({ ...options, provider });
+				const params = { units: { session_id: "u1" } };
+				const context = creation === "fetch" ? sdk.createContext(params) : sdk.createContextWith(params, data);
+				await context.ready();
+				if (creation === "refresh") await context.refresh();
+				expect(context.isFailed()).toBe(false);
+				experiments.forEach((experiment) => expect(context.treatment(experiment.name)).toBe(1));
+				context.attribute("age", 1);
+				experiments.forEach((experiment) => expect(context.treatment(experiment.name)).toBe(1));
+				expect(context.treatment("ordinary")).toBe(1);
+				// Nothing tried to parse a rule set that is not a non-empty string.
+				expect(errorSpy).not.toHaveBeenCalled();
+			} finally {
+				errorSpy.mockRestore();
+			}
 		}
 	);
 
