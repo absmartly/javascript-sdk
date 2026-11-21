@@ -15,6 +15,71 @@ jest.mock("../fetch");
 const options = { endpoint: "https://collector/v1", apiKey: "k", application: "web", environment: "prod" };
 
 describe("1.13.4 source and behaviour compatibility", () => {
+	const cacheProbeExperiment = (extra = {}) => ({
+		id: 40,
+		name: "cacheProbe",
+		iteration: 1,
+		unitType: "session_id",
+		seedHi: 1,
+		seedLo: 2,
+		split: [0.5, 0.5],
+		trafficSeedHi: 3,
+		trafficSeedLo: 4,
+		trafficSplit: [0, 1],
+		fullOnVariant: 0,
+		applications: [{ name: "web" }],
+		variants: [
+			{ name: "A", config: null },
+			{ name: "B", config: null },
+		],
+		audience: null,
+		audienceStrict: false,
+		customFieldValues: null,
+		...extra,
+	});
+
+	it("refreshes rule identity when a custom client's configured environment changes", async () => {
+		let environment = "prod";
+		const client = new Client(options);
+		client.getEnvironment = () => environment;
+		const experiment = cacheProbeExperiment({
+			assignmentRules: JSON.stringify({
+				rules: [
+					{ type: "assign", variant: 0, environments: ["prod"], conditions: null },
+					{ type: "assign", variant: 1, environments: ["staging"], conditions: null },
+				],
+			}),
+		});
+		const data = { experiments: [experiment] };
+		const provider = { getContextData: () => Promise.resolve(data) };
+		const context = new SDK({ ...options, client, provider }).createContextWith(
+			{ units: { session_id: "u1" } },
+			data
+		);
+		expect(context.peek("cacheProbe")).toBe(0);
+		environment = "staging";
+		await context.refresh();
+		expect(context.peek("cacheProbe")).toBe(1);
+	});
+
+	it("takes the no-holdout fast return without reading fallback holdout sets", () => {
+		const context = new SDK(options).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [cacheProbeExperiment()] }
+		);
+		context.treatment("cacheProbe");
+		const entry = context._index.cacheProbe;
+		let reads = 0;
+		Object.defineProperty(entry, "holdouts", {
+			get: () => {
+				reads++;
+				return null;
+			},
+		});
+		for (let i = 0; i < 100; i++) context.peek("cacheProbe");
+		expect(reads).toBe(100);
+	});
+
 	it("ignores unknown context-data fields at every payload level, including after refresh", async () => {
 		const eventLogger = jest.fn();
 		const experiment = (id, experimentName) => ({
