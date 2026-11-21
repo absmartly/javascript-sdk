@@ -429,6 +429,22 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(map).toHaveBeenCalledTimes(1);
 	});
 
+	it("publishes with includeSystemAttributes without an iterator loop over the history", async () => {
+		const publisher = { publish: jest.fn(() => Promise.resolve()) };
+		const context = new SDK({ ...options, publisher }).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [] },
+			{ publishDelay: -1, includeSystemAttributes: true }
+		);
+		for (let i = 0; i < 5; i++) context.attribute(`a${i}`, i);
+		const iterator = jest.spyOn(context._attrs, Symbol.iterator);
+		context.track("g");
+		await context.publish();
+		expect(iterator).not.toHaveBeenCalled();
+		const names = publisher.publish.mock.calls[0][0].attributes.map((a) => a.name);
+		expect(names.slice(0, 2)).toEqual(["sdk_name", "sdk_version"]);
+	});
+
 	it("sends no SDK headers from getContext() when auth is false, as 1.13.4 did", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
 		await new Client(options).getContext({ auth: false });

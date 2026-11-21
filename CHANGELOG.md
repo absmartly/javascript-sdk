@@ -61,8 +61,10 @@
 - Re-evaluating an audience after `setAttribute` now also checks the assignment-rule
   and holdout state. Measured on Node 22 (synthetic, one audience experiment): about
   4% faster than 1.13.4 with 300 attributes, about 6% slower with 1,000 and about
-  16% slower with 3,000. Ordinary cached reads, `getAttributes()` and publishing are
-  at or below 1.13.4 cost.
+  16% slower with 3,000. Ordinary cached reads, `getAttributes()` and default
+  publishing are at or below 1.13.4 cost. With the new opt-in
+  `includeSystemAttributes`, publishing also builds a set of attribute names (about
+  1.9x the default publish at 3,000 attributes); the option did not exist in 1.13.4.
 
 ### Fixed
 
