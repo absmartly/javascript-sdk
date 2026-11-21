@@ -626,7 +626,7 @@ export default class Context {
 			}
 
 			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
-				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
+				if (entry.ruleKey) {
 					// Built only when there are rules: the no-rule path must not rebuild the attribute map
 					// after every setAttribute (1.13.4 never built it there).
 					const attrs = this._getAttributesMap();
@@ -783,10 +783,7 @@ export default class Context {
 				// Set even when suppressed, or `audienceMatches` rebuilds (losing `exposed`) on every call.
 				assignment.ruleKey = experiment.ruleKey ?? "";
 
-				const rule =
-					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
-						? this._resolveRule(experiment, this._getAttributesMap(), false)
-						: null;
+				const rule = experiment.ruleKey ? this._resolveRule(experiment, this._getAttributesMap(), false) : null;
 				const ruleVariant = rule?.variant ?? null;
 
 				assignment.ruleVariant = ruleVariant;
@@ -1509,7 +1506,11 @@ export default class Context {
 				data: experiment,
 				variables,
 				holdouts,
-				ruleKey: experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "",
+				// Only a non-empty string carries rules; anything else (a malformed payload) has none.
+				ruleKey:
+					typeof experiment.assignmentRules === "string" && experiment.assignmentRules
+						? `${experiment.assignmentRules}:${this._environmentName}`
+						: "",
 			};
 
 			index[experiment.name] = entry;
