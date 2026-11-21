@@ -667,8 +667,6 @@ export default class Context {
 
 		// (id, iteration) only: seed/split edits must not force a duplicate exposure.
 		const holdoutSetMatches = (experiment: Experiment, assignment: Assignment) => {
-			// Fast path for the usual no-holdout case, so a cached read allocates nothing here.
-			if (experiment.holdouts == null && assignment.holdouts == null) return true;
 			const freshHoldouts = experiment.holdouts ?? [];
 			const pinnedHoldouts = assignment.holdouts ?? [];
 

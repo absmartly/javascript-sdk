@@ -40,9 +40,16 @@ const operators = {
 };
 
 export class JsonExpr {
+	private _nullParentError: unknown;
+
 	evaluateBooleanExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
 		const evaluator = new Evaluator(operators, vars);
-		return evaluator.booleanConvert(evaluator.evaluate(expr));
+		try {
+			return evaluator.booleanConvert(evaluator.evaluate(expr));
+		} catch (error) {
+			this._nullParentError = evaluator.nullParentError;
+			throw error;
+		}
 	}
 
 	/**
@@ -51,11 +58,11 @@ export class JsonExpr {
 	 * getter, propagates. The match is by identity with the error the evaluator caught, not by a property on it.
 	 */
 	evaluateAudienceExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
-		const evaluator = new Evaluator(operators, vars);
+		this._nullParentError = undefined;
 		try {
-			return evaluator.booleanConvert(evaluator.evaluate(expr));
+			return this.evaluateBooleanExpr(expr, vars);
 		} catch (error) {
-			if (evaluator.nullParentError === undefined || error !== evaluator.nullParentError) throw error;
+			if (this._nullParentError === undefined || error !== this._nullParentError) throw error;
 			console.error(error);
 			return null;
 		}
