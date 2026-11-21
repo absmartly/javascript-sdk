@@ -444,6 +444,47 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(names.slice(0, 2)).toEqual(["sdk_name", "sdk_version"]);
 	});
 
+	it("does not read the assignment-rules JSON on cached reads", () => {
+		const rules = JSON.stringify({ rules: [{ name: "all", type: "assign", variant: 1, conditions: null }] });
+		const experiment = {
+			id: 31,
+			name: "ruled",
+			iteration: 1,
+			unitType: "session_id",
+			seedHi: 1,
+			seedLo: 2,
+			split: [0.5, 0.5],
+			trafficSeedHi: 3,
+			trafficSeedLo: 4,
+			trafficSplit: [0, 1],
+			fullOnVariant: 0,
+			applications: [{ name: "web" }],
+			variants: [
+				{ name: "A", config: null },
+				{ name: "B", config: null },
+			],
+			audience: null,
+			audienceStrict: false,
+			customFieldValues: null,
+			assignmentRules: rules,
+		};
+		const context = new SDK(options).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [experiment] }
+		);
+		expect(context.treatment("ruled")).toBe(1);
+		let reads = 0;
+		const data = context._index.ruled.data;
+		Object.defineProperty(data, "assignmentRules", {
+			get: () => {
+				reads++;
+				return rules;
+			},
+		});
+		for (let i = 0; i < 100; i++) expect(context.peek("ruled")).toBe(1);
+		expect(reads).toBe(0);
+	});
+
 	it("sends no SDK headers from getContext() when auth is false, as 1.13.4 did", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
 		await new Client(options).getContext({ auth: false });

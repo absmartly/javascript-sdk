@@ -59,20 +59,25 @@
 - New runtime dependency `@babel/runtime` (shared Babel helpers, which shrink the
   browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
   Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
-- Re-evaluating an audience after `setAttribute` now also checks the assignment-rule
-  and holdout state. Measured on Node 22 (synthetic, one audience experiment): about
-  4% faster than 1.13.4 with 300 attributes, about 6% slower with 1,000 and about
-  16% slower with 3,000. Ordinary cached reads, `getAttributes()` and default
-  publishing are at or below 1.13.4 cost. With the new opt-in
-  `includeSystemAttributes`, publishing also builds a set of attribute names (about
-  1.9x the default publish at 3,000 attributes); the option did not exist in 1.13.4.
+- Each read now also checks the assignment-rule, holdout and missing-unit state.
+  Measured on Node 22 (synthetic warmed loops, one experiment, median of 5): a cached
+  `peek` costs about 2 ns more than 1.13.4 (16.5 vs 14.6 ns) and a cached `treatment`
+  about 7 ns more (47.8 vs 40.8 ns). Re-evaluating an audience after `setAttribute`
+  matches 1.13.4 with 300 attributes and is about 6% slower with 1,000 and 10% slower
+  with 3,000. `getAttributes()` and default publishing are at or below 1.13.4 cost.
+  With the new opt-in `includeSystemAttributes`, publishing also builds a set of
+  attribute names (about 1.9x the default publish at 3,000 attributes); the option
+  did not exist in 1.13.4.
 
 ### Fixed
 
 - Failed publishes retain queued events in order; failed finalize stays open and
   can be retried. Concurrent flush/finalize waits for in-flight delivery.
 - Custom publisher failures and throwing event loggers no longer strand lifecycle
-  promises or lose/duplicate successfully delivered events.
+  promises or lose/duplicate successfully delivered events. Affected: an event logger
+  that throws on `ready` used to mark the context failed in 1.13.4, so every user got
+  control and nothing was exposed; such a context now becomes ready and serves real
+  variants and exposures.
 - Malformed variant configs are isolated rather than failing the entire context.
 - The browser bundle is ES5 again (IE 10): `rfdc` >= 1.4 ships ES2015 syntax, so
   it is now transpiled, and the build fails if `dist/` is not ES5.

@@ -100,6 +100,11 @@ export type Experiment = {
 	// Parsed `data.assignmentRules`, filled on first use; `undefined` until then. The entry is rebuilt
 	// whenever context data is installed, so the cache never outlives the rules it was parsed from.
 	rules?: unknown[] | null;
+	/**
+	 * @internal Identity of the rules and configured environment, built once when context data is installed
+	 * so a cached read compares one string instead of re-concatenating the full rules JSON.
+	 */
+	ruleKey?: string;
 };
 
 export type Unit = {
@@ -612,7 +617,7 @@ export default class Context {
 
 		const audienceMatches = (entry: Experiment, assignment: Assignment) => {
 			const experiment = entry.data;
-			const ruleKey = experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "";
+			const ruleKey = entry.ruleKey ?? "";
 			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
 
 			if (ruleKeyChanged) {
@@ -662,6 +667,8 @@ export default class Context {
 
 		// (id, iteration) only: seed/split edits must not force a duplicate exposure.
 		const holdoutSetMatches = (experiment: Experiment, assignment: Assignment) => {
+			// Fast path for the usual no-holdout case, so a cached read allocates nothing here.
+			if (experiment.holdouts == null && assignment.holdouts == null) return true;
 			const freshHoldouts = experiment.holdouts ?? [];
 			const pinnedHoldouts = assignment.holdouts ?? [];
 
@@ -784,9 +791,7 @@ export default class Context {
 				const unitType = experiment.data.unitType;
 
 				// Set even when suppressed, or `audienceMatches` rebuilds (losing `exposed`) on every call.
-				assignment.ruleKey = experiment.data.assignmentRules
-					? `${experiment.data.assignmentRules}:${this._environmentName}`
-					: "";
+				assignment.ruleKey = experiment.ruleKey ?? "";
 
 				const rule =
 					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
@@ -1516,6 +1521,7 @@ export default class Context {
 				data: experiment,
 				variables,
 				holdouts,
+				ruleKey: experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "",
 			};
 
 			index[experiment.name] = entry;
