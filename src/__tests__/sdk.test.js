@@ -1,3 +1,4 @@
+import { SDK_VERSION } from "../version";
 import Client from "../client";
 import SDK from "../sdk";
 import Context from "../context";
@@ -40,7 +41,7 @@ describe("SDK", () => {
 			expect(sdk.getEventLogger()).toBe(SDK.defaultEventLogger);
 			expect(Client).toHaveBeenCalledTimes(1);
 			expect(Client).toHaveBeenCalledWith({
-				agent: "absmartly-javascript-sdk",
+				agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 			});
 
 			expect(ContextDataProvider).toHaveBeenCalledTimes(1);
@@ -100,6 +101,49 @@ describe("SDK", () => {
 			done();
 		});
 
+		it("should ignore inherited and non-enumerable option keys, as 1.13.4 did", (done) => {
+			const base = {
+				application: "application",
+				apiKey: "apikey",
+				endpoint: "localhost:8080",
+				environment: "test",
+			};
+			const options = Object.assign(Object.create({ timeout: 777, agent: undefined }), base);
+			Object.defineProperty(options, "retries", { value: 9, enumerable: false });
+
+			new SDK(options); // eslint-disable-line no-new
+
+			const passed = Client.mock.calls[Client.mock.calls.length - 1][0];
+			expect(Object.prototype.hasOwnProperty.call(passed, "timeout")).toBe(false);
+			expect(Object.prototype.hasOwnProperty.call(passed, "retries")).toBe(false);
+			expect(passed.agent).toBe(`absmartly-javascript-sdk/${SDK_VERSION}`);
+
+			done();
+		});
+
+		it("should pass explicitly undefined client options through, as 1.13.4 did", (done) => {
+			const options = {
+				application: "application",
+				apiKey: "apikey",
+				endpoint: "localhost:8080",
+				environment: "test",
+				agent: undefined,
+				timeout: undefined,
+				keepalive: undefined,
+			};
+
+			new SDK(options); // eslint-disable-line no-new
+
+			const passed = Client.mock.calls[Client.mock.calls.length - 1][0];
+			expect(Object.prototype.hasOwnProperty.call(passed, "agent")).toBe(true);
+			expect(passed.agent).toBeUndefined();
+			expect(Object.prototype.hasOwnProperty.call(passed, "timeout")).toBe(true);
+			expect(Object.prototype.hasOwnProperty.call(passed, "keepalive")).toBe(true);
+			expect(Object.prototype.hasOwnProperty.call(passed, "retries")).toBe(false);
+
+			done();
+		});
+
 		it("should set default values for unspecified client options", (done) => {
 			const options = {
 				application: "application",
@@ -117,7 +161,7 @@ describe("SDK", () => {
 				Object.assign(
 					{},
 					{
-						agent: "absmartly-javascript-sdk",
+						agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 					},
 					options
 				)

@@ -612,12 +612,12 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 
 			expect(() => context.data()).toThrow();
-			expect(() => context.treatment("test")).toThrow("ABsmartly Context is not yet ready.");
-			expect(() => context.peek("test")).toThrow("ABsmartly Context is not yet ready.");
-			expect(() => context.experiments()).toThrow("ABsmartly Context is not yet ready.");
-			expect(() => context.variableKeys()).toThrow("ABsmartly Context is not yet ready.");
-			expect(() => context.variableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
-			expect(() => context.peekVariableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.treatment("test")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.peek("test")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.experiments()).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.variableKeys()).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.variableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.peekVariableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
 
 			done();
 		});
@@ -750,7 +750,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -865,7 +865,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -1529,7 +1529,7 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1541,12 +1541,12 @@ describe("Context", () => {
 			context.treatment("exp_test_ab");
 
 			context.finalize().then(() => {
-				expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
+				expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
+			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
 		});
 	});
 
@@ -1575,7 +1575,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1744,7 +1744,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 0,
@@ -1787,7 +1787,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						attributes: [
 							{
 								name: "age",
@@ -1836,7 +1836,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1878,7 +1878,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1941,7 +1941,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1991,13 +1991,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
+				expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
 		});
 
 		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
@@ -2233,7 +2233,7 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
 
 			done();
 		});
@@ -6339,7 +6339,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -6569,7 +6569,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						attributes: [
 							{
 								name: "age",
@@ -6618,7 +6618,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -6660,7 +6660,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -6696,13 +6696,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalized.");
+				expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalizing.");
+			expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalizing.");
 		});
 	});
 
@@ -6856,7 +6856,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						goals: [
 							{
 								achievedAt: 1611141535729,
@@ -7015,7 +7015,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						goals: [
 							{
 								name: "goal1",
@@ -7123,7 +7123,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -7247,7 +7247,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						goals: [
 							{
 								name: "goal1",
@@ -7301,7 +7301,7 @@ describe("Context", () => {
 					publishedAt: 1611141535829,
 					units: publishUnits,
 					hashed: true,
-					sdkVersion: SDK_VERSION,
+
 					goals: [
 						{
 							achievedAt: 1611141535729,
@@ -7362,7 +7362,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -7443,7 +7443,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							goals: [
 								{
 									name: "goal2",
@@ -7666,7 +7666,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -7718,7 +7718,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -7869,7 +7869,7 @@ describe("Context", () => {
 					expect(context.pending()).toEqual(0);
 					expect(context.isFinalizing()).toEqual(false);
 					expect(context.isFinalized()).toEqual(true);
-					expect(consoleErrorSpy).toHaveBeenCalled();
+					expect(consoleErrorSpy).not.toHaveBeenCalled();
 
 					consoleErrorSpy.mockRestore();
 					done();
@@ -8290,7 +8290,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -8358,7 +8358,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -8435,7 +8435,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 2,
@@ -8484,7 +8484,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 3,
@@ -8556,7 +8556,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -8688,29 +8688,30 @@ describe("Context", () => {
 			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
 		});
 
-		it("should log an error through eventLogger when JSON cannot be parsed", () => {
-			const eventLogger = jest.fn();
-			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
+		it("should console an error when JSON cannot be parsed", () => {
+			const errorSpy = jest.spyOn(console, "error");
+			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
-			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
+			);
 		});
 
-		it("should log an error through eventLogger when a field type is invalid", () => {
+		it("should console an error when a field type is invalid", () => {
+			const errorSpy = jest.spyOn(console, "error");
 			const eventLogger = jest.fn();
 			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
-			expect(eventLogger).toHaveBeenCalledWith(
-				context,
-				"error",
-				expect.objectContaining({
-					message:
-						"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
-				})
+			expect(errorSpy).toHaveBeenCalledTimes(1);
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
 			);
+			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
 		});
 	});
 
@@ -9343,7 +9344,7 @@ describe("Context input handling and lifecycle regressions", () => {
 	});
 
 	describe("error logging routed through eventLogger", () => {
-		it("should not call console.error directly for custom field parse errors", () => {
+		it("should preserve custom field console diagnostics without new error events", () => {
 			const eventLogger = jest.fn();
 			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
@@ -9377,8 +9378,10 @@ describe("Context input handling and lifecycle regressions", () => {
 			);
 
 			context.customFieldValue("exp", "bad_json");
-			expect(errorSpy).not.toHaveBeenCalled();
-			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			expect(errorSpy).toHaveBeenCalledWith(
+				"Failed to parse JSON custom field value 'bad_json' for experiment 'exp'"
+			);
+			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
 			errorSpy.mockRestore();
 		});
 

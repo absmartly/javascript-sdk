@@ -1,14 +1,9 @@
-import Client, { type ClientOptions, type ClientRequestOptions } from "./client";
-import Context, {
-	type ContextData,
-	type ContextOptions,
-	type ContextParams,
-	type Exposure,
-	type Goal,
-} from "./context";
-import { ContextPublisher, type PublishParams } from "./publisher";
+import Client, { ClientInputOptions, ClientOptions, ClientRequestOptions } from "./client";
+import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
+import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isLongLivedApp } from "./utils";
+import { SDK_VERSION } from "./version";
 
 export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
 
@@ -38,7 +33,11 @@ export default class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
-	constructor(options: ClientOptions & SDKOptions) {
+	// The released signature is declared last, so ConstructorParameters<typeof SDK> keeps its 1.13.4 type;
+	// the first overload additionally accepts a string application version.
+	constructor(options: ClientInputOptions & SDKOptions);
+	constructor(options: ClientOptions & SDKOptions);
+	constructor(options: ClientInputOptions & SDKOptions) {
 		const clientOptions = SDK._extractClientOptions(options);
 		options = Object.assign({}, options);
 
@@ -48,8 +47,8 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
-		const clientOptionKeys: (keyof ClientOptions)[] = [
+	private static _extractClientOptions(options: ClientInputOptions & SDKOptions): ClientInputOptions {
+		const clientOptionKeys: (keyof ClientInputOptions)[] = [
 			"application",
 			"agent",
 			"apiKey",
@@ -59,17 +58,19 @@ export default class SDK {
 			"retries",
 			"timeout",
 		];
-		const extracted: Partial<ClientOptions> = {
-			agent: "absmartly-javascript-sdk",
+		const extracted: Partial<ClientInputOptions> = {
+			agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 		};
 
+		// Every own enumerable key is passed through, even when its value is undefined: the same key set
+		// 1.13.4 read with Object.entries (so `agent: undefined` still overrides the default and is rejected).
 		for (const key of clientOptionKeys) {
-			if (options?.[key] !== undefined) {
+			if (options != null && Object.prototype.propertyIsEnumerable.call(options, key)) {
 				extracted[key] = options[key] as never;
 			}
 		}
 
-		return extracted as ClientOptions;
+		return extracted as ClientInputOptions;
 	}
 
 	getContextData(requestOptions: ClientRequestOptions) {

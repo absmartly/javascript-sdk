@@ -1,3 +1,6 @@
+// rfdc uses Map and Set during module initialization; include their IE10 polyfills before config imports it.
+import "core-js/es/map";
+import "core-js/es/set";
 import Context from "./context";
 import SDK from "./sdk";
 import { mergeConfig } from "./config";

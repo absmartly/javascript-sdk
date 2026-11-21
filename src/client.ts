@@ -4,9 +4,9 @@ import { AbortController } from "./abort";
 // eslint-disable-next-line no-shadow
 import { AbortError, RetryError, TimeoutError } from "./errors";
 
-import { type AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
-import { type ContextOptions, type ContextParams } from "./context";
-import { type PublishParams } from "./publisher";
+import { AbortSignal as ABsmartlyAbortSignal } from "./abort-controller-shim";
+import { ContextOptions, ContextParams } from "./context";
+import { PublishParams } from "./publisher";
 import { toWellFormedString } from "./utils";
 
 export type FetchResponse = {
@@ -22,7 +22,6 @@ export type ClientRequestOptions = {
 	path: string;
 	method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 	body?: Record<string, unknown>;
-	/** @deprecated The API key is sent by default; set to false to suppress auth headers. */
 	auth?: boolean;
 	signal?: AbortSignal | ABsmartlyAbortSignal;
 	timeout?: number;
@@ -37,12 +36,23 @@ const RETRY_DELAY_MS = 50;
 export type ClientOptions = {
 	agent?: string;
 	apiKey: string;
-	application: string | ApplicationObject;
+	application: string | { name: string; version: number };
 	endpoint: string;
 	environment: string;
 	retries?: number;
 	timeout?: number;
 	keepalive?: boolean;
+};
+
+// The collector reads X-Application-Version as a 64-bit integer and rejects anything else with a 400,
+// so only a whole number of 1 to 18 digits is sent as-is; anything else (e.g. "1.2.3") is sent as 0.
+function applicationVersionHeader(version: number | string): number | string {
+	const candidate = typeof version === "number" ? version : typeof version === "string" ? version.trim() : "";
+	return /^[0-9]{1,18}$/.test(String(candidate)) ? candidate : 0;
+}
+
+export type ClientInputOptions = Omit<ClientOptions, "application"> & {
+	application: string | ApplicationObject;
 };
 
 type NormalizedClientOptions = Omit<Required<ClientOptions>, "application"> & {
@@ -53,7 +63,10 @@ export default class Client {
 	private readonly _opts: NormalizedClientOptions;
 	private readonly _delay: number;
 
-	constructor(opts: ClientOptions) {
+	// The released signature is declared last, so ConstructorParameters<typeof Client> keeps its 1.13.4 type.
+	constructor(opts: ClientInputOptions);
+	constructor(opts: ClientOptions);
+	constructor(opts: ClientInputOptions) {
 		const merged: Record<string, unknown> = Object.assign(
 			{
 				agent: "javascript-client",
@@ -96,8 +109,10 @@ export default class Client {
 	}
 
 	getContext(options?: Partial<ClientRequestOptions>) {
-		return this.get({
+		// Routed through getUnauthed() as in 1.13.4, so a subclass overriding it is still called.
+		return this.getUnauthed({
 			...options,
+			auth: options?.auth !== false,
 			path: "/context",
 			query: {
 				application: this._opts.application.name,
@@ -123,7 +138,6 @@ export default class Client {
 			units: params.units,
 			hashed: params.hashed,
 			publishedAt: params.publishedAt || Date.now(),
-			sdkVersion: params.sdkVersion,
 		};
 
 		if (Array.isArray(params.goals) && params.goals.length > 0) {
@@ -174,20 +188,14 @@ export default class Client {
 				keepalive: this._opts.keepalive,
 			};
 
-			if (options.auth === true) {
-				console.warn(
-					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
-				);
-			}
-
-			if (options.auth !== false) {
+			if (options.auth) {
 				opts.headers = {
 					"Content-Type": "application/json",
 					"X-API-Key": this._opts.apiKey,
 					"X-Agent": this._opts.agent,
 					"X-Environment": this._opts.environment,
 					"X-Application": this._opts.application.name,
-					"X-Application-Version": this._opts.application.version,
+					"X-Application-Version": applicationVersionHeader(this._opts.application.version),
 				};
 			}
 
@@ -237,15 +245,11 @@ export default class Client {
 			return tryOnce().catch((reason: Error & { _bail?: boolean }) => {
 				console.warn(reason);
 
-				// timeout <= 0 means "no deadline": the retry budget is governed by
-				// `retries` alone, so the elapsed-time check below must not apply.
-				const hasDeadline = timeout > 0;
-
 				if (reason._bail || retries <= 0) {
 					throw new Error(reason.message);
 				} else if (tries >= retries) {
 					throw new RetryError(tries, reason, url);
-				} else if ((hasDeadline && waited >= timeout) || reason.name === "AbortError") {
+				} else if (waited >= timeout || reason.name === "AbortError") {
 					if (tryWith.timedout) {
 						throw new TimeoutError(timeout);
 					}
@@ -254,7 +258,7 @@ export default class Client {
 				}
 
 				let delay = (1 << tries) * this._delay + 0.5 * Math.random() * this._delay;
-				if (hasDeadline && waited + delay > timeout) {
+				if (waited + delay > timeout) {
 					delay = timeout - waited;
 				}
 
@@ -274,7 +278,8 @@ export default class Client {
 			options.signal.addEventListener("abort", abort);
 		}
 
-		const timeout = options.timeout ?? this._opts.timeout ?? 0;
+		// `||`, as in 1.13.4: a request timeout of 0 falls back to the client timeout rather than disabling it.
+		const timeout = options.timeout || this._opts.timeout || 0;
 		const timeoutId =
 			timeout > 0
 				? setTimeout(() => {
@@ -290,7 +295,8 @@ export default class Client {
 			}
 		};
 
-		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, timeout)
+		// The retry budget falls back to the default when the client timeout is null/undefined, as in 1.13.4.
+		return tryWith(this._opts.retries ?? DEFAULT_RETRIES, options.timeout || (this._opts.timeout ?? DEFAULT_TIMEOUT_MS))
 			.then((value: string) => {
 				finalCleanUp();
 				return value;
@@ -304,6 +310,7 @@ export default class Client {
 	post(options: ClientRequestOptions) {
 		return this.request({
 			...options,
+			auth: true,
 			method: "POST",
 		});
 	}
@@ -311,6 +318,7 @@ export default class Client {
 	put(options: ClientRequestOptions) {
 		return this.request({
 			...options,
+			auth: true,
 			method: "PUT",
 		});
 	}
@@ -326,12 +334,16 @@ export default class Client {
 	get(options: ClientRequestOptions) {
 		return this.request({
 			...options,
+			auth: options.auth !== false,
 			method: "GET",
 		});
 	}
 
-	/** @deprecated Use get() instead. */
+	// Plain GET with 1.13 semantics: headers only when `auth: true` is passed. Use get() for SDK headers.
 	getUnauthed(options: ClientRequestOptions) {
-		return this.get(options);
+		return this.request({
+			...options,
+			method: "GET",
+		});
 	}
 }

@@ -237,11 +237,10 @@ describe("hashUnit()", () => {
 		done();
 	});
 
-	it("should hash astral/multibyte characters correctly", (done) => {
-		// Characters outside the BMP are stored as UTF-16 surrogate pairs and must
-		// encode to 4-byte UTF-8; these canonical hashes are shared across all SDKs.
-		expect(hashUnit("😀")).toBe("KgLqw51xanDs83V5GFkntg");
-		expect(hashUnit("😀😁")).toBe("ZJuDalvUWRJnVtkspj-2bQ");
+	it("should preserve 1.13 astral/multibyte hashes", (done) => {
+		// 1.x keeps the released code-unit encoding to avoid reassigning existing units.
+		expect(hashUnit("😀")).toBe("-Z9RwqljCn9rjBPBgYvAwg");
+		expect(hashUnit("😀😁")).toBe("OkTK8v8Dc9YXARX-1b6CmA");
 		expect(hashUnit("世界你好")).toBe("v2CJG7YcjjWncKOSCzF2GA");
 		expect(hashUnit("user_世界_123")).toBe("SCgk4OzXlFMvo1UMsP88fA");
 
@@ -316,101 +315,18 @@ describe("stringToUint8Array()", () => {
 		done();
 	});
 
-	describe("unmatched surrogates", () => {
-		// Unmatched surrogate code units are not valid UTF-8 code points; both TextEncoder
-		// and the manual fallback must emit U+FFFD (ef bf bd) for each one, matching the
-		// canonical UTF-8 replacement-character behavior.
-		const testCases = [
-			["lone high surrogate at end of string", "\uD800", Uint8Array.from([0xef, 0xbf, 0xbd])],
-			["lone low surrogate", "\uDC00", Uint8Array.from([0xef, 0xbf, 0xbd])],
-			["high surrogate followed by non-surrogate", "\uD800X", Uint8Array.from([0xef, 0xbf, 0xbd, 0x58])],
-			[
-				"two consecutive lone high surrogates",
-				"\uD800\uD800",
-				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
-			],
-			[
-				"two consecutive lone low surrogates",
-				"\uDC00\uDC00",
-				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
-			],
-			[
-				"low surrogate followed by high surrogate (wrong order)",
-				"\uDC00\uD800",
-				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
-			],
-			["lone high surrogate after ascii", "a\uD800", Uint8Array.from([0x61, 0xef, 0xbf, 0xbd])],
-			["lone low surrogate before ascii", "\uDC00b", Uint8Array.from([0xef, 0xbf, 0xbd, 0x62])],
+	it("should preserve the 1.13 encoding for every surrogate code unit", () => {
+		const cases = [
+			["\uD800", [0xed, 0xa0, 0x80]],
+			["\uDC00", [0xed, 0xb0, 0x80]],
+			["😀", [0xed, 0xa0, 0xbd, 0xed, 0xb8, 0x80]],
+			["a\uD800b", [97, 0xed, 0xa0, 0x80, 98]],
 		];
-
-		it("should emit U+FFFD for unmatched surrogates via the built-in TextEncoder", (done) => {
-			for (const [, input, expected] of testCases) {
-				const array = stringToUint8Array(input);
-				expect(Array.from(array)).toEqual(Array.from(expected));
-			}
-			done();
-		});
-
-		it("should emit U+FFFD for unmatched surrogates via the manual fallback", (done) => {
-			const OriginalTextEncoder = global.TextEncoder;
-			// eslint-disable-next-line no-global-assign
-			delete global.TextEncoder;
-
-			try {
-				for (const [, input, expected] of testCases) {
-					const array = stringToUint8Array(input);
-					expect(Array.from(array)).toEqual(Array.from(expected));
-				}
-			} finally {
-				global.TextEncoder = OriginalTextEncoder;
-			}
-			done();
-		});
-
-		it("should copy bytes from a TextEncoder view with an oversized backing buffer", (done) => {
-			const OriginalTextEncoder = global.TextEncoder;
-			const expected = hashUnit("session_abc123");
-
-			// eslint-disable-next-line no-global-assign
-			global.TextEncoder = class {
-				encode(value) {
-					const bytes = OriginalTextEncoder
-						? new OriginalTextEncoder().encode(value)
-						: Uint8Array.from([115, 101, 115, 115, 105, 111, 110, 95, 97, 98, 99, 49, 50, 51]);
-					const buffer = new ArrayBuffer(bytes.byteLength + 16);
-					const view = new Uint8Array(buffer, 8, bytes.byteLength);
-					view.set(bytes);
-					return view;
-				}
-			};
-
-			try {
-				const bytes = stringToUint8Array("session_abc123");
-				expect(bytes.byteOffset).toBe(0);
-				expect(bytes.byteLength).toBe(bytes.buffer.byteLength);
-				expect(hashUnit("session_abc123")).toBe(expected);
-			} finally {
-				global.TextEncoder = OriginalTextEncoder;
-			}
-
-			done();
-		});
-
-		it("should produce identical hashUnit results for both code paths", (done) => {
-			const OriginalTextEncoder = global.TextEncoder;
-
-			for (const [, input] of testCases) {
-				const nativeHash = hashUnit(input);
-
-				// eslint-disable-next-line no-global-assign
-				delete global.TextEncoder;
-				const fallbackHash = hashUnit(input);
-				global.TextEncoder = OriginalTextEncoder;
-
-				expect(fallbackHash).toBe(nativeHash);
-			}
-			done();
-		});
+		for (const [input, bytes] of cases) {
+			const encoded = stringToUint8Array(input);
+			expect(Array.from(encoded)).toEqual(bytes);
+			expect(encoded.byteLength).toBe(encoded.buffer.byteLength);
+		}
 	});
 });
 

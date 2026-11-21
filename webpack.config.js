@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 const TerserPlugin = require("terser-webpack-plugin");
 const BundleAnalyzerPlugin = require("webpack-bundle-analyzer").BundleAnalyzerPlugin;
 
@@ -23,7 +24,8 @@ module.exports = function () {
 			rules: [
 				{
 					test: /\.js$/,
-					exclude: /node_modules/,
+					// rfdc >= 1.4 ships ES2015 syntax; transpile it so the bundle stays ES5 for IE 10.
+					exclude: /node_modules[\\/](?!rfdc[\\/])/,
 					use: ["babel-loader"],
 				},
 			],

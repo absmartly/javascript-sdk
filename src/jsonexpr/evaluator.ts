@@ -3,7 +3,7 @@ import { isEqualsDeep, isObject } from "../utils";
 
 function parseSemver(version: string) {
 	let v = version;
-	if (v.startsWith("v") || v.startsWith("V")) {
+	if (v.charAt(0) === "v" || v.charAt(0) === "V") {
 		v = v.substring(1);
 	}
 
@@ -55,6 +55,8 @@ function compareIdentifiers(a: string, b: string) {
 export class Evaluator {
 	private readonly operators: any;
 	private readonly vars: any;
+	/** @internal Set only when this evaluation read below a null/undefined value; never taken from a thrown error. */
+	nullParentError: unknown = undefined;
 
 	constructor(operators: any, vars: any) {
 		this.operators = operators;
@@ -125,8 +127,14 @@ export class Evaluator {
 		let target = this.vars ?? {};
 		for (let index = 0; index < frags.length; ++index) {
 			const frag = frags[index];
+			let value;
+			try {
+				value = target[frag];
+			} catch (error) {
+				if (target == null) this.nullParentError = error;
+				throw error;
+			}
 
-			const value = target[frag];
 			if (value !== undefined) {
 				target = value;
 				continue;
