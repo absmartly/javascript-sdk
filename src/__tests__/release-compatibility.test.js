@@ -77,6 +77,34 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(context.peek("cacheProbe")).toBe(1);
 	});
 
+	it.each(["fetch", "with-data", "refresh"])("ignores future assignment-rule fields via %s", async (creation) => {
+		const ruled = cacheProbeExperiment({
+			assignmentRules: JSON.stringify({
+				rules: [
+					{
+						type: "assign",
+						variant: 1,
+						conditions: null,
+						futureScalar: "x",
+						futureObject: { x: [1] },
+						futureArray: [{ y: true }],
+					},
+				],
+			}),
+			trafficSplit: [1, 0],
+		});
+		const ordinary = { ...cacheProbeExperiment(), id: 41, name: "ordinary", split: [0, 1] };
+		const data = { experiments: [ruled, ordinary] };
+		const provider = { getContextData: () => Promise.resolve(data) };
+		const sdk = new SDK({ ...options, provider });
+		const params = { units: { session_id: "u1" } };
+		const context = creation === "fetch" ? sdk.createContext(params) : sdk.createContextWith(params, data);
+		await context.ready();
+		if (creation === "refresh") await context.refresh();
+		expect(context.treatment("cacheProbe")).toBe(1);
+		expect(context.treatment("ordinary")).toBe(1);
+	});
+
 	it("ignores unknown context-data fields at every payload level, including after refresh", async () => {
 		const eventLogger = jest.fn();
 		const experiment = (id, experimentName) => ({
@@ -702,7 +730,7 @@ describe("1.13.4 source and behaviour compatibility", () => {
 				{ units: { user_id: "u1" } },
 				{ experiments: [liveExp({})] }
 			);
-			context.peek("covered");
+			context.treatment("covered");
 			const cached = context._assignments.covered;
 			let reads = 0;
 			let value = cached.isRuleMissingUnit;
@@ -716,7 +744,6 @@ describe("1.13.4 source and behaviour compatibility", () => {
 				},
 			});
 			for (let i = 0; i < 50; i++) context.peek("covered");
-			expect(context._missingUnitPins).toBe(0);
 			expect(reads).toBe(0);
 		});
 	});

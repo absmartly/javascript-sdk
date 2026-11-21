@@ -181,3 +181,15 @@ function readClientCtorVersion(options: ReleasedClientOptions): number {
 }
 void readSdkCtorVersion;
 void readClientCtorVersion;
+
+import { JsonExpr } from "@absmartly/javascript-sdk/types/jsonexpr/jsonexpr";
+class ReleasedExpressionImplementation implements JsonExpr {
+	evaluateBooleanExpr<T>(expr: T[] | Record<string, T>, vars: Record<string, T>): any {
+		return true;
+	}
+	evaluateExpr<T>(expr: T[] | Record<string, T>, vars: Record<string, T>): any {
+		return null;
+	}
+}
+const releasedExpression: JsonExpr = new ReleasedExpressionImplementation();
+void releasedExpression;

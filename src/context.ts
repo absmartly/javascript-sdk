@@ -195,9 +195,6 @@ export default class Context {
 	private _overrides: Record<string, number>;
 	private _pending: number;
 	private _attrsSeq: number;
-	// Never decremented: a stale positive only costs the cheap per-read check, while a missed increment
-	// would skip a needed re-resolution. While zero, _assign() skips the live-units check entirely.
-	private _missingUnitPins: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
 	private _hashes?: Record<string, string | null>;
@@ -227,7 +224,6 @@ export default class Context {
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
 		this._attrsSeq = 0;
-		this._missingUnitPins = 0;
 		this._attrsMapCache = null;
 		this._attrsMapCacheSeq = -1;
 
@@ -604,7 +600,7 @@ export default class Context {
 		}
 	}
 
-	private _assign(experimentName: string) {
+	private _assign(experimentName: string): Assignment {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
 				experiment.id === assignment.id &&
@@ -645,7 +641,6 @@ export default class Context {
 
 					assignment.ruleVariant = ruleVariant;
 					assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
-					if (assignment.isRuleMissingUnit) this._missingUnitPins++;
 				}
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
@@ -690,19 +685,17 @@ export default class Context {
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
 
-		const cached = this._missingUnitPins > 0 ? this._assignments[experimentName] : undefined;
-		if (
-			cached &&
-			!cached.exposed &&
-			cached.unitType != null &&
-			cached.unitType in this._units &&
-			(cached.isRuleMissingUnit || cached.holdoutAssignments?.some((assignment) => assignment === null))
-		) {
-			this._invalidateAssignmentsPinnedWithMissingUnit(cached.unitType);
-		}
-
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
+			if (
+				!assignment.exposed &&
+				assignment.unitType != null &&
+				(assignment.isRuleMissingUnit || assignment.holdoutAssignments?.some((item) => item === null)) &&
+				assignment.unitType in this._units
+			) {
+				delete this._assignments[experimentName];
+				return this._assign(experimentName);
+			}
 			if (hasOverride) {
 				if (
 					assignment.overridden &&
@@ -767,7 +760,6 @@ export default class Context {
 
 			assignment.holdouts = holdouts;
 			assignment.holdoutAssignments = holdoutAssignments;
-			if (holdoutAssignments.some((holdoutAssignment) => holdoutAssignment === null)) this._missingUnitPins++;
 
 			assignment.suppressed = holdoutAssignments.some(
 				(holdoutAssignment) =>
@@ -799,7 +791,6 @@ export default class Context {
 
 				assignment.ruleVariant = ruleVariant;
 				assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
-				if (assignment.isRuleMissingUnit) this._missingUnitPins++;
 
 				// A matching assignment rule wins over holdout suppression, the same way override()
 				// does: it's an explicit, author-specified assignment (flagged `ruleOverride`,

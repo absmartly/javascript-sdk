@@ -40,6 +40,7 @@ const operators = {
 };
 
 export class JsonExpr {
+	/** @internal */
 	private _nullParentError: unknown;
 
 	evaluateBooleanExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
