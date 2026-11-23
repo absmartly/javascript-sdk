@@ -6140,13 +6140,9 @@ describe("Context", () => {
 				expect(exposureCalls.map((c) => c[2].name)).toContain("exp_holdout_var_winner_after_throw_2");
 			});
 
-			// java's override write path never sets `suppressed` at all (see Assignment.suppressed's
-			// doc comment), so an override can never become java's suppressedFallback. The JS port
-			// pins `suppressed` eagerly on the override path too, so the fallback capture must
-			// explicitly exclude overridden assignments to reproduce the same outcome — otherwise an
-			// override to a variant that happens to omit the requested key could win the fallback
-			// slot ahead of a genuinely suppressed sibling that actually defines it.
-			it("excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
+			// An override wins even when its selected variant omits the key; holdout fallback
+			// must not replace it with another experiment's control value.
+			it("returns the winning override default even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
 					name: "exp_holdout_var_overridden",
@@ -6161,8 +6157,7 @@ describe("Context", () => {
 					fullOnVariant: 0,
 					applications: [{ name: "website" }],
 					variants: [
-						// Override target (variant 0) omits the key, so this candidate can't win
-						// outright, and must not be allowed to claim the fallback slot either.
+						// The override wins outright, even though variant 0 omits the key.
 						{ name: "A", config: null },
 						{ name: "B", config: JSON.stringify({ "button.color": "OVERRIDE_SIBLING" }) },
 					],
@@ -6204,13 +6199,14 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, response);
 				context.override("exp_holdout_var_overridden", 0);
 
-				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.pending()).toEqual(2);
 			});
 
 			// _peekVariable carries the identical override-exclusion guard as _variableValue (same
 			// fix, same commit), but never triggers exposures, so it needs its own regression test
 			// rather than relying on variableValue()'s coverage of the guard.
-			it("peekVariableValue(): excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
+			it("peekVariableValue(): returns the winning override default even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
 					name: "exp_holdout_var_peek_overridden",
@@ -6266,9 +6262,87 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, response);
 				context.override("exp_holdout_var_peek_overridden", 0);
 
-				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
+				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 				expect(context.pending()).toEqual(0);
 			});
+		});
+	});
+
+	describe("shared variable winner", () => {
+		const shared = (id, split, config, over = {}) => ({
+			...getContextResponse.experiments[0],
+			id,
+			name: `shared_${id}`,
+			split,
+			trafficSplit: [0, 1],
+			variants: [
+				{ name: "A", config: JSON.stringify(config) },
+				{ name: "B", config: JSON.stringify({ shared: `value_${id}` }) },
+			],
+			...over,
+		});
+
+		it.each([0, 1])("keeps the first assigned experiment in arm %i, independent of key presence", (arm) => {
+			const eventLogger = jest.fn();
+			// Reverse payload order to test experiment-id precedence, not insertion order.
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(2, [1, 0], { shared: "SECOND" }), shared(1, arm ? [0, 1] : [1, 0], {})],
+			});
+			const expected = arm ? "value_1" : "SENTINEL";
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe(expected);
+			expect(context.pending()).toBe(0);
+			expect(eventLogger.mock.calls.filter((c) => c[1] === "exposure")).toEqual([]);
+			expect(context.variableValue("shared", "SENTINEL")).toBe(expected);
+			expect(context.variableValue("shared", "SENTINEL")).toBe(expected);
+			expect(context.pending()).toBe(1);
+			expect(eventLogger.mock.calls.filter((c) => c[1] === "exposure").map((c) => c[2])).toEqual([
+				expect.objectContaining({ name: "shared_1", variant: arm, assigned: true }),
+			]);
+		});
+
+		it.each([null, false, 0, ""])(
+			"returns the present value %p rather than default or another experiment",
+			(value) => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [1, 0], { shared: value }), shared(2, [1, 0], { shared: "SECOND" })],
+				});
+				expect(context.peekVariableValue("shared", "SENTINEL")).toBe(value);
+				expect(context.pending()).toBe(0);
+				expect(context.variableValue("shared", "SENTINEL")).toBe(value);
+				expect(context.pending()).toBe(1);
+			}
+		);
+
+		it.each(["override", "rule"])("stops at a missing key when the first experiment wins by %s", (mode) => {
+			const assignmentRules = JSON.stringify({
+				rules: [{ name: "control", type: "assign", conditions: { value: true }, environments: [], variant: 0 }],
+			});
+			const context = new Context(sdk, contextOptions, contextParams, {
+				experiments: [
+					shared(1, [0, 1], {}, { trafficSplit: [1, 0], ...(mode === "rule" ? { assignmentRules } : {}) }),
+					shared(2, [1, 0], { shared: "SECOND" }),
+				],
+			});
+			if (mode === "override") context.override("shared_1", 0);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(1);
+		});
+
+		it("retains ordinary unassigned fallthrough and no-winner defaults", () => {
+			const first = shared(1, [1, 0], {}, { audienceStrict: true, audience: '{"filter":[{"value":false}]}' });
+			const second = shared(2, [1, 0], { shared: "SECOND" });
+			const context = new Context(sdk, contextOptions, contextParams, { experiments: [first, second] });
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SECOND");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SECOND");
+			// Existing exposure behavior for visited unassigned candidates is preserved.
+			expect(context.pending()).toBe(2);
+			const noWinner = new Context(sdk, contextOptions, contextParams, { experiments: [first] });
+			expect(noWinner.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(noWinner.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(noWinner.variableValue("unknown", "SENTINEL")).toBe("SENTINEL");
 		});
 	});
 
