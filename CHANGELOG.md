@@ -43,9 +43,14 @@
   `X-Application-Version` sends only 1–18 ASCII digits (trimmed), or `0` otherwise.
   Affected: proxies inspecting GET headers and apps configuring invalid version
   headers that previously caused collector HTTP 400 errors.
-- Shared variable keys retain experiment-id priority and fall through unassigned
-  experiments or variants missing the key; peek queues no exposures. The existing
-  `variableKeys()` map-of-lists return shape is unchanged.
+- Shared variable keys retain experiment-id priority: candidates define the key in
+  any variant, and the first assigned, explicitly overridden or rule-overridden
+  experiment wins. Its selected variant returns the value (including `null`, `false`,
+  `0` or `""`), or the caller default if the key is missing. This intentionally fixes
+  variant-dependent fallthrough: selecting/exposing a different experiment because
+  the winning arm lacks the key biases the experiment. Unassigned candidates still
+  fall through; holdout control fallback is unchanged; peek queues no exposures.
+  The existing `variableKeys()` map-of-lists return shape is unchanged.
 - A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
   client timeout for it. Affected: callers passing a per-request `timeout` that
   differs from the client one, who now get more (or fewer) retries to match it.
