@@ -226,6 +226,15 @@ const defaultButtonColor = "red";
 const buttonColor = context.variableValue("button.color", defaultButtonColor);
 ```
 
+#### Shared variable keys
+
+When several experiments define the same variable key, the SDK checks them in
+ascending experiment id and uses the first one the user is in (assigned,
+overridden or assigned by a rule). Its variant's value is returned, or your
+default if that variant does not define the key; later experiments are never used
+instead. Only that experiment gets an exposure. `peekVariableValue()` never queues
+one.
+
 ### Peek at Treatment Variants
 
 Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure. The A/B Smartly SDK provides a `peek()` method for that.

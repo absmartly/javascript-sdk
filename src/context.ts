@@ -1023,46 +1023,49 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
-	// A held-out unit reads the control value, not the caller's default, when nothing else wins.
-	// The first suppressed candidate is captured even if it lacks the key, so a later one can't win.
+	// Mirrors java-sdk Context.getVariableAssignment. Candidates define the key in any variant, in
+	// experiment-id order. The first one the unit is actually in (assigned, overridden or
+	// rule-assigned) wins regardless of its arm; otherwise the first held-out candidate supplies
+	// its control value. Only the winner gets an exposure, so a unit is never recorded in an
+	// experiment it only got checked against. Like Java, each visited candidate's applicable
+	// holdouts still fire on the non-peek path.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		let suppressedFallback: Record<string, unknown> | undefined;
+		const indexed = this._indexVariables[key];
+		// Own lists only: a key such as "toString" must not resolve an Object.prototype member.
+		const candidates = Array.isArray(indexed) ? indexed : [];
 
-		// Own-property lookup: a key such as "toString" must not resolve an Object.prototype member.
-		const candidates = Object.prototype.hasOwnProperty.call(this._indexVariables, key) ? this._indexVariables[key] : [];
+		let winner: [string, Assignment] | undefined;
+		let suppressedFallback: [string, Assignment] | undefined;
 
 		for (const experiment of candidates) {
 			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
-			const variables = assignment.variables;
-			if (variables !== undefined && shouldQueueExposure && !assignment.exposed) {
-				assignment.exposed = true;
+			if (shouldQueueExposure) this._triggerApplicableHoldoutExposures(assignment);
 
-				this._triggerExposures(experimentName, assignment);
-			}
-
-			// Select the experiment independently of its arm: a missing key (or out-of-range arm)
-			// uses the caller's default, never a later experiment (which would bias exposure by variant).
 			if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
-				return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
+				winner = [experimentName, assignment];
+				break;
 			}
 
-			if (
-				variables !== undefined &&
-				assignment.suppressed &&
-				!assignment.overridden &&
-				!assignment.ruleOverride &&
-				suppressedFallback === undefined
-			) {
-				suppressedFallback = variables;
+			if (assignment.suppressed && suppressedFallback === undefined) {
+				suppressedFallback = [experimentName, assignment];
 			}
 		}
 
-		if (suppressedFallback !== undefined && key in suppressedFallback) {
-			return suppressedFallback[key] as string;
+		const selected = winner ?? suppressedFallback;
+		if (selected === undefined) return defaultValue;
+
+		const [experimentName, assignment] = selected;
+		if (shouldQueueExposure && !assignment.exposed) {
+			assignment.exposed = true;
+
+			this._triggerExposures(experimentName, assignment);
 		}
 
-		return defaultValue;
+		// A missing key (or out-of-range arm) returns the caller's default, never a later
+		// experiment's value: falling through by arm would bias the winning experiment.
+		const variables = assignment.variables;
+		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {

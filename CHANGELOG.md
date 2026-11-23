@@ -43,18 +43,7 @@
   `X-Application-Version` sends only 1–18 ASCII digits (trimmed), or `0` otherwise.
   Affected: proxies inspecting GET headers and apps configuring invalid version
   headers that previously caused collector HTTP 400 errors.
-- Shared variable keys retain experiment-id priority: candidates define the key in
-  any variant, and the first assigned, explicitly overridden or rule-overridden
-  experiment wins. Its selected variant returns the value (including `null`, `false`,
-  `0` or `""`), or the caller default if the key is missing. This intentionally fixes
-  variant-dependent fallthrough: selecting/exposing a different experiment because
-  the winning arm lacks the key biases the experiment. Unassigned candidates still
-  fall through; holdout control fallback is unchanged; peek queues no exposures.
-  An out-of-range overridden or custom arm also returns the caller default.
-  Affected: units whose first winning experiment's arm lacks the key; 1.13.4
-  served (and exposed) a later experiment's value, 1.14.0 returns the default and
-  exposes only the winner. The existing `variableKeys()` map-of-lists return shape
-  is unchanged.
+- `variableKeys()` keeps its map-of-lists return shape.
 - A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
   client timeout for it. Affected: callers passing a per-request `timeout` that
   differs from the client one, who now get more (or fewer) retries to match it.
@@ -80,6 +69,23 @@
 
 ### Fixed
 
+- Shared variable keys now pick and expose one experiment, as the Java SDK does.
+  Previously `variableValue()` exposed every experiment it checked that had the
+  key, including ones the unit was not in (for example a strict audience
+  mismatch), which recorded users in experiments they never saw. The wrong
+  experiment could also win: when the first experiment's selected variant lacked
+  the key, a later experiment's value was served and exposed, so which experiment
+  a unit was counted in depended on its arm, biasing the result. Rule now applied:
+  candidates are the experiments defining the key in any variant, by experiment id
+  ascending; the winner is the first one the unit is in (assigned, overridden or
+  rule-assigned), whatever its arm. Its selected variant's value is returned
+  (`null`, `false`, `0` and `""` included), or the caller default if that variant
+  lacks the key. With no winner, a held-out candidate supplies its control value,
+  otherwise the caller default. Only the winner is exposed; each checked
+  candidate's applicable holdouts still fire, as in Java. `peekVariableValue()`
+  exposes nothing. Keys named like `Object.prototype` members (`toString`, ...)
+  return the default again, as in 1.13.4. Affected: anyone with two or more
+  running experiments sharing a variable key.
 - Failed publishes retain queued events in order; failed finalize stays open and
   can be retried. Concurrent flush/finalize waits for in-flight delivery.
 - Custom publisher failures and throwing event loggers no longer strand lifecycle
