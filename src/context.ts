@@ -1031,27 +1031,27 @@ export default class Context {
 		for (const experiment of this._indexVariables[key] ?? []) {
 			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (shouldQueueExposure && !assignment.exposed) {
-					assignment.exposed = true;
+			const variables = assignment.variables;
+			if (variables !== undefined && shouldQueueExposure && !assignment.exposed) {
+				assignment.exposed = true;
 
-					this._triggerExposures(experimentName, assignment);
-				}
+				this._triggerExposures(experimentName, assignment);
+			}
 
-				// Select the experiment independently of its arm: a missing key uses the caller's
-				// default, never a later experiment (which would bias exposure by variant).
-				if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
-					return key in assignment.variables ? (assignment.variables[key] as string) : defaultValue;
-				}
+			// Select the experiment independently of its arm: a missing key (or out-of-range arm)
+			// uses the caller's default, never a later experiment (which would bias exposure by variant).
+			if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
+				return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
+			}
 
-				if (
-					assignment.suppressed &&
-					!assignment.overridden &&
-					!assignment.ruleOverride &&
-					suppressedFallback === undefined
-				) {
-					suppressedFallback = assignment.variables;
-				}
+			if (
+				variables !== undefined &&
+				assignment.suppressed &&
+				!assignment.overridden &&
+				!assignment.ruleOverride &&
+				suppressedFallback === undefined
+			) {
+				suppressedFallback = variables;
 			}
 		}
 

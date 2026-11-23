@@ -6330,6 +6330,17 @@ describe("Context", () => {
 			expect(context.pending()).toBe(1);
 		});
 
+		it("stops at an out-of-range override instead of falling through", () => {
+			const context = new Context(sdk, contextOptions, contextParams, {
+				experiments: [shared(1, [1, 0], {}), shared(2, [1, 0], { shared: "SECOND" })],
+			});
+			context.override("shared_1", 7);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			// Existing behavior: an out-of-range override has no variables to expose.
+			expect(context.pending()).toBe(0);
+		});
+
 		it("retains ordinary unassigned fallthrough and no-winner defaults", () => {
 			const first = shared(1, [1, 0], {}, { audienceStrict: true, audience: '{"filter":[{"value":false}]}' });
 			const second = shared(2, [1, 0], { shared: "SECOND" });
