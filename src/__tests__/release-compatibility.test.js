@@ -53,6 +53,26 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		...extra,
 	});
 
+	it("caches the rule identity on the initial assignment", () => {
+		const experiment = cacheProbeExperiment({
+			assignmentRules: JSON.stringify({
+				rules: [{ type: "assign", variant: 1, conditions: { value: true } }],
+			}),
+		});
+		const context = new SDK(options).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [experiment] }
+		);
+		const spy = jest.spyOn(AudienceMatcher.prototype, "evaluateParsedRules");
+		try {
+			for (let i = 0; i < 100; i++) expect(context.treatment("cacheProbe")).toBe(1);
+			expect(spy).toHaveBeenCalledTimes(1);
+			expect(context.pending()).toBe(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	it("refreshes rule identity when a custom client's configured environment changes", async () => {
 		let environment = "prod";
 		const client = new Client(options);
