@@ -1035,8 +1035,10 @@ export default class Context {
 					this._triggerExposures(experimentName, assignment);
 				}
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					return assignment.variables[key] as string;
+				// Select the experiment independently of its arm: a missing key uses the caller's
+				// default, never a later experiment (which would bias exposure by variant).
+				if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
+					return key in assignment.variables ? (assignment.variables[key] as string) : defaultValue;
 				}
 
 				if (
