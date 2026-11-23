@@ -50,7 +50,11 @@
   variant-dependent fallthrough: selecting/exposing a different experiment because
   the winning arm lacks the key biases the experiment. Unassigned candidates still
   fall through; holdout control fallback is unchanged; peek queues no exposures.
-  The existing `variableKeys()` map-of-lists return shape is unchanged.
+  An out-of-range overridden or custom arm also returns the caller default.
+  Affected: units whose first winning experiment's arm lacks the key; 1.13.4
+  served (and exposed) a later experiment's value, 1.14.0 returns the default and
+  exposes only the winner. The existing `variableKeys()` map-of-lists return shape
+  is unchanged.
 - A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
   client timeout for it. Affected: callers passing a per-request `timeout` that
   differs from the client one, who now get more (or fewer) retries to match it.

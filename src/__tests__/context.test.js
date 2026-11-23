@@ -6341,6 +6341,29 @@ describe("Context", () => {
 			expect(context.pending()).toBe(0);
 		});
 
+		it.each(["custom", "fullOn"])("stops at an out-of-range %s assignment instead of falling through", (mode) => {
+			const first = shared(1, [1, 0], {}, mode === "fullOn" ? { fullOnVariant: 7 } : {});
+			const context = new Context(sdk, contextOptions, contextParams, {
+				experiments: [first, shared(2, [1, 0], { shared: "SECOND" })],
+			});
+			if (mode === "custom") context.customAssignment("shared_1", 7);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(0);
+		});
+
+		it.each(["toString", "valueOf", "hasOwnProperty", "__proto__", "constructor"])(
+			"returns the caller default for the unindexed prototype-named key %s",
+			(key) => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [0, 1], {})],
+				});
+				expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+				expect(context.pending()).toBe(0);
+			}
+		);
+
 		it("retains ordinary unassigned fallthrough and no-winner defaults", () => {
 			const first = shared(1, [1, 0], {}, { audienceStrict: true, audience: '{"filter":[{"value":false}]}' });
 			const second = shared(2, [1, 0], { shared: "SECOND" });

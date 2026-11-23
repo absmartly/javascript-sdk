@@ -1028,7 +1028,10 @@ export default class Context {
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
 		let suppressedFallback: Record<string, unknown> | undefined;
 
-		for (const experiment of this._indexVariables[key] ?? []) {
+		// Own-property lookup: a key such as "toString" must not resolve an Object.prototype member.
+		const candidates = Object.prototype.hasOwnProperty.call(this._indexVariables, key) ? this._indexVariables[key] : [];
+
+		for (const experiment of candidates) {
 			const experimentName = experiment.data.name;
 			const assignment = this._assign(experimentName);
 			const variables = assignment.variables;
