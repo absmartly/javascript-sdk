@@ -230,9 +230,9 @@ default if that variant does not define the key; later experiments are never use
 instead. If the user is in none of them but one is held out by a holdout, that
 experiment's control value is returned. Only the winning experiment gets an
 exposure (plus any holdouts covering the experiments checked); a held-out
-experiment that supplies its control value records only its holdout's exposure. An experiment the user is
-not in, such as a strict audience mismatch, gets none; call `treatment()` to
-record it. `peekVariableValue()` never queues one.
+experiment that supplies its control value records only its holdout's exposure.
+An experiment the user is not in, such as a strict audience mismatch, gets none;
+call `treatment()` to record it. `peekVariableValue()` never queues one.
 
 ### Peek at Treatment Variants
 

@@ -538,11 +538,14 @@ export default class Context {
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
+		// defineProperty keeps a key such as "__proto__" an own entry of the returned plain object.
 		for (const [key, values] of Object.entries(this._indexVariables)) {
-			for (const value of values) {
-				if (variableExperiments[key]) variableExperiments[key].push(value.data.name);
-				else variableExperiments[key] = [value.data.name];
-			}
+			Object.defineProperty(variableExperiments, key, {
+				value: values.map((value) => value.data.name),
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 
 		return variableExperiments;
@@ -1411,9 +1414,8 @@ export default class Context {
 	// experiment it only got checked against. Like Java, each visited candidate's applicable
 	// holdouts still fire on the non-peek path.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		const indexed = this._indexVariables[key];
-		// Own lists only: a key such as "toString" must not resolve an Object.prototype member.
-		const candidates = Array.isArray(indexed) ? indexed : [];
+		// The index has no prototype, so a key such as "toString" only finds a real entry.
+		const candidates = this._indexVariables[key] ?? [];
 
 		// Plain locals rather than tuples: this is a hot path and must not allocate per read.
 		let selectedName = "";
@@ -1858,7 +1860,9 @@ export default class Context {
 		this._environmentName = this._sdk.getClient().getEnvironment() ?? null;
 
 		const index: Record<string, Experiment> = {};
-		const indexVariables: Record<string, Experiment[]> = {};
+		// Null-prototype maps: variable keys come from customer configs and may be named like
+		// Object.prototype members ("toString", "__proto__").
+		const indexVariables: Record<string, Experiment[]> = Object.create(null);
 
 		const holdoutsById: Record<number, HoldoutData> = {};
 
@@ -1935,13 +1939,13 @@ export default class Context {
 			for (let i = 0; i < experiment.variants.length; i++) {
 				const variant = experiment.variants[i];
 				const config = variant.config;
-				let parsed = {};
+				let parsed: Record<string, unknown> = Object.create(null);
 
 				if (config != null && config.length > 0) {
 					try {
 						const value = JSON.parse(config);
 						if (isObject(value)) {
-							parsed = value;
+							parsed = Object.assign(Object.create(null), value);
 						}
 					} catch (error) {
 						this._logError(

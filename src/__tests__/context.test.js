@@ -6328,6 +6328,55 @@ describe("Context", () => {
 			expect(context.pending()).toBe(1);
 		});
 
+		describe("variables named like Object.prototype members", () => {
+			const protoKeyed = (config) => ({
+				...shared(1, [0, 1], {}),
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: JSON.stringify(config) },
+				],
+			});
+			const keys = ["toString", "constructor", "hasOwnProperty", "__proto__", "valueOf"];
+			// From JSON, as the payload arrives: a `__proto__:` literal key would set the prototype instead.
+			const config = JSON.parse(
+				'{"toString":"ts","constructor":0,"hasOwnProperty":false,"__proto__":"p","valueOf":null}'
+			);
+
+			it("creates a ready context and resolves each defined key", () => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [protoKeyed(config)] });
+				expect(context.isReady()).toBe(true);
+				expect(context.isFailed()).toBe(false);
+				for (const key of keys) {
+					expect(context.peekVariableValue(key, "SENTINEL")).toBe(config[key]);
+					expect(context.variableValue(key, "SENTINEL")).toBe(config[key]);
+				}
+				expect(context.pending()).toBe(1);
+			});
+
+			it("returns the default when the winner's variant does not define the key", () => {
+				// Variant A has a parsed config without these keys, so inherited members must not match.
+				const winner = { ...protoKeyed(config), split: [1, 0] };
+				winner.variants = [{ name: "A", config: '{"other":1}' }, winner.variants[1]];
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
+				for (const key of keys) {
+					expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+					expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+				}
+				expect(context.pending()).toBe(1);
+			});
+
+			it("lists each key as an own entry of variableKeys()", () => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [protoKeyed(config), { ...protoKeyed({ toString: "x" }), id: 2, name: "shared_2" }],
+				});
+				const variableKeys = context.variableKeys();
+				expect(Object.getPrototypeOf(variableKeys)).toBe(Object.prototype);
+				expect(Object.keys(variableKeys).sort()).toEqual([...keys].sort());
+				expect(variableKeys.toString).toEqual(["shared_1", "shared_2"]);
+				expect(Object.getOwnPropertyDescriptor(variableKeys, "__proto__").value).toEqual(["shared_1"]);
+			});
+		});
+
 		it.each(["toString", "valueOf", "hasOwnProperty", "__proto__", "constructor"])(
 			"returns the caller default for the unindexed prototype-named key %s",
 			(key) => {
@@ -6436,7 +6485,8 @@ describe("Context", () => {
 
 		it.each(["override", "custom", "fullOn"])("exposes an out-of-range %s winner like Java", (mode) => {
 			const eventLogger = jest.fn();
-			const first = shared(1, [1, 0], {}, mode === "fullOn" ? { fullOnVariant: 7 } : {});
+			// Control defines the key, so serving variant 0 instead of the default would be caught.
+			const first = shared(1, [1, 0], { shared: "CONTROL" }, mode === "fullOn" ? { fullOnVariant: 7 } : {});
 			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
 				experiments: [first, shared(2, [1, 0], { shared: "SECOND" })],
 			});
