@@ -385,8 +385,12 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 `"exposure"` and `"error"` events raised by one `variableValue()` call (and the
 `"exposure"` events of one `treatment()` call) are delivered after all of that
 call's exposures are queued, in the order they were raised, so a logger that
-calls `publish()` or `finalize()` sends every one of them. Events a logger
-triggers itself are delivered after the ones already waiting.
+calls `publish()` or `finalize()` sends every one of them. `"exposure"`
+and `"error"` events a logger triggers itself are delivered after the ones
+already waiting (other events, such as a `"goal"` from `track()`, are delivered
+immediately); a logger that keeps triggering new events is switched to inline
+delivery after a bounded number of rounds, so its later events arrive as they
+are raised.
 
 ### HTTP Request Timeout
 

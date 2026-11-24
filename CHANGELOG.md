@@ -77,7 +77,8 @@
   down from about 155 ns in 1.13.4, but up to about 9 ns more than unreleased
   main, mostly for holding its `eventLogger` callbacks until all its exposures
   are queued (see Fixed). `peekVariableValue()` costs about 2–15 ns more than
-  unreleased main. `treatment()` and `peek()` are unchanged. Measured on shared
+  unreleased main; a cached `treatment()` or `peek()` costs about 1–2 ns more
+  (the assignment-rule and holdout checks above). Measured on shared
   hosts (Node 22, compiled CJS, four experiments sharing a key), so treat these
   as approximate.
 
