@@ -228,8 +228,9 @@ ascending experiment id and uses the first one the user is in (assigned,
 overridden or assigned by a rule). Its variant's value is returned, or your
 default if that variant does not define the key; later experiments are never used
 instead. If the user is in none of them but one is held out by a holdout, that
-experiment's control value is returned. Only that experiment gets an exposure
-(plus any holdouts covering the experiments checked). An experiment the user is
+experiment's control value is returned. Only the winning experiment gets an
+exposure (plus any holdouts covering the experiments checked); a held-out
+experiment that supplies its control value records only its holdout's exposure. An experiment the user is
 not in, such as a strict audience mismatch, gets none; call `treatment()` to
 record it. `peekVariableValue()` never queues one.
 
@@ -283,7 +284,7 @@ How a switchback is served (the contract the A/B Smartly collector serves; java-
 - **Paths.** `/` separates segments (`profile/region`, `items/0/region`), a quoted segment is a literal key (`'a/b'`), and an unquoted number indexes an array. An index must be non-negative and sit between two key segments (`items/0` and `items/0/1/region` are unreadable). A `.` anywhere makes the path unreadable: nest with `/`. The first segment names an attribute set with `attribute()`; the value read is the latest one set at or before the call.
 - **No linked unit:** the experiment does not apply (variant 0, nothing recorded; a variable lookup returns its default), though an `override()` still applies and is recorded. **Ineligible cluster** (no value, units disagree, or a value outside the experiment's allowed values): variant 0 and no exposure, unless an `override()` is set, which still applies and is recorded under the first linked unit present. **Unreadable cluster map** (missing, empty or with an unreadable path): an ineligible control when the context has a unit of the experiment's `unitType`, otherwise the experiment does not apply.
 - **Precedence** for an eligible cluster: `override()`, then assignment rules (a `split` rule randomizes over the serving unit), a strict audience mismatch (variant 0, recorded), full-on, then the schedule. Before the schedule starts, or when it cannot be served, the result is variant 0 with no exposure. Then traffic (on the serving unit; a miss is recorded as not eligible), `customAssignment()`, and the schedule draw over the cluster key. **Holdouts never apply to switchback experiments.**
-- **Exposures.** One exposure per experiment and period while that period's assignment stays cached, under the serving unit's type, with the same fields as any other exposure. As for other experiments, an assignment that is resolved again within the period (after a refresh or an attribute change alters its outcome, or a clock moved back past the two retained periods) records another exposure. Its `exposedAt` is the time at which the call chose the period. While the period's assignment stays cached, the cluster is read once: a later `attribute()` in the same period does not move the unit to another cluster, and the next period reads the attributes afresh. A clock moved back past the two retained periods reads the cluster afresh too, and can select a different cluster. Attributes are published as usual; the collector reads the cluster from them. As for unit experiments in this SDK, `variableValue()` exposes every experiment it reads on the key, so a strict-mismatched switchback visited before the experiment that serves the value records its control exposure too.
+- **Exposures.** One exposure per experiment and period while that period's assignment stays cached, under the serving unit's type, with the same fields as any other exposure. As for other experiments, an assignment that is resolved again within the period (after a refresh or an attribute change alters its outcome, or a clock moved back past the two retained periods) records another exposure. Its `exposedAt` is the time at which the call chose the period. While the period's assignment stays cached, the cluster is read once: a later `attribute()` in the same period does not move the unit to another cluster, and the next period reads the attributes afresh. A clock moved back past the two retained periods reads the cluster afresh too, and can select a different cluster. Attributes are published as usual; the collector reads the cluster from them. On a variable key shared with other experiments, a switchback follows the same rule as unit experiments (see [Shared variable keys](#shared-variable-keys)): only the winner is exposed, so a strict-mismatched switchback checked before the winner records nothing.
 
 The schedule follows the device clock (`Date.now()`), so a device whose clock is wrong is served another period's variant.
 
@@ -594,6 +595,12 @@ An audience filter that throws while being evaluated is treated as a mismatch, s
 **Before:** this SDK ignored the switchback fields the collector sends. A switchback experiment was served as a sticky unit assignment on its `unitType` (or not at all without one), so its exposures did not follow the switchback schedule.
 
 **After:** switchback experiments are served by cluster and period, as described in [Switchback Experiments](#switchback-experiments). **This changes assignment for switchback experiments that are already running**: their units move from the sticky unit assignment to the cluster's schedule, and exposures are recorded once per period (while the period's assignment stays cached) under the serving unit. Unit experiments, and context data without switchback experiments, are not affected.
+
+### Shared variable keys pick and expose one experiment
+
+**Before:** when several experiments defined the same variable key, `variableValue()` exposed every experiment it checked, including ones the user was not in (for example a strict audience mismatch), and when the first experiment's variant lacked the key it served and exposed a later experiment's value instead.
+
+**After:** the first experiment by id that the user is in (assigned, overridden or rule-assigned) wins whatever its variant, as in the Java SDK; its variant's value is returned, or your default if that variant lacks the key. Only that experiment is exposed (see [Shared variable keys](#shared-variable-keys)). **This changes served values and exposures** for users whose winning experiment's variant lacks the key, and removes exposures that `variableValue()` used to record for experiments the user is not in; call `treatment()` if you need those recorded.
 
 ## About A/B Smartly
 

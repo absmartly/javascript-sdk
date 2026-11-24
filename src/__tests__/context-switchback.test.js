@@ -783,6 +783,24 @@ describe("switchback serving through Context", () => {
 		]);
 	});
 
+	// Before its schedule starts a switchback is assigned but silent: it wins the key, serves control
+	// and records nothing, so the later experiment is neither returned nor exposed.
+	it("serves control without exposure when a silent switchback wins a shared variable key", () => {
+		const experiment = sb(2, HOUR);
+		const unit = asUnit(switchback(2, "exp_unit", 2, HOUR));
+		unit.variants = [
+			{ name: "A", config: '{"sb.arm":10}' },
+			{ name: "B", config: '{"sb.arm":11}' },
+		];
+		unit.fullOnVariant = 1;
+		clock = ANCHOR - 1;
+		const context = createContext(dataOf(experiment, unit));
+
+		expect(context.peekVariableValue("sb.arm", -1)).toEqual(0);
+		expect(context.variableValue("sb.arm", -1)).toEqual(0);
+		expect(context.pending()).toEqual(0);
+	});
+
 	it("returns the default value on a variable key it holds alone when strict-mismatched", () => {
 		const experiment = sb(2, HOUR);
 		experiment.audience = STRICT_GOLD_AUDIENCE;

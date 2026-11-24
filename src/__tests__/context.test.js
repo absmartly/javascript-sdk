@@ -6025,10 +6025,10 @@ describe("Context", () => {
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 			});
 
-			// A throwing eventLogger for one candidate's exposure is isolated by _logEvent (it never
-			// propagates), so it must not stop the loop from visiting (and firing exposures for) the
-			// remaining candidates sharing the key.
-			it("a throwing eventLogger for one candidate does not stop later candidates in the loop from being visited and exposed", () => {
+			// A throwing eventLogger for one candidate's holdout exposure is isolated by _logEvent (it
+			// never propagates), so it must not stop the loop from visiting the remaining candidates
+			// sharing the key or exposing the winner.
+			it("a throwing eventLogger for one candidate does not stop the loop from reaching and exposing the winner", () => {
 				const firstExperiment = holdoutVarExperiment({
 					id: 1,
 					name: "exp_holdout_var_throw_first",
@@ -6063,9 +6063,8 @@ describe("Context", () => {
 				);
 			});
 
-			// peekVariableValue() shares the exact same suppressedFallback capture as variableValue()
-			// (both fixed together in the same commit), but never triggers exposures, so it needs its
-			// own ordering regression test rather than relying on variableValue()'s coverage.
+			// peekVariableValue() picks the same first held-out fallback as variableValue() but never
+			// triggers exposures, so it needs its own ordering regression test.
 			it("peekVariableValue(): an earlier suppressed candidate without the key blocks a later suppressed candidate that has it", () => {
 				const firstSuppressed = holdoutVarExperiment({
 					id: 1,
@@ -6203,9 +6202,8 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(2);
 			});
 
-			// _peekVariable carries the identical override-exclusion guard as _variableValue (same
-			// fix, same commit), but never triggers exposures, so it needs its own regression test
-			// rather than relying on variableValue()'s coverage of the guard.
+			// peekVariableValue() stops at the same override winner as variableValue() but never
+			// triggers exposures, so it needs its own regression test.
 			it("peekVariableValue(): returns the winning override default even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
