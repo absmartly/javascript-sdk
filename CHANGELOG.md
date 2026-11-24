@@ -90,8 +90,9 @@
   lacks the key. With no winner, a held-out candidate supplies its control value,
   otherwise the caller default. Only the winner is exposed; each checked
   candidate's applicable holdouts still fire, as in Java. `peekVariableValue()`
-  exposes nothing. Keys named like `Object.prototype` members (`toString`, ...)
-  return the default again, as in 1.13.4. Affected: anyone with two or more
+  exposes nothing. Keys no experiment defines return the default
+  again, as in 1.13.4, including names like `toString`; a variant config that defines
+  such a key (`toString`, `constructor`, `__proto__`) no longer fails the context. Affected: anyone with two or more
   running experiments sharing a variable key. `variableKeys()` keeps its
   map-of-lists return shape.
 - Failed publishes retain queued events in order; failed finalize stays open and
