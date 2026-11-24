@@ -73,10 +73,11 @@
   `publish()` matches 1.13.4 up to a few hundred attributes (7.3 vs 7.1 µs at 300)
   and costs about 30% more at 3,000 (about 52 vs 40 µs; unreleased main was about
   77 µs). The new opt-in `includeSystemAttributes` adds about 10% on top. A
-  cached `variableValue()` costs about 5 ns more than unreleased main (about 80 vs
-  75 ns, four experiments sharing a key): about 4 ns hold its `eventLogger`
-  callbacks until all its exposures are queued (see Fixed), the rest is the
-  shared-key winner rule. `peekVariableValue()` is unchanged.
+  cached `variableValue()` (four experiments sharing a key) costs about 71 ns, down
+  from about 155 ns in 1.13.4, but about 4–6 ns more than unreleased main: about
+  4 ns hold its `eventLogger` callbacks until all its exposures are queued (see
+  Fixed), the rest is the shared-key winner rule. `peekVariableValue()` costs about
+  2–6 ns more than unreleased main.
 
 ### Fixed
 
