@@ -1446,8 +1446,9 @@ export default class Context {
 		let selected: Assignment | undefined;
 		let now: number | undefined;
 
-		for (const experiment of candidates) {
-			const experimentName = experiment.data.name;
+		// Indexed loop: a for...of here compiles to a larger body that slows every warmed read.
+		for (let i = 0; i < candidates.length; i++) {
+			const experimentName = candidates[i].data.name;
 			now = this._switchbackClock(experimentName, now);
 			const assignment = this._assign(experimentName, now);
 			if (shouldQueueExposure) this._triggerApplicableHoldoutExposures(assignment);
@@ -1530,7 +1531,7 @@ export default class Context {
 			}
 		} finally {
 			this._deferringLogs = false;
-			if (rounds >= DEFERRED_REPLAY_ROUNDS) this._replayExhausted = false;
+			this._replayExhausted = false;
 			// Only exposures need publishing; an error alone must not arm the timer.
 			if (exposed) this._setTimeout();
 		}
