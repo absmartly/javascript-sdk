@@ -6330,19 +6330,124 @@ describe("Context", () => {
 			expect(context.pending()).toBe(1);
 		});
 
-		it("retains ordinary unassigned fallthrough and no-winner defaults", () => {
-			const first = shared(1, [1, 0], {}, { audienceStrict: true, audience: '{"filter":[{"value":false}]}' });
-			const second = shared(2, [1, 0], { shared: "SECOND" });
-			const context = new Context(sdk, contextOptions, contextParams, { experiments: [first, second] });
-			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SECOND");
+		it.each(["toString", "valueOf", "hasOwnProperty", "__proto__", "constructor"])(
+			"returns the caller default for the unindexed prototype-named key %s",
+			(key) => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [0, 1], {})],
+				});
+				expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+				expect(context.pending()).toBe(0);
+			}
+		);
+
+		const exposures = (eventLogger) => eventLogger.mock.calls.filter((c) => c[1] === "exposure").map((c) => c[2]);
+		const notInFirst = {
+			audienceMismatch: { audienceStrict: true, audience: '{"filter":[{"value":false}]}' },
+			missingUnit: { unitType: "device_id" },
+		};
+
+		it.each(Object.keys(notInFirst))(
+			"exposes only the later winner when the lower-id candidate is not entered (%s)",
+			(reason) => {
+				const eventLogger = jest.fn();
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+					experiments: [shared(1, [1, 0], {}, notInFirst[reason]), shared(2, [1, 0], { shared: "SECOND" })],
+				});
+				expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SECOND");
+				expect(context.pending()).toBe(0);
+				expect(context.variableValue("shared", "SENTINEL")).toBe("SECOND");
+				expect(context.variableValue("shared", "SENTINEL")).toBe("SECOND");
+				expect(context.pending()).toBe(1);
+				expect(exposures(eventLogger)).toEqual([expect.objectContaining({ name: "shared_2", variant: 0 })]);
+			}
+		);
+
+		it("exposes only the winner whose variant lacks the key, not the later candidate", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(1, [1, 0], {}), shared(2, [1, 0], { shared: "SECOND" })],
+			});
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(exposures(eventLogger)).toEqual([expect.objectContaining({ name: "shared_1", variant: 0 })]);
+		});
+
+		it("returns the default and exposes nothing when no candidate is entered", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [
+					shared(1, [1, 0], {}, notInFirst.audienceMismatch),
+					shared(2, [1, 0], { shared: "SECOND" }, notInFirst.missingUnit),
+				],
+			});
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.variableValue("unknown", "SENTINEL")).toBe("SENTINEL");
 			expect(context.pending()).toBe(0);
-			expect(context.variableValue("shared", "SENTINEL")).toBe("SECOND");
-			// Existing exposure behavior for visited unassigned candidates is preserved.
-			expect(context.pending()).toBe(2);
-			const noWinner = new Context(sdk, contextOptions, contextParams, { experiments: [first] });
-			expect(noWinner.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
-			expect(noWinner.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
-			expect(noWinner.variableValue("unknown", "SENTINEL")).toBe("SENTINEL");
+			expect(exposures(eventLogger)).toEqual([]);
+		});
+
+		it.each(["override", "rule"])("a lower-id %s winner beats a later assigned candidate", (mode) => {
+			const eventLogger = jest.fn();
+			const assignmentRules = JSON.stringify({
+				rules: [{ name: "treat", type: "assign", conditions: { value: true }, environments: [], variant: 1 }],
+			});
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [
+					shared(
+						1,
+						[1, 0],
+						{},
+						{ ...notInFirst.audienceMismatch, ...(mode === "rule" ? { assignmentRules } : {}) }
+					),
+					shared(2, [1, 0], { shared: "SECOND" }),
+				],
+			});
+			if (mode === "override") context.override("shared_1", 1);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("value_1");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("value_1");
+			expect(exposures(eventLogger)).toEqual([
+				expect.objectContaining({
+					name: "shared_1",
+					variant: 1,
+					overridden: mode === "override",
+					ruleOverride: mode === "rule",
+				}),
+			]);
+		});
+
+		it("fires the winner's applicable holdouts before its own exposure, like Java", () => {
+			const eventLogger = jest.fn();
+			const holdout = {
+				...shared(11, [0, 1], {}),
+				name: "holdout_11",
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+			};
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(1, [1, 0], { shared: "FIRST" }, { holdoutIds: [11] })],
+				holdouts: [holdout],
+			});
+			expect(context.variableValue("shared", "SENTINEL")).toBe("FIRST");
+			expect(exposures(eventLogger).map((e) => e.name)).toEqual(["holdout_11", "shared_1"]);
+		});
+
+		it.each(["override", "custom", "fullOn"])("exposes an out-of-range %s winner like Java", (mode) => {
+			const eventLogger = jest.fn();
+			const first = shared(1, [1, 0], {}, mode === "fullOn" ? { fullOnVariant: 7 } : {});
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [first, shared(2, [1, 0], { shared: "SECOND" })],
+			});
+			if (mode === "override") context.override("shared_1", 7);
+			if (mode === "custom") context.customAssignment("shared_1", 7);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(exposures(eventLogger)).toEqual([expect.objectContaining({ name: "shared_1", variant: 7 })]);
 		});
 	});
 
@@ -6719,46 +6824,14 @@ describe("Context", () => {
 			});
 		});
 
-		it("should queue exposure with audienceMatch false and control variant on audience mismatch in strict mode", (done) => {
+		// The unit is not in a strict-mismatched experiment, so a variable read must not expose it;
+		// treatment() still records the audience mismatch (see the treatment() tests).
+		it("should not queue an exposure on audience mismatch in strict mode", () => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
 
 			expect(context.variableValue("banner.size", "small")).toEqual("small");
 
-			expect(context.pending()).toEqual(1);
-
-			publisher.publish.mockReturnValue(Promise.resolve());
-
-			context.publish().then(() => {
-				expect(publisher.publish).toHaveBeenCalledWith(
-					{
-						publishedAt: 1611141535729,
-						units: publishUnits,
-						hashed: true,
-						sdkVersion: SDK_VERSION,
-						exposures: [
-							{
-								id: 1,
-								assigned: false,
-								eligible: true,
-								exposedAt: 1611141535729,
-								name: "exp_test_ab",
-								overridden: false,
-								unit: "session_id",
-								variant: 0,
-								fullOn: false,
-								custom: false,
-								audienceMismatch: true,
-								ruleOverride: false,
-							},
-						],
-					},
-					sdk,
-					context,
-					undefined
-				);
-
-				done();
-			});
+			expect(context.pending()).toEqual(0);
 		});
 
 		it("should throw after finalized() call", (done) => {
