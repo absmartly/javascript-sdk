@@ -73,11 +73,11 @@
   `publish()` matches 1.13.4 up to a few hundred attributes (7.3 vs 7.1 µs at 300)
   and costs about 30% more at 3,000 (about 52 vs 40 µs; unreleased main was about
   77 µs). The new opt-in `includeSystemAttributes` adds about 10% on top. A
-  cached `variableValue()` (four experiments sharing a key) costs about 71 ns, down
-  from about 155 ns in 1.13.4, but about 4–6 ns more than unreleased main: about
-  4 ns hold its `eventLogger` callbacks until all its exposures are queued (see
-  Fixed), the rest is the shared-key winner rule. `peekVariableValue()` costs about
-  2–6 ns more than unreleased main.
+  cached `variableValue()` (four experiments sharing a key) costs about 70–78 ns,
+  down from about 155 ns in 1.13.4, but about 5–9 ns more than unreleased main
+  (measured on two hosts, Node 22, compiled CJS): most of it holds its
+  `eventLogger` callbacks until all its exposures are queued (see Fixed).
+  `peekVariableValue()` costs about 2–7 ns more than unreleased main.
 
 ### Fixed
 
@@ -96,7 +96,10 @@
   otherwise the caller default. Only the winner is exposed; each checked
   candidate's applicable holdouts still fire, as in Java. All exposures of one read
   are queued before its `exposure` and `error` callbacks run, so a callback that
-  calls `finalize()` still sends the winner. `treatment()` likewise queues an
+  calls `finalize()` still sends the winner. Callbacks a callback raises are replayed after
+  the ones already held, in queue order; an observer that keeps feeding new
+  events stops being deferred after a bounded number of rounds, so a read always
+  returns. `treatment()` likewise queues an
   experiment's and its holdouts' exposures before their `exposure` callbacks run
   (an audience `error` raised by `treatment()` itself is still reported first). `peekVariableValue()`
   exposes nothing. Keys no experiment defines return the default

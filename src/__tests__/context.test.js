@@ -6432,7 +6432,7 @@ describe("Context", () => {
 				try {
 					const eventLogger = jest.fn((ctx, eventName) => {
 						if (eventName === "exposure" || eventName === "error") {
-							if (++count < 20000) {
+							if (++count < 50000) {
 								ctx.attribute("observer.seq", count);
 								ctx.variableValue("error.key", "D");
 							}
@@ -6474,14 +6474,14 @@ describe("Context", () => {
 					});
 					context.attribute("user", user);
 					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
-					expect(count).toBeLessThan(10);
+					expect(count).toBeLessThan(50000);
 					expect(context._deferredLogs).toBeUndefined();
 				} finally {
 					consoleError.mockRestore();
 				}
 			});
 
-			it("does not feed repeated exposure callbacks into the drain forever", () => {
+			it("delivers every callback of finite exposure feedback in queue order", () => {
 				let count = 0;
 				const eventLogger = jest.fn((ctx, eventName) => {
 					if (eventName === "exposure" && ++count < 100) ctx.variableValue("button.color", "D");
@@ -6494,9 +6494,101 @@ describe("Context", () => {
 				);
 				context.customAssignment("exp_holdout_var_later_winner", 0);
 				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
-				expect(count).toBe(1);
-				expect(context.pending()).toBe(2);
+				expect(count).toBe(100);
+				expect(context.pending()).toBe(100);
 				expect(context._deferredLogs).toBeUndefined();
+				expect(context._deferringLogs).toBe(false);
+			});
+
+			it("returns from unbounded exposure feedback when the clock advances on every callback", () => {
+				let count = 0;
+				let now = timeOrigin;
+				Date.now.mockImplementation(() => now);
+				const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+				try {
+					const eventLogger = jest.fn((ctx, eventName) => {
+						if (eventName !== "exposure") return;
+						now += 2;
+						if (++count < 50000) ctx.variableValue("button.color", "D");
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse([winnerAfterHoldout({})], [])
+					);
+					context.customAssignment("exp_holdout_var_later_winner", 0);
+					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+					expect(count).toBeLessThan(50000);
+					expect(context._deferringLogs).toBe(false);
+				} finally {
+					consoleError.mockRestore();
+				}
+			});
+
+			it("reports a re-exposure whose flags differ within the same drain", () => {
+				const reported = [];
+				const strict = {
+					...winnerAfterHoldout({}),
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "plan" }, { value: "pro" }] }] }),
+				};
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					reported.push(data.audienceMismatch);
+					if (reported.length === 1) {
+						ctx.attribute("plan", "pro");
+						ctx.treatment("exp_holdout_var_later_winner");
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict], [])
+				);
+				context.treatment("exp_holdout_var_later_winner");
+				expect(reported).toEqual([true, false]);
+				expect(context.pending()).toBe(2);
+			});
+
+			it("reports an error raised inside an error callback", () => {
+				const errors = [];
+				const strict = (id, experimentName, key) => ({
+					...holdoutVarExperiment({}),
+					id,
+					name: experimentName,
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ [key]: 1 }) },
+					],
+				});
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "error") return;
+					errors.push(data.message);
+					if (errors.length === 1) {
+						ctx.attribute("seq", 1);
+						ctx.variableValue("second.key", "D");
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict(1, "e_first", "first.key"), strict(2, "e_second", "second.key")], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("first.key", "D")).toBe("D");
+				expect(errors).toHaveLength(2);
 			});
 
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
