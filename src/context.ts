@@ -1066,7 +1066,9 @@ export default class Context {
 		// A missing key (or out-of-range arm) returns the caller's default, never a later
 		// experiment's value: falling through by arm would bias the winning experiment.
 		const variables = selected.variables;
-		return variables !== undefined && Object.prototype.hasOwnProperty.call(variables, key)
+		return variables !== undefined &&
+			key in variables &&
+			(!(key in Object.prototype) || Object.prototype.hasOwnProperty.call(variables, key))
 			? (variables[key] as string)
 			: defaultValue;
 	}
