@@ -6367,27 +6367,34 @@ describe("Context", () => {
 				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
 				const context = new Context(sdk, contextOptions, contextParams, response);
 				const assign = jest.spyOn(context, "_assign");
+				expect(context.variableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.peekVariableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(assign).not.toHaveBeenCalled();
+				expect(context._deferredLogs).toBeUndefined();
+			});
+
+			it("walks a warmed shared key's candidates without an array iterator", () => {
+				const response = buildHoldoutResponse([holdoutVarExperiment({}), winnerAfterHoldout({})], []);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const first = context.variableValue("button.color", "D");
+				expect(first).not.toEqual("D");
 				const iterator = Array.prototype[Symbol.iterator];
-				let emptyWalks = 0;
+				let walks = 0;
+				let value;
+				let peeked;
 				try {
 					// eslint-disable-next-line no-extend-native
 					Array.prototype[Symbol.iterator] = function () {
-						if (this.length === 0) emptyWalks++;
+						walks++;
 						return iterator.call(this);
 					};
-					const value = context.variableValue("not.indexed", "APP_FALLBACK");
-					const peeked = context.peekVariableValue("not.indexed", "APP_FALLBACK");
-					// eslint-disable-next-line no-extend-native
-					Array.prototype[Symbol.iterator] = iterator;
-					expect(value).toEqual("APP_FALLBACK");
-					expect(peeked).toEqual("APP_FALLBACK");
-					expect(emptyWalks).toBe(0);
+					value = context.variableValue("button.color", "D");
+					peeked = context.peekVariableValue("button.color", "D");
 				} finally {
 					// eslint-disable-next-line no-extend-native
 					Array.prototype[Symbol.iterator] = iterator;
 				}
-				expect(assign).not.toHaveBeenCalled();
-				expect(context._deferredLogs).toBeUndefined();
+				expect([value, peeked, walks]).toEqual([first, first, 0]);
 			});
 
 			it("arms the timer for an exposure first queued from a replayed error callback", () => {
