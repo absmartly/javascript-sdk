@@ -97,7 +97,8 @@
   candidate's applicable holdouts still fire, as in Java. All exposures of one read
   are queued before its `exposure` and `error` callbacks run, so a callback that
   calls `finalize()` still sends the winner. `treatment()` likewise queues an
-  experiment's and its holdouts' exposures before their callbacks run. `peekVariableValue()`
+  experiment's and its holdouts' exposures before their `exposure` callbacks run
+  (an audience `error` raised by `treatment()` itself is still reported first). `peekVariableValue()`
   exposes nothing. Keys no experiment defines return the default
   again, as in 1.13.4, including names like `toString`; a variant config that defines
   such a key (`toString`, `constructor`, `__proto__`) no longer fails the context. Affected: anyone with two or more

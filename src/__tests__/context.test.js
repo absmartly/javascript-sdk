@@ -6087,7 +6087,7 @@ describe("Context", () => {
 				expect(published.exposures.map((e) => e.name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
 			});
 
-			it("reports nested variable reads from a callback after the outer read's exposures, in queue order", () => {
+			it("reports a nested read's callbacks after the outer read's exposures", () => {
 				const names = [];
 				let nested = false;
 				const eventLogger = jest.fn((ctx, eventName, data) => {
@@ -6350,6 +6350,27 @@ describe("Context", () => {
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
 				expect(names).toEqual(context._exposures.map((e) => e.name));
 				expect(names).toEqual(["holdout_var", "exp_holdout_var_later_winner", "exp_other_key"]);
+			});
+
+			it("walks each visited candidate's holdouts once per read", () => {
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), { ...winnerAfterHoldout({}), holdoutIds: [12] }],
+					[alwaysHoldsOut({}), alwaysHoldsOut({ id: 12, name: "holdout_never", split: [0, 1] })]
+				);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const walk = jest.spyOn(context, "_triggerApplicableHoldoutExposures");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(walk).toHaveBeenCalledTimes(2);
+			});
+
+			it("returns the default for an unindexed key without assigning any experiment", () => {
+				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const assign = jest.spyOn(context, "_assign");
+				expect(context.variableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.peekVariableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(assign).not.toHaveBeenCalled();
+				expect(context._deferredLogs).toBeUndefined();
 			});
 
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
