@@ -232,8 +232,10 @@ When several experiments define the same variable key, the SDK checks them in
 ascending experiment id and uses the first one the user is in (assigned,
 overridden or assigned by a rule). Its variant's value is returned, or your
 default if that variant does not define the key; later experiments are never used
-instead. Only that experiment gets an exposure. `peekVariableValue()` never queues
-one.
+instead. Only that experiment gets an exposure (plus any holdouts covering the
+experiments checked). An experiment the user is not in, such as a strict audience
+mismatch, gets none; call `treatment()` to record it. `peekVariableValue()` never
+queues one.
 
 ### Peek at Treatment Variants
 

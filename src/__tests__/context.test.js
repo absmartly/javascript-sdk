@@ -6418,6 +6418,24 @@ describe("Context", () => {
 			]);
 		});
 
+		it("fires the winner's applicable holdouts before its own exposure, like Java", () => {
+			const eventLogger = jest.fn();
+			const holdout = {
+				...shared(11, [0, 1], {}),
+				name: "holdout_11",
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+			};
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(1, [1, 0], { shared: "FIRST" }, { holdoutIds: [11] })],
+				holdouts: [holdout],
+			});
+			expect(context.variableValue("shared", "SENTINEL")).toBe("FIRST");
+			expect(exposures(eventLogger).map((e) => e.name)).toEqual(["holdout_11", "shared_1"]);
+		});
+
 		it.each(["override", "custom", "fullOn"])("exposes an out-of-range %s winner like Java", (mode) => {
 			const eventLogger = jest.fn();
 			const first = shared(1, [1, 0], {}, mode === "fullOn" ? { fullOnVariant: 7 } : {});

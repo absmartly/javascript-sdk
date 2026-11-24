@@ -43,7 +43,12 @@
   `X-Application-Version` sends only 1–18 ASCII digits (trimmed), or `0` otherwise.
   Affected: proxies inspecting GET headers and apps configuring invalid version
   headers that previously caused collector HTTP 400 errors.
-- `variableKeys()` keeps its map-of-lists return shape.
+- `variableValue()` no longer queues an exposure for an experiment the unit is not
+  in (strict audience mismatch, or no unit for its unit type), even when that is
+  the only experiment defining the key; 1.13.4 published one with
+  `assigned: false`. Affected: anyone counting those exposures from variable
+  reads of strict-audience or unit-gated experiments. Call `treatment()` to record
+  them. See the shared variable keys entry under Fixed.
 - A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
   client timeout for it. Affected: callers passing a per-request `timeout` that
   differs from the client one, who now get more (or fewer) retries to match it.
@@ -85,7 +90,8 @@
   candidate's applicable holdouts still fire, as in Java. `peekVariableValue()`
   exposes nothing. Keys named like `Object.prototype` members (`toString`, ...)
   return the default again, as in 1.13.4. Affected: anyone with two or more
-  running experiments sharing a variable key.
+  running experiments sharing a variable key. `variableKeys()` keeps its
+  map-of-lists return shape.
 - Failed publishes retain queued events in order; failed finalize stays open and
   can be retried. Concurrent flush/finalize waits for in-flight delivery.
 - Custom publisher failures and throwing event loggers no longer strand lifecycle

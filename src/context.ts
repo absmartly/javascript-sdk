@@ -1034,8 +1034,9 @@ export default class Context {
 		// Own lists only: a key such as "toString" must not resolve an Object.prototype member.
 		const candidates = Array.isArray(indexed) ? indexed : [];
 
-		let winner: [string, Assignment] | undefined;
-		let suppressedFallback: [string, Assignment] | undefined;
+		// Plain locals rather than tuples: this is a hot path and must not allocate per read.
+		let selectedName = "";
+		let selected: Assignment | undefined;
 
 		for (const experiment of candidates) {
 			const experimentName = experiment.data.name;
@@ -1043,28 +1044,29 @@ export default class Context {
 			if (shouldQueueExposure) this._triggerApplicableHoldoutExposures(assignment);
 
 			if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
-				winner = [experimentName, assignment];
+				selectedName = experimentName;
+				selected = assignment;
 				break;
 			}
 
-			if (assignment.suppressed && suppressedFallback === undefined) {
-				suppressedFallback = [experimentName, assignment];
+			// A winner breaks out above, so `selected` here can only be an earlier suppressed one.
+			if (assignment.suppressed && selected === undefined) {
+				selectedName = experimentName;
+				selected = assignment;
 			}
 		}
 
-		const selected = winner ?? suppressedFallback;
 		if (selected === undefined) return defaultValue;
 
-		const [experimentName, assignment] = selected;
-		if (shouldQueueExposure && !assignment.exposed) {
-			assignment.exposed = true;
+		if (shouldQueueExposure && !selected.exposed) {
+			selected.exposed = true;
 
-			this._triggerExposures(experimentName, assignment);
+			this._triggerExposures(selectedName, selected);
 		}
 
 		// A missing key (or out-of-range arm) returns the caller's default, never a later
 		// experiment's value: falling through by arm would bias the winning experiment.
-		const variables = assignment.variables;
+		const variables = selected.variables;
 		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
