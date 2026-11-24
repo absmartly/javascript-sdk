@@ -777,7 +777,6 @@ describe("switchback serving through Context", () => {
 		expect(context.peekVariableValue("sb.arm", -1)).toEqual(11);
 		expect(context.pending()).toEqual(0);
 		expect(context.variableValue("sb.arm", -1)).toEqual(11);
-		// Only the winner is exposed: the strict-mismatched switchback checked first is not.
 		expect(await publishExposures(context)).toEqual([
 			exposure(2, "exp_unit", 1, ANCHOR + HOUR + 3, true, true, { fullOn: true }),
 		]);
@@ -1033,8 +1032,6 @@ describe("switchback serving through Context", () => {
 		nextRead = ANCHOR + HOUR - 1;
 
 		expect(context.variableValue("sb.arm", -1)).toEqual(EXPECTED_2_ARMS[0]);
-		// The strict-mismatched first experiment is resolved at the same instant but, not being
-		// the winner, is not exposed.
 		expect(await publishExposures(context)).toEqual([
 			exposure(2, "exp_second", EXPECTED_2_ARMS[0], ANCHOR + HOUR - 1, true, true),
 		]);

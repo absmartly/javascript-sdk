@@ -1272,7 +1272,7 @@ export default class Context {
 	// A switchback exposure is stamped with `now`, the reading that selected its period, since analysis
 	// derives the period from `exposedAt`; a later reading could fall in the next period. Holdouts
 	// never apply to a switchback, so its assignment has none to trigger.
-	private _triggerExposures(experimentName: string, assignment: Assignment, now?: number): void {
+	private _triggerExposures(experimentName: string, assignment: Assignment, now?: number, withHoldouts = true): void {
 		if (assignment.switchbackGeneration !== undefined) {
 			if (!assignment.switchbackSilent) {
 				this._queueExposure(experimentName, assignment, now);
@@ -1284,7 +1284,7 @@ export default class Context {
 			this._queueExposure(experimentName, assignment);
 		}
 
-		this._triggerApplicableHoldoutExposures(assignment);
+		if (withHoldouts) this._triggerApplicableHoldoutExposures(assignment);
 	}
 
 	// Uses the pinned snapshot, not a live re-resolution, so a refresh between the suppression
@@ -1455,7 +1455,6 @@ export default class Context {
 				break;
 			}
 
-			// A winner breaks out above, so `selected` here can only be an earlier suppressed one.
 			if (assignment.suppressed && selected === undefined) {
 				selectedName = experimentName;
 				selected = assignment;
@@ -1467,7 +1466,8 @@ export default class Context {
 		if (shouldQueueExposure && !selected.exposed) {
 			selected.exposed = true;
 
-			this._triggerExposures(selectedName, selected, now);
+			// The loop above already fired this candidate's holdouts.
+			this._triggerExposures(selectedName, selected, now, false);
 		}
 
 		// A missing key (or out-of-range arm) returns the caller's default, never a later
