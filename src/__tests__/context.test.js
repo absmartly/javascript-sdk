@@ -6353,17 +6353,20 @@ describe("Context", () => {
 				expect(context.pending()).toBe(1);
 			});
 
-			it("returns the default when the winner's variant does not define the key", () => {
-				// Variant A has a parsed config without these keys, so inherited members must not match.
-				const winner = { ...protoKeyed(config), split: [1, 0] };
-				winner.variants = [{ name: "A", config: '{"other":1}' }, winner.variants[1]];
-				const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
-				for (const key of keys) {
-					expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
-					expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+			it.each([null, "", "[]", "0", "false", '"string"', "null", '{"other":1}'])(
+				"returns the default when the winner config %p does not define the key",
+				(selectedConfig) => {
+					// No selected config shape may leak inherited Object.prototype members.
+					const winner = { ...protoKeyed(config), split: [1, 0] };
+					winner.variants = [{ name: "A", config: selectedConfig }, winner.variants[1]];
+					const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
+					for (const key of keys) {
+						expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+						expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+					}
+					expect(context.pending()).toBe(1);
 				}
-				expect(context.pending()).toBe(1);
-			});
+			);
 
 			it("lists each key as an own entry of variableKeys()", () => {
 				const context = new Context(sdk, contextOptions, contextParams, {
