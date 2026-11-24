@@ -35,6 +35,8 @@ type CustomFieldValue = {
 	type: CustomFieldValueType;
 };
 
+// Feedback rounds a deferred-callback replay drains before later callbacks run inline.
+const DEFERRED_REPLAY_ROUNDS = 32;
 export type ExperimentData = {
 	id: number;
 	name: string;
@@ -242,7 +244,6 @@ export default class Context {
 	// While a variable read runs, user eventLogger callbacks it would trigger are held here (the
 	// list is created on first use) and replayed once every exposure of the read is queued.
 	private _deferringLogs = false;
-	private _emittingError = false;
 	private _deferredLogs?: [EventName, Record<string, unknown> | Error][];
 	private _attrsSeq: number;
 	private _attrsMapCache: Record<string, unknown> | null;
@@ -1499,27 +1500,25 @@ export default class Context {
 		else this._replayDeferredLogs();
 	}
 
+	// Replays held callbacks in queue order, keeping deferral on so callbacks a callback raises join
+	// the queue behind the ones already held. A callback that keeps feeding new events would drain
+	// forever, so after DEFERRED_REPLAY_ROUNDS rounds deferral stops and later callbacks run inline,
+	// bounded by the call stack as before deferral existed.
 	private _replayDeferredLogs() {
 		let exposed = false;
-		const reported = new Set<string>();
 		try {
+			let rounds = 0;
 			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
 			while (deferred !== undefined) {
 				this._deferredLogs = undefined;
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS) this._deferringLogs = false;
 				for (let i = 0; i < deferred.length; i++) {
 					const entry = deferred[i];
 					if (entry[0] === "error") {
 						this._emitError(entry[1] as Error);
 					} else {
 						exposed = true;
-						const exposure = entry[1] as Exposure;
-						const identity = JSON.stringify([exposure.id, exposure.name, exposure.variant, exposure.exposedAt]);
-						// An observer that reads a repeatedly re-assigned experiment must not feed
-						// identical callbacks into this drain forever. Events remain queued for publish.
-						if (!reported.has(identity)) {
-							reported.add(identity);
-							this._logEvent(entry[0], entry[1] as Record<string, unknown>);
-						}
+						this._logEvent(entry[0], entry[1] as Record<string, unknown>);
 					}
 				}
 				deferred = this._deferredLogs;
@@ -1859,7 +1858,7 @@ export default class Context {
 	}
 
 	private _logError(error: Error) {
-		if (this._deferringLogs && !this._emittingError) {
+		if (this._deferringLogs) {
 			(this._deferredLogs ??= []).push(["error", error]);
 			return;
 		}
@@ -1867,19 +1866,11 @@ export default class Context {
 	}
 
 	private _emitError(error: Error) {
-		// Do not call an error observer recursively when its own reporting raises another error.
-		if (this._emittingError) return;
 		if (this._eventLogger) {
-			// Errors raised by an error observer run inline under the existing observer guard,
-			// rather than feeding the deferred replay forever. Preserve a nesting caller's flag.
-			const wasEmitting = this._emittingError;
-			this._emittingError = true;
 			try {
 				this._eventLogger(this, "error", error);
 			} catch (observerError) {
 				console.error(observerError);
-			} finally {
-				this._emittingError = wasEmitting;
 			}
 		}
 	}
