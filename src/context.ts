@@ -194,8 +194,10 @@ export default class Context {
 	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
-	// Set while a variable read queues its exposures, so user callbacks run only after all are queued.
-	private _deferredExposureLogs?: Exposure[];
+	// While a variable read runs, user eventLogger callbacks it would trigger are held here (the
+	// list is created on first use) and replayed once every exposure of the read is queued.
+	private _deferringLogs = false;
+	private _deferredLogs?: [EventName, Record<string, unknown> | Error][];
 	private _attrsSeq: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
@@ -939,8 +941,8 @@ export default class Context {
 		this._exposures.push(exposureEvent);
 		this._pending++;
 
-		if (this._deferredExposureLogs !== undefined) {
-			this._deferredExposureLogs.push(exposureEvent);
+		if (this._deferringLogs) {
+			(this._deferredLogs ??= []).push(["exposure", exposureEvent]);
 			return;
 		}
 
@@ -1079,21 +1081,25 @@ export default class Context {
 		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
-	// A user eventLogger may call finalize() or publish(). Every exposure this read produces (the
-	// candidates' holdouts and the winner) is queued before any logger runs, so such a call sees
-	// and sends all of them instead of sealing the context with the winner still pending.
+	// A user eventLogger may call finalize() or publish(). Exposure and error callbacks this read
+	// triggers run only after every exposure of the read (candidates' holdouts and the winner) is
+	// queued, so such a call sends all of them instead of sealing the context with one pending.
 	private _variableValue(key: string, defaultValue: string): string {
-		if (this._deferredExposureLogs !== undefined) return this._resolveVariableValue(key, defaultValue, true);
+		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
 
-		const deferred: Exposure[] = [];
-		this._deferredExposureLogs = deferred;
+		this._deferringLogs = true;
 		try {
 			return this._resolveVariableValue(key, defaultValue, true);
 		} finally {
-			this._deferredExposureLogs = undefined;
-			if (deferred.length > 0) {
+			this._deferringLogs = false;
+			const deferred = this._deferredLogs;
+			if (deferred !== undefined) {
+				this._deferredLogs = undefined;
 				try {
-					for (const exposure of deferred) this._logEvent("exposure", exposure);
+					for (const [eventName, data] of deferred) {
+						if (eventName === "error") this._logError(data as Error);
+						else this._logEvent(eventName, data as Record<string, unknown>);
+					}
 				} finally {
 					this._setTimeout();
 				}
@@ -1416,6 +1422,10 @@ export default class Context {
 	}
 
 	private _logError(error: Error) {
+		if (this._deferringLogs) {
+			(this._deferredLogs ??= []).push(["error", error]);
+			return;
+		}
 		if (this._eventLogger) {
 			try {
 				this._eventLogger(this, "error", error);
@@ -1603,6 +1613,22 @@ export default class Context {
 				}
 			}
 		});
+
+		// A reused assignment still points at the previous parse of its configs; if a refresh made
+		// the experiment prototype-keyed, its cached variables must not resolve inherited members.
+		for (const experimentName of Object.keys(assignments)) {
+			const assignment = assignments[experimentName];
+			const variables = assignment.variables;
+			const experiment = index[experimentName];
+			if (
+				variables !== undefined &&
+				Object.getPrototypeOf(variables) !== null &&
+				experiment !== undefined &&
+				Object.getPrototypeOf(experiment.variables[0] ?? {}) === null
+			) {
+				assignment.variables = Object.assign(Object.create(null), variables);
+			}
+		}
 
 		this._index = index;
 		this._indexVariables = indexVariables;

@@ -6087,9 +6087,118 @@ describe("Context", () => {
 				expect(published.exposures.map((e) => e.name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
 			});
 
-			// peekVariableValue() shares the exact same suppressedFallback capture as variableValue()
-			// (both fixed together in the same commit), but never triggers exposures, so it needs its
-			// own ordering regression test rather than relying on variableValue()'s coverage.
+			it("reports nested variable reads from a callback after the outer read's exposures, in queue order", () => {
+				const names = [];
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					names.push(data.name);
+					if (!nested) {
+						nested = true;
+						ctx.variableValue("button.color", "APP_FALLBACK");
+					}
+				});
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({})],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(names).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
+				expect(context.pending()).toEqual(2);
+			});
+
+			// An attribute getter is user code that can re-enter variableValue() mid-read; the nested read
+			// must not release the outer read's deferral before the outer winner is queued.
+			it("keeps deferring when an attribute getter re-enters variableValue() mid-read", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let reentered = false;
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const strictFirst = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const other = {
+					...winnerAfterHoldout({}),
+					id: 3,
+					name: "exp_other_key",
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "other.key": "OTHER" }) },
+					],
+				};
+				const response = buildHoldoutResponse([strictFirst, winnerAfterHoldout({}), other], []);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						if (!reentered) {
+							reentered = true;
+							context.variableValue("other.key", "D");
+						}
+						return "free";
+					},
+				});
+				context.attribute("user", user);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual([
+					"exp_other_key",
+					"exp_holdout_var_later_winner",
+				]);
+			});
+
+			it("schedules the publish timer after a variable read's deferred exposures", () => {
+				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
+				const context = new Context(sdk, { ...contextOptions, publishDelay: 100 }, contextParams, response);
+				const schedule = jest.spyOn(context, "_setTimeout");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(context.pending()).toEqual(1);
+				expect(schedule).toHaveBeenCalled();
+				expect(context._publishTimeout).toBeDefined();
+				clearTimeout(context._publishTimeout);
+			});
+
+			it("defers an error callback raised mid-read so finalizing from it still sends the winner", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "error" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const strictFirst = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const response = buildHoldoutResponse([strictFirst, winnerAfterHoldout({})], []);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.isFinalized()).toBe(true);
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual(["exp_holdout_var_later_winner"]);
+			});
+
+			// peekVariableValue() picks the same first held-out fallback as variableValue() but never
+			// triggers exposures, so it needs its own ordering regression test.
 			it("peekVariableValue(): an earlier suppressed candidate without the key blocks a later suppressed candidate that has it", () => {
 				const firstSuppressed = holdoutVarExperiment({
 					id: 1,
@@ -6227,9 +6336,8 @@ describe("Context", () => {
 				expect(context.pending()).toEqual(2);
 			});
 
-			// _peekVariable carries the identical override-exclusion guard as _variableValue (same
-			// fix, same commit), but never triggers exposures, so it needs its own regression test
-			// rather than relying on variableValue()'s coverage of the guard.
+			// peekVariableValue() stops at the same override winner as variableValue() but never
+			// triggers exposures, so it needs its own regression test.
 			it("peekVariableValue(): returns the winning override default even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
@@ -6393,6 +6501,47 @@ describe("Context", () => {
 					expect(context.pending()).toBe(1);
 				}
 			);
+
+			it("treats a config defining only toString as prototype-keyed", () => {
+				const winner = { ...protoKeyed({ toString: "T" }), split: [1, 0] };
+				winner.variants = [
+					{ name: "A", config: '{"other":1}' },
+					{ name: "B", config: '{"toString":"T"}' },
+				];
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
+				expect(context.peekVariableValue("toString", "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue("toString", "SENTINEL")).toBe("SENTINEL");
+			});
+
+			it("keeps Object.prototype on ordinary configs", () => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [0, 1], {}), { ...protoKeyed(config), id: 2, name: "shared_2" }],
+				});
+				expect(Object.getPrototypeOf(context._index.shared_1.variables[1])).toBe(Object.prototype);
+				expect(Object.getPrototypeOf(context._index.shared_2.variables[1])).toBe(null);
+			});
+
+			it("does not resolve inherited members after a refresh makes an experiment prototype-keyed", async () => {
+				const before = {
+					...shared(1, [1, 0], {}),
+					variants: [
+						{ name: "A", config: '{"other":1}' },
+						{ name: "B", config: null },
+					],
+				};
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+				expect(context.treatment("shared_1")).toBe(0);
+				const after = {
+					...before,
+					variants: [before.variants[0], { name: "B", config: '{"toString":"T","valueOf":"V"}' }],
+				};
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after] }));
+				await context.refresh();
+				for (const key of ["toString", "valueOf"]) {
+					expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+					expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+				}
+			});
 
 			it("lists each key as an own entry of variableKeys()", () => {
 				const context = new Context(sdk, contextOptions, contextParams, {
