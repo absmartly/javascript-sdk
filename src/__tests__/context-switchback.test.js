@@ -782,8 +782,6 @@ describe("switchback serving through Context", () => {
 		]);
 	});
 
-	// Before its schedule starts a switchback is assigned but silent: it wins the key, serves control
-	// and records nothing, so the later experiment is neither returned nor exposed.
 	// A refresh that adds a prototype-named key must not let a cached period slot resolve the
 	// inherited member.
 	it("does not resolve inherited members from a cached period slot after a refresh adds such a key", async () => {
@@ -802,6 +800,30 @@ describe("switchback serving through Context", () => {
 		}
 	});
 
+	it("does not resolve inherited members from a cached period-less slot after a refresh", async () => {
+		const experiment = sb(2, HOUR);
+		experiment.variants = [
+			{ name: "A", config: '{"sb.arm":0}' },
+			{ name: "B", config: '{"sb.arm":1}' },
+		];
+		clock = ANCHOR - 1000;
+		const context = createContext(dataOf(experiment));
+		context.override("exp_sb", 1);
+		expect(context.variableValue("sb.arm", -1)).toEqual(1);
+		const refreshed = sb(2, HOUR);
+		// The keys land on the arm the unit is not in, so the override's arm must return the default.
+		refreshed.variants = [
+			{ name: "A", config: '{"sb.arm":0,"toString":"T","valueOf":"V"}' },
+			{ name: "B", config: '{"sb.arm":1}' },
+		];
+		await refreshTo(context, refreshed);
+		expect(context.peekVariableValue("valueOf", -1)).toEqual(-1);
+		expect(context.variableValue("toString", -1)).toEqual(-1);
+		expect(context.variableValue("sb.arm", -1)).toEqual(1);
+	});
+
+	// Before its schedule starts a switchback is assigned but silent: it wins the key, serves control
+	// and records nothing, so the later experiment is neither returned nor exposed.
 	it("serves control without exposure when a silent switchback wins a shared variable key", () => {
 		const experiment = sb(2, HOUR);
 		const unit = asUnit(switchback(2, "exp_unit", 2, HOUR));
