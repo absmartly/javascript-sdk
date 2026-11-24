@@ -74,10 +74,12 @@
   and costs about 30% more at 3,000 (about 52 vs 40 µs; unreleased main was about
   77 µs). The new opt-in `includeSystemAttributes` adds about 10% on top. A
   cached `variableValue()` (four experiments sharing a key) costs about 70–78 ns,
-  down from about 155 ns in 1.13.4, but about 5–9 ns more than unreleased main
-  (measured on two hosts, Node 22, compiled CJS): most of it holds its
-  `eventLogger` callbacks until all its exposures are queued (see Fixed).
-  `peekVariableValue()` costs about 2–7 ns more than unreleased main.
+  down from about 155 ns in 1.13.4, but up to about 9 ns more than unreleased
+  main, mostly for holding its `eventLogger` callbacks until all its exposures
+  are queued (see Fixed). `peekVariableValue()` costs about 2–15 ns more than
+  unreleased main. `treatment()` and `peek()` are unchanged. Measured on shared
+  hosts (Node 22, compiled CJS, four experiments sharing a key), so treat these
+  as approximate.
 
 ### Fixed
 

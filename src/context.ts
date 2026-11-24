@@ -199,6 +199,8 @@ export default class Context {
 	// While a variable read runs, user eventLogger callbacks it would trigger are held here (the
 	// list is created on first use) and replayed once every exposure of the read is queued.
 	private _deferringLogs = false;
+	// Set once a replay spends its rounds, until that replay ends: nested calls then run inline.
+	private _replayExhausted = false;
 	private _deferredLogs?: [EventName, Record<string, unknown> | Error][];
 	private _attrsSeq: number;
 	private _attrsMapCache: Record<string, unknown> | null;
@@ -892,7 +894,7 @@ export default class Context {
 
 			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
 			// eventLogger that finalizes on the first one still sends the holdout's.
-			if (this._deferringLogs) {
+			if (this._deferringLogs || this._replayExhausted) {
 				this._triggerExposures(experimentName, assignment);
 			} else {
 				this._deferringLogs = true;
@@ -1099,7 +1101,7 @@ export default class Context {
 	// queued, so such a call sends all of them instead of sealing the context with one pending.
 	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
-		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
+		if (this._deferringLogs || this._replayExhausted) return this._resolveVariableValue(key, defaultValue, true);
 
 		this._deferringLogs = true;
 		try {
@@ -1123,12 +1125,15 @@ export default class Context {
 	// bounded by the call stack as before deferral existed.
 	private _replayDeferredLogs() {
 		let exposed = false;
+		let rounds = 0;
 		try {
-			let rounds = 0;
 			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
 			while (deferred !== undefined) {
 				this._deferredLogs = undefined;
-				if (++rounds >= DEFERRED_REPLAY_ROUNDS) this._deferringLogs = false;
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS) {
+					this._deferringLogs = false;
+					this._replayExhausted = true;
+				}
 				for (let i = 0; i < deferred.length; i++) {
 					const entry = deferred[i];
 					if (entry[0] === "error") {
@@ -1142,6 +1147,7 @@ export default class Context {
 			}
 		} finally {
 			this._deferringLogs = false;
+			if (rounds >= DEFERRED_REPLAY_ROUNDS) this._replayExhausted = false;
 			// Only exposures need publishing; an error alone must not arm the timer.
 			if (exposed) this._setTimeout();
 		}
