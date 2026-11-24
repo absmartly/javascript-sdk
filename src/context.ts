@@ -1030,8 +1030,8 @@ export default class Context {
 	// experiment it only got checked against. Like Java, each visited candidate's applicable
 	// holdouts still fire on the non-peek path.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		// The index has no prototype, so a key such as "toString" only finds a real entry.
-		const candidates = this._indexVariables[key] ?? [];
+		const indexed = this._indexVariables[key];
+		const candidates = Array.isArray(indexed) ? indexed : [];
 
 		// Plain locals rather than tuples: this is a hot path and must not allocate per read.
 		let selectedName = "";
@@ -1066,7 +1066,9 @@ export default class Context {
 		// A missing key (or out-of-range arm) returns the caller's default, never a later
 		// experiment's value: falling through by arm would bias the winning experiment.
 		const variables = selected.variables;
-		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
+		return variables !== undefined && Object.prototype.hasOwnProperty.call(variables, key)
+			? (variables[key] as string)
+			: defaultValue;
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
@@ -1474,9 +1476,7 @@ export default class Context {
 		this._environmentName = this._sdk.getClient().getEnvironment() ?? null;
 
 		const index: Record<string, Experiment> = {};
-		// Null-prototype maps: variable keys come from customer configs and may be named like
-		// Object.prototype members ("toString", "__proto__").
-		const indexVariables: Record<string, Experiment[]> = Object.create(null);
+		const indexVariables: Record<string, Experiment[]> = {};
 
 		const holdoutsById: Record<number, HoldoutData> = {};
 
@@ -1536,13 +1536,13 @@ export default class Context {
 			for (let i = 0; i < experiment.variants.length; i++) {
 				const variant = experiment.variants[i];
 				const config = variant.config;
-				let parsed: Record<string, unknown> = Object.create(null);
+				let parsed: Record<string, unknown> = {};
 
 				if (config != null && config.length > 0) {
 					try {
 						const value = JSON.parse(config);
 						if (isObject(value)) {
-							parsed = Object.assign(Object.create(null), value);
+							parsed = value;
 						}
 					} catch (error) {
 						this._logError(
@@ -1555,13 +1555,20 @@ export default class Context {
 
 				for (const key of Object.keys(parsed)) {
 					const value = entry;
-					if (indexVariables[key]) {
+					if (Array.isArray(indexVariables[key])) {
 						insertUniqueSorted(
 							indexVariables[key],
 							value,
 							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
-					} else indexVariables[key] = [value];
+					} else {
+						Object.defineProperty(indexVariables, key, {
+							value: [value],
+							enumerable: true,
+							writable: true,
+							configurable: true,
+						});
+					}
 				}
 
 				variables[i] = parsed;
