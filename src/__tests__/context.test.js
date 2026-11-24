@@ -6367,9 +6367,135 @@ describe("Context", () => {
 				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
 				const context = new Context(sdk, contextOptions, contextParams, response);
 				const assign = jest.spyOn(context, "_assign");
-				expect(context.variableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
-				expect(context.peekVariableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				const iterator = Array.prototype[Symbol.iterator];
+				let emptyWalks = 0;
+				try {
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = function () {
+						if (this.length === 0) emptyWalks++;
+						return iterator.call(this);
+					};
+					const value = context.variableValue("not.indexed", "APP_FALLBACK");
+					const peeked = context.peekVariableValue("not.indexed", "APP_FALLBACK");
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = iterator;
+					expect(value).toEqual("APP_FALLBACK");
+					expect(peeked).toEqual("APP_FALLBACK");
+					expect(emptyWalks).toBe(0);
+				} finally {
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = iterator;
+				}
 				expect(assign).not.toHaveBeenCalled();
+				expect(context._deferredLogs).toBeUndefined();
+			});
+
+			it("arms the timer for an exposure first queued from a replayed error callback", () => {
+				const strict = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const other = {
+					...winnerAfterHoldout({}),
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: '{"other.key":"OTHER"}' },
+					],
+				};
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "error") ctx.variableValue("other.key", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict, other], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "D")).toBe("D");
+				expect(context.pending()).toBe(1);
+				expect(context._publishTimeout).toBeDefined();
+				clearTimeout(context._publishTimeout);
+			});
+
+			it("does not feed error-observer errors into the replay queue forever", () => {
+				let count = 0;
+				const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+				try {
+					const eventLogger = jest.fn((ctx, eventName) => {
+						if (eventName === "exposure" || eventName === "error") {
+							if (++count < 20000) {
+								ctx.attribute("observer.seq", count);
+								ctx.variableValue("error.key", "D");
+							}
+						}
+					});
+					const experiment = winnerAfterHoldout({
+						customFieldValues: [{ name: "bad", type: "future", value: "x" }],
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse(
+							[
+								experiment,
+								{
+									...holdoutVarExperiment({}),
+									id: 4,
+									name: "error_exp",
+									holdoutIds: null,
+									audienceStrict: true,
+									audience: JSON.stringify({
+										filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }],
+									}),
+									variants: [
+										{ name: "A", config: null },
+										{ name: "B", config: '{"error.key":1}' },
+									],
+								},
+							],
+							[]
+						)
+					);
+					const user = {};
+					Object.defineProperty(user, "plan", {
+						get() {
+							throw new Error("observer getter");
+						},
+					});
+					context.attribute("user", user);
+					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+					expect(count).toBeLessThan(10);
+					expect(context._deferredLogs).toBeUndefined();
+				} finally {
+					consoleError.mockRestore();
+				}
+			});
+
+			it("does not feed repeated exposure callbacks into the drain forever", () => {
+				let count = 0;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && ++count < 100) ctx.variableValue("button.color", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				expect(count).toBe(1);
+				expect(context.pending()).toBe(2);
 				expect(context._deferredLogs).toBeUndefined();
 			});
 
