@@ -189,6 +189,8 @@ export default class Context {
 	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
+	// Set while a variable read queues its exposures, so user callbacks run only after all are queued.
+	private _deferredExposureLogs?: Exposure[];
 	private _attrsSeq: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
@@ -926,6 +928,11 @@ export default class Context {
 		this._exposures.push(exposureEvent);
 		this._pending++;
 
+		if (this._deferredExposureLogs !== undefined) {
+			this._deferredExposureLogs.push(exposureEvent);
+			return;
+		}
+
 		try {
 			this._logEvent("exposure", exposureEvent);
 		} finally {
@@ -1030,8 +1037,8 @@ export default class Context {
 	// experiment it only got checked against. Like Java, each visited candidate's applicable
 	// holdouts still fire on the non-peek path.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		const indexed = this._indexVariables[key];
-		const candidates = Array.isArray(indexed) ? indexed : [];
+		const candidates = this._indexVariables[key];
+		if (!Array.isArray(candidates)) return defaultValue;
 
 		// Plain locals rather than tuples: this is a hot path and must not allocate per read.
 		let selectedName = "";
@@ -1069,8 +1076,26 @@ export default class Context {
 		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
+	// A user eventLogger may call finalize() or publish(). Every exposure this read produces (the
+	// candidates' holdouts and the winner) is queued before any logger runs, so such a call sees
+	// and sends all of them instead of sealing the context with the winner still pending.
 	private _variableValue(key: string, defaultValue: string): string {
-		return this._resolveVariableValue(key, defaultValue, true);
+		if (this._deferredExposureLogs !== undefined) return this._resolveVariableValue(key, defaultValue, true);
+
+		const deferred: Exposure[] = [];
+		this._deferredExposureLogs = deferred;
+		try {
+			return this._resolveVariableValue(key, defaultValue, true);
+		} finally {
+			this._deferredExposureLogs = undefined;
+			if (deferred.length > 0) {
+				try {
+					for (const exposure of deferred) this._logEvent("exposure", exposure);
+				} finally {
+					this._setTimeout();
+				}
+			}
+		}
 	}
 
 	private _peekVariable(key: string, defaultValue: string): string {
