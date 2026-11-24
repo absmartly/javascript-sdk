@@ -65,21 +65,19 @@
   browser bundle). It declares Node `>=6.9.0`; the package still declares `>=6`, so
   Node 6.0–6.8 installs may warn. No helper types are exposed in the public API.
 - Each read now also checks the assignment-rule, holdout and missing-unit state.
-  Measured on Node 22 (synthetic warmed loops, one experiment, median of 5): a cached
-  `peek` costs about 2 ns more than 1.13.4 (16.5 vs 14.6 ns) and a cached `treatment`
-  about 7 ns more (47.8 vs 40.8 ns). Re-evaluating an audience after `setAttribute`
+  Measured on Node 22 (synthetic warmed loops, independent reviews on shared
+  hosts, approximate): a cached `peek` or `treatment` costs about 2–5 ns more than
+  1.13.4. Re-evaluating an audience after `setAttribute`
   matches 1.13.4 with 300 attributes and is about 6% slower with 1,000 and 10% slower
   with 3,000. `getAttributes()` is faster than 1.13.4. A default `track()` +
   `publish()` matches 1.13.4 up to a few hundred attributes (7.3 vs 7.1 µs at 300)
   and costs about 30% more at 3,000 (about 52 vs 40 µs; unreleased main was about
   77 µs). The new opt-in `includeSystemAttributes` adds about 10% on top. A
-  cached `variableValue()` (four experiments sharing a key) costs about 70–78 ns,
-  down from about 155 ns in 1.13.4, but up to about 9 ns more than unreleased
-  main, mostly for holding its `eventLogger` callbacks until all its exposures
-  are queued (see Fixed). `peekVariableValue()` costs about 2–15 ns more than
-  unreleased main; a cached `treatment()` or `peek()` costs about 1–2 ns more
-  (the assignment-rule and holdout checks above). Measured on shared
-  hosts (Node 22, compiled CJS, four experiments sharing a key), so treat these
+  cached `variableValue()` or `peekVariableValue()` (four experiments sharing a
+  key) costs about 21–26 ns, down from about 155 ns in 1.13.4 and about 65 ns on
+  unreleased main, and no longer allocates; a cached `treatment()` or `peek()`
+  costs about 1 ns more than unreleased main (the assignment-rule and holdout
+  checks above). Measured on shared hosts (Node 22, compiled CJS), so treat these
   as approximate.
 
 ### Fixed
