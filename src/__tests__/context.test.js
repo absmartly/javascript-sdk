@@ -6156,6 +6156,93 @@ describe("Context", () => {
 				]);
 			});
 
+			it("creates no deferred list and arms no timer on a warmed read", () => {
+				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
+				const context = new Context(sdk, { ...contextOptions, publishDelay: 100 }, contextParams, response);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				clearTimeout(context._publishTimeout);
+				context._publishTimeout = undefined;
+				const schedule = jest.spyOn(context, "_setTimeout");
+				const flush = jest.spyOn(context, "_flushDeferredLogs");
+				for (let i = 0; i < 5; i++) context.variableValue("button.color", "APP_FALLBACK");
+				expect(flush).not.toHaveBeenCalled();
+				expect(schedule).not.toHaveBeenCalled();
+			});
+
+			it("replays a read's exposure and error callbacks in the order they were raised", () => {
+				const events = [];
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure") events.push(`exposure:${data.name}`);
+					if (eventName === "error") events.push("error");
+				});
+				const strictSecond = {
+					...holdoutVarExperiment({}),
+					id: 2,
+					name: "exp_strict_second",
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), strictSecond, winnerAfterHoldout({ id: 3 })],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(events).toEqual(["exposure:holdout_var", "error", "exposure:exp_holdout_var_later_winner"]);
+			});
+
+			it("arms no publish timer when a read raises only an error", () => {
+				const strictOnly = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100, eventLogger: jest.fn() },
+					contextParams,
+					buildHoldoutResponse([strictOnly], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.pending()).toEqual(0);
+				expect(context._publishTimeout).toBeUndefined();
+			});
+
+			it("sends a treatment's holdout exposure when its exposure callback finalizes", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const covered = { ...winnerAfterHoldout({}), holdoutIds: [11] };
+				const neverHolds = alwaysHoldsOut({ split: [0, 1] });
+				const response = buildHoldoutResponse([covered], [neverHolds]);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				expect(context.treatment("exp_holdout_var_later_winner")).toBe(1);
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name).sort()).toEqual(
+					["exp_holdout_var_later_winner", "holdout_var"].sort()
+				);
+			});
+
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
 				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
 				const context = new Context(sdk, { ...contextOptions, publishDelay: 100 }, contextParams, response);
@@ -6511,6 +6598,43 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
 				expect(context.peekVariableValue("toString", "SENTINEL")).toBe("SENTINEL");
 				expect(context.variableValue("toString", "SENTINEL")).toBe("SENTINEL");
+			});
+
+			it("keeps a retained unit's value and ordinary snapshot across a refresh", async () => {
+				const before = {
+					...shared(1, [0, 1], {}),
+					variants: [
+						{ name: "A", config: '{"k":"a1"}' },
+						{ name: "B", config: '{"k":"OLD"}' },
+					],
+				};
+				const plain = { ...shared(2, [0, 1], { other: 1 }), name: "plain" };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before, plain] });
+				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.treatment("plain")).toBe(1);
+				const after = {
+					...before,
+					variants: [
+						{ name: "A", config: '{"k":"a1","valueOf":"V"}' },
+						{ name: "B", config: '{"k":"NEW"}' },
+					],
+				};
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after, plain] }));
+				await context.refresh();
+				expect(context.peekVariableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.variableValue("valueOf", "SENTINEL")).toBe("SENTINEL");
+				expect(Object.getPrototypeOf(context._assignments.plain.variables)).toBe(Object.prototype);
+			});
+
+			it("refreshes after an overridden experiment named like an Object.prototype member stops", async () => {
+				const named = { ...shared(1, [0, 1], {}), name: "toString" };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named] });
+				context.override("toString", 1);
+				expect(context.treatment("toString")).toBe(1);
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [] }));
+				await expect(context.refresh()).resolves.toBeUndefined();
+				expect(context.experiments()).toEqual([]);
 			});
 
 			it("keeps Object.prototype on ordinary configs", () => {

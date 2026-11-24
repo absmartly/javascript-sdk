@@ -1243,7 +1243,19 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			this._triggerExposures(experimentName, assignment, now);
+			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
+			// eventLogger that finalizes on the first one still sends the holdout's.
+			if (this._deferringLogs) {
+				this._triggerExposures(experimentName, assignment, now);
+			} else {
+				this._deferringLogs = true;
+				try {
+					this._triggerExposures(experimentName, assignment, now);
+				} finally {
+					this._deferringLogs = false;
+					if (this._deferredLogs !== undefined) this._flushDeferredLogs();
+				}
+			}
 		}
 
 		return assignment;
@@ -1467,6 +1479,7 @@ export default class Context {
 	// A user eventLogger may call finalize() or publish(). Exposure and error callbacks this read
 	// triggers run only after every exposure of the read (candidates' holdouts and the winner) is
 	// queued, so such a call sends all of them instead of sealing the context with one pending.
+	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
 		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
 
@@ -1475,18 +1488,28 @@ export default class Context {
 			return this._resolveVariableValue(key, defaultValue, true);
 		} finally {
 			this._deferringLogs = false;
-			const deferred = this._deferredLogs;
-			if (deferred !== undefined) {
-				this._deferredLogs = undefined;
-				try {
-					for (const [eventName, data] of deferred) {
-						if (eventName === "error") this._logError(data as Error);
-						else this._logEvent(eventName, data as Record<string, unknown>);
-					}
-				} finally {
-					this._setTimeout();
+			if (this._deferredLogs !== undefined) this._flushDeferredLogs();
+		}
+	}
+
+	private _flushDeferredLogs() {
+		const deferred = this._deferredLogs as [EventName, Record<string, unknown> | Error][];
+		this._deferredLogs = undefined;
+
+		let exposed = false;
+		try {
+			for (let i = 0; i < deferred.length; i++) {
+				const entry = deferred[i];
+				if (entry[0] === "error") {
+					this._logError(entry[1] as Error);
+				} else {
+					exposed = true;
+					this._logEvent(entry[0], entry[1] as Record<string, unknown>);
 				}
 			}
+		} finally {
+			// Only exposures need publishing; an error alone must not arm the timer.
+			if (exposed) this._setTimeout();
 		}
 	}
 
@@ -2021,19 +2044,32 @@ export default class Context {
 			}
 		});
 
-		// A reused assignment still points at the previous parse of its configs; if a refresh made
-		// the experiment prototype-keyed, its cached variables must not resolve inherited members.
-		for (const experimentName of Object.keys(assignments)) {
-			const assignment = assignments[experimentName];
-			const variables = assignment.variables;
-			const experiment = index[experimentName];
-			if (
-				variables !== undefined &&
-				Object.getPrototypeOf(variables) !== null &&
-				experiment !== undefined &&
-				Object.getPrototypeOf(experiment.variables[0] ?? {}) === null
-			) {
+		// A reused assignment (or switchback slot) still points at the previous parse of its configs;
+		// if a refresh made the experiment prototype-keyed, cached variables must not resolve inherited
+		// members.
+		const prototypeKeyed = (experimentName: string) => {
+			// Own lookup: an experiment named like an Object.prototype member must not resolve one.
+			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
+				? index[experimentName]
+				: undefined;
+			return experiment !== undefined && Object.getPrototypeOf(experiment.variables[0] ?? {}) === null;
+		};
+		const reclassify = (assignment: Assignment | undefined) => {
+			const variables = assignment?.variables;
+			if (assignment !== undefined && variables !== undefined && Object.getPrototypeOf(variables) !== null) {
 				assignment.variables = Object.assign(Object.create(null), variables);
+			}
+		};
+		for (const experimentName of Object.keys(assignments)) {
+			if (prototypeKeyed(experimentName)) reclassify(assignments[experimentName]);
+		}
+		const epochs = this._switchbackEpochs;
+		if (epochs !== undefined) {
+			for (const experimentName of Object.keys(epochs)) {
+				if (!prototypeKeyed(experimentName)) continue;
+				const epoch = epochs[experimentName];
+				reclassify(epoch.periodless);
+				for (const period of epoch.periods) reclassify(epoch.slots[period]);
 			}
 		}
 
