@@ -228,7 +228,8 @@ ascending experiment id and uses the first one the user is in (assigned,
 overridden or assigned by a rule). Its variant's value is returned, or your
 default if that variant does not define the key; later experiments are never
 used instead. If the user is in none of them but one is held out by a holdout,
-that experiment's control value is returned. Only the winning experiment gets an
+the first held-out experiment's control value is returned, or your default if
+its control arm does not define the key (no other experiment is checked). Only the winning experiment gets an
 exposure (plus any holdouts covering the experiments checked); a held-out
 experiment that supplies its control value records only its holdout's exposure.
 An experiment the user is not in, such as a strict audience mismatch, gets none;
