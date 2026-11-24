@@ -6087,7 +6087,7 @@ describe("Context", () => {
 				expect(published.exposures.map((e) => e.name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
 			});
 
-			it("reports a nested read's callbacks after the outer read's exposures", () => {
+			it("queues no extra callbacks when a callback re-reads an already exposed key", () => {
 				const names = [];
 				let nested = false;
 				const eventLogger = jest.fn((ctx, eventName, data) => {
@@ -6488,7 +6488,7 @@ describe("Context", () => {
 				}
 			});
 
-			it("delivers every callback of finite exposure feedback in queue order", () => {
+			it("delivers every callback of finite exposure feedback", () => {
 				let count = 0;
 				const eventLogger = jest.fn((ctx, eventName) => {
 					if (eventName === "exposure" && ++count < 100) ctx.variableValue("button.color", "D");
@@ -6714,6 +6714,81 @@ describe("Context", () => {
 					"holdout_var",
 					"exp_holdout_var_later_winner",
 				]);
+			});
+
+			it.each([30, 31, 32, 33, 40])(
+				"sends a read's whole exposure batch when its logger finalizes after %i feedback callbacks",
+				async (chain) => {
+					publisher.publish.mockReturnValue(Promise.resolve());
+					let count = 0;
+					let finalizing;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName !== "exposure") return;
+						if (data.name === "exp_loop") {
+							if (++count < chain) ctx.variableValue("loop.key", "D");
+							else if (count === chain) ctx.variableValue("button.color", "APP_FALLBACK");
+						} else if (data.name === "holdout_var" && finalizing === undefined) {
+							finalizing = ctx.finalize();
+						}
+					});
+					const loop = {
+						...winnerAfterHoldout({}),
+						id: 3,
+						name: "exp_loop",
+						variants: [
+							{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+							{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+						],
+					};
+					const response = buildHoldoutResponse(
+						[holdoutVarExperiment({}), winnerAfterHoldout({}), loop],
+						[alwaysHoldsOut({})]
+					);
+					const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+					context.customAssignment("exp_loop", 0);
+					expect(context.variableValue("loop.key", "D")).toBe("B");
+					await finalizing;
+					expect(context.isFinalized()).toBe(true);
+					expect(context.pending()).toBe(0);
+					const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures;
+					expect(sent.map((e) => e.name).filter((n) => n !== "exp_loop")).toEqual([
+						"holdout_var",
+						"exp_holdout_var_later_winner",
+					]);
+				}
+			);
+
+			it("bounds the callbacks a replay retains when each callback raises two more", () => {
+				let count = 0;
+				let maxRetained = 0;
+				const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+				try {
+					const experiment = winnerAfterHoldout({
+						customFieldValues: [
+							{ name: "a", type: "json", value: "{bad" },
+							{ name: "b", type: "json", value: "{bad" },
+						],
+					});
+					const eventLogger = jest.fn((ctx, eventName) => {
+						if (eventName !== "exposure" && eventName !== "error") return;
+						maxRetained = Math.max(maxRetained, ctx._deferredLogs ? ctx._deferredLogs.length : 0);
+						if (++count > 20000) return;
+						ctx.customFieldValue("exp_holdout_var_later_winner", "a");
+						ctx.customFieldValue("exp_holdout_var_later_winner", "b");
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse([experiment], [])
+					);
+					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+					// Without the callback budget each round doubles the retained list until round 32.
+					expect(maxRetained).toBeLessThanOrEqual(2048);
+					expect(context._deferredLogs).toBeUndefined();
+				} finally {
+					consoleError.mockRestore();
+				}
 			});
 
 			it("runs feedback callbacks inline once the replay rounds are spent", () => {
@@ -7053,7 +7128,6 @@ describe("Context", () => {
 			it.each([null, "", "[]", "0", "false", '"string"', "null", '{"other":1}'])(
 				"returns the default when the winner config %p does not define the key",
 				(selectedConfig) => {
-					// No selected config shape may leak inherited Object.prototype members.
 					const winner = { ...protoKeyed(config), split: [1, 0] };
 					winner.variants = [{ name: "A", config: selectedConfig }, winner.variants[1]];
 					const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
@@ -7074,6 +7148,26 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
 				expect(context.peekVariableValue("toString", "SENTINEL")).toBe("SENTINEL");
 				expect(context.variableValue("toString", "SENTINEL")).toBe("SENTINEL");
+			});
+
+			it("returns the default when a refresh removes a cached override's arm", async () => {
+				const before = {
+					...shared(1, [1, 0], {}),
+					variants: [
+						{ name: "A", config: '{"k":"a"}' },
+						{ name: "B", config: '{"k":"b"}' },
+						{ name: "C", config: '{"k":"c"}' },
+					],
+					split: [0.34, 0.33, 0.33],
+				};
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+				context.override("shared_1", 2);
+				expect(context.variableValue("k", "SENTINEL")).toBe("c");
+				const after = { ...before, variants: before.variants.slice(0, 2), split: [0.5, 0.5] };
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after] }));
+				await context.refresh();
+				expect(context.peekVariableValue("k", "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
 			});
 
 			it("keeps a retained unit's value and ordinary snapshot across a refresh", async () => {
