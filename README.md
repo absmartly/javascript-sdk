@@ -373,6 +373,12 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `"goal"`     | `track()` method succeeds                         | Goal data enqueued for publishing             |
 | `"finalize"` | `finalize()` method succeeds the first time       | undefined                                     |
 
+`"exposure"` and `"error"` events raised by one `variableValue()` call (and the
+`"exposure"` events of one `treatment()` call) are delivered after all of that
+call's exposures are queued, in the order they were raised, so a logger that
+calls `publish()` or `finalize()` sends every one of them. Events a logger
+triggers itself are delivered after the ones already waiting.
+
 ### HTTP Request Timeout
 
 It is possible to set a timeout per individual HTTP request, overriding the global timeout set for all requests when instantiating the SDK object.
