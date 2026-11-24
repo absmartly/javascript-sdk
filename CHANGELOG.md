@@ -98,9 +98,10 @@
   candidate's applicable holdouts still fire, as in Java. All exposures of one read
   are queued before its `exposure` and `error` callbacks run, so a callback that
   calls `finalize()` still sends the winner. Callbacks a callback raises are replayed after
-  the ones already held, in queue order; an observer that keeps feeding new
-  events stops being deferred after a bounded number of rounds, so a read always
-  returns. `treatment()` likewise queues an
+  the ones already held, in queue order; once a replay has run a bounded number of
+  rounds or callbacks, each later call delivers its own callbacks as soon as all of
+  its exposures are queued, so a read always returns and still sends its whole
+  batch. `treatment()` likewise queues an
   experiment's and its holdouts' exposures before their `exposure` callbacks run
   (an audience `error` raised by `treatment()` itself is still reported first). `peekVariableValue()`
   exposes nothing. Keys no experiment defines return the default
