@@ -6025,24 +6025,23 @@ describe("Context", () => {
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 			});
 
-			// A throwing eventLogger for one candidate's exposure is isolated by _logEvent (it never
-			// propagates), so it must not stop the loop from visiting (and firing exposures for) the
-			// remaining candidates sharing the key.
-			it("a throwing eventLogger for one candidate does not stop later candidates in the loop from being visited and exposed", () => {
-				const firstExperiment = holdoutVarExperiment({
-					id: 1,
-					name: "exp_holdout_var_throw_first",
-					holdoutIds: [11],
-				});
+			const winnerAfterHoldout = (over) => ({
+				...holdoutVarExperiment({}),
+				id: 2,
+				name: "exp_holdout_var_later_winner",
+				split: [0, 1],
+				fullOnVariant: 1,
+				holdoutIds: null,
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: JSON.stringify({ "button.color": "WINNER_AFTER_HOLDOUT" }) },
+				],
+				...over,
+			});
 
-				const secondExperiment = holdoutVarExperiment({
-					id: 2,
-					name: "exp_holdout_var_throw_second",
-					holdoutIds: [12],
-				});
-
-				const secondHoldout = alwaysHoldsOut({ id: 12, name: "holdout_var_second" });
-
+			// A throwing eventLogger for the first candidate's holdout exposure is isolated by _logEvent,
+			// so the loop still reaches the later winner and exposes it.
+			it("a throwing eventLogger for one candidate does not stop the loop from reaching and exposing the winner", () => {
 				const eventLogger = jest.fn((ctx, eventName, data) => {
 					if (eventName === "exposure" && data.name === "holdout_var") {
 						throw new Error("boom");
@@ -6050,17 +6049,42 @@ describe("Context", () => {
 				});
 
 				const response = buildHoldoutResponse(
-					[firstExperiment, secondExperiment],
-					[alwaysHoldsOut({}), secondHoldout]
+					[holdoutVarExperiment({}), winnerAfterHoldout({})],
+					[alwaysHoldsOut({})]
 				);
 				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
 
-				expect(() => context.variableValue("button.color", "APP_FALLBACK")).not.toThrow();
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
 
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
-				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
-					["holdout_var", "holdout_var_second"].sort()
+				expect(exposureCalls.map((c) => c[2].name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
+				expect(context.pending()).toEqual(2);
+			});
+
+			// A logger that finalizes from a holdout's exposure callback must still send the winner:
+			// every exposure of the read is queued before any user callback runs.
+			it("sends the winner when an exposure callback finalizes the context mid-read", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure" && data.name === "holdout_var" && finalizing === undefined) {
+						finalizing = ctx.finalize();
+					}
+				});
+
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({})],
+					[alwaysHoldsOut({})]
 				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+
+				expect(context.isFinalized()).toBe(true);
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
 			});
 
 			// peekVariableValue() shares the exact same suppressedFallback capture as variableValue()
