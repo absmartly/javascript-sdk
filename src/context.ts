@@ -35,8 +35,8 @@ type CustomFieldValue = {
 	type: CustomFieldValueType;
 };
 
-// Feedback rounds a deferred-callback replay drains before later callbacks run inline.
 const DEFERRED_REPLAY_ROUNDS = 32;
+const DEFERRED_REPLAY_CALLBACKS = 1024;
 export type ExperimentData = {
 	id: number;
 	name: string;
@@ -244,7 +244,6 @@ export default class Context {
 	// While a variable read runs, user eventLogger callbacks it would trigger are held here (the
 	// list is created on first use) and replayed once every exposure of the read is queued.
 	private _deferringLogs = false;
-	// Set once a replay spends its rounds, until that replay ends: nested calls then run inline.
 	private _replayExhausted = false;
 	private _deferredLogs?: [EventName, Record<string, unknown> | Error][];
 	private _attrsSeq: number;
@@ -1249,7 +1248,7 @@ export default class Context {
 
 			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
 			// eventLogger that finalizes on the first one still sends the holdout's.
-			if (this._deferringLogs || this._replayExhausted) {
+			if (this._deferringLogs) {
 				this._triggerExposures(experimentName, assignment, now);
 			} else {
 				this._deferringLogs = true;
@@ -1470,7 +1469,6 @@ export default class Context {
 		if (shouldQueueExposure && !selected.exposed) {
 			selected.exposed = true;
 
-			// The loop above already fired this candidate's holdouts.
 			this._triggerExposures(selectedName, selected, now, false);
 		}
 
@@ -1485,7 +1483,7 @@ export default class Context {
 	// queued, so such a call sends all of them instead of sealing the context with one pending.
 	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
-		if (this._deferringLogs || this._replayExhausted) return this._resolveVariableValue(key, defaultValue, true);
+		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
 
 		this._deferringLogs = true;
 		try {
@@ -1500,32 +1498,31 @@ export default class Context {
 	// behind the ones already queued.
 	private _endDeferral() {
 		if (this._deferredLogs === undefined) this._deferringLogs = false;
+		else if (this._replayExhausted) this._deliverDeferredLogs();
 		else this._replayDeferredLogs();
 	}
 
-	// Replays held callbacks in queue order, keeping deferral on so callbacks a callback raises join
-	// the queue behind the ones already held. A callback that keeps feeding new events would drain
-	// forever, so after DEFERRED_REPLAY_ROUNDS rounds deferral stops and later callbacks run inline,
+	// A callback that keeps feeding new events would drain forever (or grow the queue without
+	// bound), so once a replay has run DEFERRED_REPLAY_ROUNDS rounds or delivered
+	// DEFERRED_REPLAY_CALLBACKS callbacks, it stops queueing rounds: each later call still holds
+	// its own callbacks until all of its exposures are queued, then delivers that batch at once,
 	// bounded by the call stack as before deferral existed.
 	private _replayDeferredLogs() {
 		let exposed = false;
 		let rounds = 0;
+		let delivered = 0;
 		try {
 			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
 			while (deferred !== undefined) {
 				this._deferredLogs = undefined;
-				if (++rounds >= DEFERRED_REPLAY_ROUNDS) {
+				delivered += deferred.length;
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS || delivered >= DEFERRED_REPLAY_CALLBACKS) {
 					this._deferringLogs = false;
 					this._replayExhausted = true;
 				}
 				for (let i = 0; i < deferred.length; i++) {
-					const entry = deferred[i];
-					if (entry[0] === "error") {
-						this._emitError(entry[1] as Error);
-					} else {
-						exposed = true;
-						this._logEvent(entry[0], entry[1] as Record<string, unknown>);
-					}
+					if (deferred[i][0] === "exposure") exposed = true;
+					this._logEvent(deferred[i][0], deferred[i][1]);
 				}
 				deferred = this._deferredLogs;
 			}
@@ -1533,6 +1530,21 @@ export default class Context {
 			this._deferringLogs = false;
 			this._replayExhausted = false;
 			// Only exposures need publishing; an error alone must not arm the timer.
+			if (exposed) this._setTimeout();
+		}
+	}
+
+	private _deliverDeferredLogs() {
+		const deferred = this._deferredLogs as [EventName, Record<string, unknown> | Error][];
+		this._deferredLogs = undefined;
+		this._deferringLogs = false;
+		let exposed = false;
+		try {
+			for (let i = 0; i < deferred.length; i++) {
+				if (deferred[i][0] === "exposure") exposed = true;
+				this._logEvent(deferred[i][0], deferred[i][1]);
+			}
+		} finally {
 			if (exposed) this._setTimeout();
 		}
 	}
@@ -1847,7 +1859,7 @@ export default class Context {
 		}
 	}
 
-	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
+	private _logEvent(eventName: EventName, data?: Record<string, unknown> | Error) {
 		if (this._eventLogger) {
 			// A throwing custom eventLogger must never propagate out of this method:
 			// every call site treats logging as a side effect, and letting an
@@ -1869,17 +1881,7 @@ export default class Context {
 			(this._deferredLogs ??= []).push(["error", error]);
 			return;
 		}
-		this._emitError(error);
-	}
-
-	private _emitError(error: Error) {
-		if (this._eventLogger) {
-			try {
-				this._eventLogger(this, "error", error);
-			} catch (observerError) {
-				console.error(observerError);
-			}
-		}
+		this._logEvent("error", error);
 	}
 
 	private _unitHash(unitType: string) {
@@ -2098,6 +2100,17 @@ export default class Context {
 				const epoch = epochs[experimentName];
 				reclassify(epoch.periodless);
 				for (const period of epoch.periods) reclassify(epoch.slots[period]);
+			}
+		}
+
+		// A reused assignment whose arm a refresh removed has no variables any more.
+		for (const experimentName of Object.keys(assignments)) {
+			const assignment = assignments[experimentName];
+			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
+				? index[experimentName]
+				: undefined;
+			if (experiment !== undefined && assignment.variant >= experiment.data.variants.length) {
+				assignment.variables = undefined;
 			}
 		}
 
