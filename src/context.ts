@@ -1252,8 +1252,7 @@ export default class Context {
 				try {
 					this._triggerExposures(experimentName, assignment, now);
 				} finally {
-					this._deferringLogs = false;
-					if (this._deferredLogs !== undefined) this._flushDeferredLogs();
+					this._endDeferral();
 				}
 			}
 		}
@@ -1487,27 +1486,36 @@ export default class Context {
 		try {
 			return this._resolveVariableValue(key, defaultValue, true);
 		} finally {
-			this._deferringLogs = false;
-			if (this._deferredLogs !== undefined) this._flushDeferredLogs();
+			this._endDeferral();
 		}
 	}
 
-	private _flushDeferredLogs() {
-		const deferred = this._deferredLogs as [EventName, Record<string, unknown> | Error][];
-		this._deferredLogs = undefined;
-
+	// Ends a deferral scope, replaying held callbacks in queue order. Deferral stays on while
+	// replaying, so a nested read or treatment() made from a callback appends its own callbacks
+	// behind the ones already queued.
+	private _endDeferral() {
+		if (this._deferredLogs === undefined) {
+			this._deferringLogs = false;
+			return;
+		}
 		let exposed = false;
 		try {
-			for (let i = 0; i < deferred.length; i++) {
-				const entry = deferred[i];
-				if (entry[0] === "error") {
-					this._logError(entry[1] as Error);
-				} else {
-					exposed = true;
-					this._logEvent(entry[0], entry[1] as Record<string, unknown>);
+			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
+			while (deferred !== undefined) {
+				this._deferredLogs = undefined;
+				for (let i = 0; i < deferred.length; i++) {
+					const entry = deferred[i];
+					if (entry[0] === "error") {
+						this._emitError(entry[1] as Error);
+					} else {
+						exposed = true;
+						this._logEvent(entry[0], entry[1] as Record<string, unknown>);
+					}
 				}
+				deferred = this._deferredLogs;
 			}
 		} finally {
+			this._deferringLogs = false;
 			// Only exposures need publishing; an error alone must not arm the timer.
 			if (exposed) this._setTimeout();
 		}
@@ -1845,6 +1853,10 @@ export default class Context {
 			(this._deferredLogs ??= []).push(["error", error]);
 			return;
 		}
+		this._emitError(error);
+	}
+
+	private _emitError(error: Error) {
 		if (this._eventLogger) {
 			try {
 				this._eventLogger(this, "error", error);
