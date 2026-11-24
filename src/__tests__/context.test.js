@@ -6618,6 +6618,97 @@ describe("Context", () => {
 				expect(feedbackDepths(31)).toEqual(Array(31).fill(1));
 			});
 
+			it("runs treatment() feedback inline once the replay rounds are spent", () => {
+				let depth = 0;
+				const depths = [];
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					depths.push(++depth);
+					try {
+						if (depths.length < 40) ctx.treatment("exp_holdout_var_later_winner");
+					} finally {
+						depth--;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				context.treatment("exp_holdout_var_later_winner");
+				expect(depths).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
+			});
+
+			it("defers again in a later read after a replay spent its rounds", () => {
+				let depth = 0;
+				let limit = 40;
+				const depths = [];
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					depths.push(++depth);
+					try {
+						if (depths.length < limit) ctx.variableValue("button.color", "D");
+					} finally {
+						depth--;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				depths.length = 0;
+				limit = 10;
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				expect(depths).toEqual(Array(10).fill(1));
+			});
+
+			it("sends the winner when a later read finalizes after a replay spent its rounds", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let mode = "loop";
+				let count = 0;
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					if (mode === "loop") {
+						if (++count < 40) ctx.variableValue("loop.key", "D");
+					} else if (data.name === "holdout_var" && finalizing === undefined) {
+						finalizing = ctx.finalize();
+					}
+				});
+				const loop = {
+					...winnerAfterHoldout({}),
+					id: 3,
+					name: "exp_loop",
+					variants: [
+						{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+						{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+					],
+				};
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({}), loop],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				context.customAssignment("exp_loop", 0);
+				expect(context.variableValue("loop.key", "D")).toBe("B");
+				expect(count).toBe(40);
+				mode = "finalize";
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name).filter((n) => n !== "exp_loop")).toEqual([
+					"holdout_var",
+					"exp_holdout_var_later_winner",
+				]);
+			});
+
 			it("runs feedback callbacks inline once the replay rounds are spent", () => {
 				expect(feedbackDepths(40)).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
 			});
