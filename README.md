@@ -594,7 +594,7 @@ An audience filter that throws while being evaluated is treated as a mismatch, s
 
 **Before:** this SDK ignored the switchback fields the collector sends. A switchback experiment was served as a sticky unit assignment on its `unitType` (or not at all without one), so its exposures did not follow the switchback schedule.
 
-**After:** switchback experiments are served by cluster and period, as described in [Switchback Experiments](#switchback-experiments). **This changes assignment for switchback experiments that are already running**: their units move from the sticky unit assignment to the cluster's schedule, and exposures are recorded once per period (while the period's assignment stays cached) under the serving unit. Unit experiments, and context data without switchback experiments, are not affected.
+**After:** switchback experiments are served by cluster and period, as described in [Switchback Experiments](#switchback-experiments). **This changes assignment for switchback experiments that are already running**: their units move from the sticky unit assignment to the cluster's schedule, and exposures are recorded once per period (while the period's assignment stays cached) under the serving unit. The switchback support itself does not change unit experiments or context data without switchbacks; see [Shared variable keys](#shared-variable-keys-pick-and-expose-one-experiment) below for the separate variable-read fix.
 
 ### Shared variable keys pick and expose one experiment
 
