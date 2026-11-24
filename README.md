@@ -231,12 +231,13 @@ const buttonColor = context.variableValue("button.color", defaultButtonColor);
 When several experiments define the same variable key, the SDK checks them in
 ascending experiment id and uses the first one the user is in (assigned,
 overridden or assigned by a rule). Its variant's value is returned, or your
-default if that variant does not define the key; later experiments are never used
-instead. If the user is in none of them but one is held out by a holdout, that
-experiment's control value is returned. Only that experiment gets an exposure (plus any holdouts covering the
-experiments checked). An experiment the user is not in, such as a strict audience
-mismatch, gets none; call `treatment()` to record it. `peekVariableValue()` never
-queues one.
+default if that variant does not define the key; later experiments are never
+used instead. If the user is in none of them but one is held out by a holdout,
+that experiment's control value is returned. Only the winning experiment gets an
+exposure (plus any holdouts covering the experiments checked); a held-out
+experiment that supplies its control value records only its holdout's exposure.
+An experiment the user is not in, such as a strict audience mismatch, gets none;
+call `treatment()` to record it. `peekVariableValue()` never queues an exposure.
 
 ### Peek at Treatment Variants
 
