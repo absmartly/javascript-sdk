@@ -895,12 +895,12 @@ export default class Context {
 		return assignment;
 	}
 
-	private _triggerExposures(experimentName: string, assignment: Assignment): void {
+	private _triggerExposures(experimentName: string, assignment: Assignment, withHoldouts = true): void {
 		if (!assignment.suppressed || assignment.overridden || assignment.ruleOverride) {
 			this._queueExposure(experimentName, assignment);
 		}
 
-		this._triggerApplicableHoldoutExposures(assignment);
+		if (withHoldouts) this._triggerApplicableHoldoutExposures(assignment);
 	}
 
 	// Uses the pinned snapshot, not a live re-resolution, so a refresh between the suppression
@@ -1069,7 +1069,6 @@ export default class Context {
 				break;
 			}
 
-			// A winner breaks out above, so `selected` here can only be an earlier suppressed one.
 			if (assignment.suppressed && selected === undefined) {
 				selectedName = experimentName;
 				selected = assignment;
@@ -1081,7 +1080,8 @@ export default class Context {
 		if (shouldQueueExposure && !selected.exposed) {
 			selected.exposed = true;
 
-			this._triggerExposures(selectedName, selected);
+			// The loop above already fired this candidate's holdouts.
+			this._triggerExposures(selectedName, selected, false);
 		}
 
 		// A missing key (or out-of-range arm) returns the caller's default, never a later

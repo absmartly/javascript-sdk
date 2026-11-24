@@ -6377,7 +6377,6 @@ describe("Context", () => {
 					fullOnVariant: 0,
 					applications: [{ name: "website" }],
 					variants: [
-						// The override wins outright, even though variant 0 omits the key.
 						{ name: "A", config: null },
 						{ name: "B", config: JSON.stringify({ "button.color": "OVERRIDE_SIBLING" }) },
 					],
