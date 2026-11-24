@@ -1069,11 +1069,7 @@ export default class Context {
 		// A missing key (or out-of-range arm) returns the caller's default, never a later
 		// experiment's value: falling through by arm would bias the winning experiment.
 		const variables = selected.variables;
-		return variables !== undefined &&
-			key in variables &&
-			(!(key in Object.prototype) || Object.prototype.hasOwnProperty.call(variables, key))
-			? (variables[key] as string)
-			: defaultValue;
+		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
 	private _variableValue(key: string, defaultValue: string): string {
@@ -1531,6 +1527,7 @@ export default class Context {
 
 			index[experiment.name] = entry;
 
+			let hasPrototypeVariable = false;
 			for (let i = 0; i < experiment.variants.length; i++) {
 				const variant = experiment.variants[i];
 				const config = variant.config;
@@ -1552,6 +1549,7 @@ export default class Context {
 				}
 
 				for (const key of Object.keys(parsed)) {
+					if (key in Object.prototype) hasPrototypeVariable = true;
 					const value = entry;
 					if (Array.isArray(indexVariables[key])) {
 						insertUniqueSorted(
@@ -1570,6 +1568,14 @@ export default class Context {
 				}
 
 				variables[i] = parsed;
+			}
+
+			// Only experiments defining a prototype-named key need dictionary configs. Classify at
+			// indexing time so ordinary variable reads retain their existing fast membership check.
+			if (hasPrototypeVariable) {
+				for (let i = 0; i < variables.length; i++) {
+					variables[i] = Object.assign(Object.create(null), variables[i]);
+				}
 			}
 		});
 
