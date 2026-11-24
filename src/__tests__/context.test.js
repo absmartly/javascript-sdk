@@ -6474,7 +6474,7 @@ describe("Context", () => {
 					});
 					context.attribute("user", user);
 					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
-					expect(count).toBeLessThan(50000);
+					expect(count).toBeLessThan(2000);
 					expect(context._deferredLogs).toBeUndefined();
 				} finally {
 					consoleError.mockRestore();
@@ -6519,7 +6519,7 @@ describe("Context", () => {
 					);
 					context.customAssignment("exp_holdout_var_later_winner", 0);
 					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
-					expect(count).toBeLessThan(50000);
+					expect(count).toBeLessThan(2000);
 					expect(context._deferringLogs).toBe(false);
 				} finally {
 					consoleError.mockRestore();
@@ -6589,6 +6589,37 @@ describe("Context", () => {
 				context.attribute("user", user);
 				expect(context.variableValue("first.key", "D")).toBe("D");
 				expect(errors).toHaveLength(2);
+			});
+
+			const feedbackDepths = (limit) => {
+				let depth = 0;
+				const depths = [];
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					depths.push(++depth);
+					try {
+						if (depths.length < limit) ctx.variableValue("button.color", "D");
+					} finally {
+						depth--;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				return depths;
+			};
+
+			it("keeps finite feedback within the replay rounds at depth 1", () => {
+				expect(feedbackDepths(31)).toEqual(Array(31).fill(1));
+			});
+
+			it("runs feedback callbacks inline once the replay rounds are spent", () => {
+				expect(feedbackDepths(40)).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
 			});
 
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
