@@ -48,7 +48,9 @@
   the only experiment defining the key; 1.13.4 published one with
   `assigned: false`. Affected: anyone counting those exposures from variable
   reads of strict-audience or unit-gated experiments. Call `treatment()` to record
-  them. See the shared variable keys entry under Fixed.
+  them. Conversely, a winning experiment whose overridden, custom or full-on variant
+  is out of range is now exposed with that variant (1.13.4 recorded nothing), as
+  in the Java SDK. See the shared variable keys entry under Fixed.
 - A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
   client timeout for it. Affected: callers passing a per-request `timeout` that
   differs from the client one, who now get more (or fewer) retries to match it.
