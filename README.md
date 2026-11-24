@@ -232,7 +232,10 @@ experiment's control value is returned. Only the winning experiment gets an
 exposure (plus any holdouts covering the experiments checked); a held-out
 experiment that supplies its control value records only its holdout's exposure.
 An experiment the user is not in, such as a strict audience mismatch, gets none;
-call `treatment()` to record it. `peekVariableValue()` never queues one.
+call `treatment()` to record it. A switchback that wins but is silent (before its
+schedule starts, or with an ineligible cluster) returns its control value and
+records nothing, and later experiments are still not used. `peekVariableValue()`
+never queues an exposure.
 
 ### Peek at Treatment Variants
 
@@ -600,7 +603,7 @@ An audience filter that throws while being evaluated is treated as a mismatch, s
 
 **Before:** when several experiments defined the same variable key, `variableValue()` exposed every experiment it checked, including ones the user was not in (for example a strict audience mismatch), and when the first experiment's variant lacked the key it served and exposed a later experiment's value instead.
 
-**After:** the first experiment by id that the user is in (assigned, overridden or rule-assigned) wins whatever its variant, as in the Java SDK; its variant's value is returned, or your default if that variant lacks the key. Only that experiment is exposed (see [Shared variable keys](#shared-variable-keys)). **This changes served values and exposures** for users whose winning experiment's variant lacks the key, and removes exposures that `variableValue()` used to record for experiments the user is not in; call `treatment()` if you need those recorded.
+**After:** the first experiment by id that the user is in (assigned, overridden or rule-assigned) wins whatever its variant, as in the Java SDK; its variant's value is returned, or your default if that variant lacks the key. Only that experiment is exposed, unless it is a silent switchback (before its schedule starts, or with an ineligible cluster), which returns control and records nothing (see [Shared variable keys](#shared-variable-keys)). **This changes served values and exposures** for users whose winning experiment's variant lacks the key, and removes exposures that `variableValue()` used to record for experiments the user is not in; call `treatment()` if you need those recorded.
 
 ## About A/B Smartly
 
