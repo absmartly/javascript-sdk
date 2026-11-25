@@ -21,6 +21,8 @@ type CustomFieldValue = {
 	type: CustomFieldValueType;
 };
 
+const DEFERRED_REPLAY_ROUNDS = 32;
+const DEFERRED_REPLAY_CALLBACKS = 1024;
 export type ExperimentData = {
 	id: number;
 	name: string;
@@ -189,6 +191,11 @@ export default class Context {
 	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
+	// While a variable read runs, user eventLogger callbacks it would trigger are held here (the
+	// list is created on first use) and replayed once every exposure of the read is queued.
+	private _deferringLogs = false;
+	private _replayExhausted = false;
+	private _deferredLogs?: [EventName, Record<string, unknown> | Error][];
 	private _attrsSeq: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
@@ -462,11 +469,14 @@ export default class Context {
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
+		// defineProperty keeps a key such as "__proto__" an own entry of the returned plain object.
 		for (const [key, values] of Object.entries(this._indexVariables)) {
-			for (const value of values) {
-				if (variableExperiments[key]) variableExperiments[key].push(value.data.name);
-				else variableExperiments[key] = [value.data.name];
-			}
+			Object.defineProperty(variableExperiments, key, {
+				value: values.map((value) => value.data.name),
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 
 		return variableExperiments;
@@ -870,18 +880,29 @@ export default class Context {
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			this._triggerExposures(experimentName, assignment);
+			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
+			// eventLogger that finalizes on the first one still sends the holdout's.
+			if (this._deferringLogs) {
+				this._triggerExposures(experimentName, assignment);
+			} else {
+				this._deferringLogs = true;
+				try {
+					this._triggerExposures(experimentName, assignment);
+				} finally {
+					this._endDeferral();
+				}
+			}
 		}
 
 		return assignment;
 	}
 
-	private _triggerExposures(experimentName: string, assignment: Assignment): void {
+	private _triggerExposures(experimentName: string, assignment: Assignment, withHoldouts = true): void {
 		if (!assignment.suppressed || assignment.overridden || assignment.ruleOverride) {
 			this._queueExposure(experimentName, assignment);
 		}
 
-		this._triggerApplicableHoldoutExposures(assignment);
+		if (withHoldouts) this._triggerApplicableHoldoutExposures(assignment);
 	}
 
 	// Uses the pinned snapshot, not a live re-resolution, so a refresh between the suppression
@@ -922,6 +943,11 @@ export default class Context {
 		// is scheduled in a finally so a throwing logger still flushes what's already queued.
 		this._exposures.push(exposureEvent);
 		this._pending++;
+
+		if (this._deferringLogs) {
+			(this._deferredLogs ??= []).push(["exposure", exposureEvent]);
+			return;
+		}
 
 		try {
 			this._logEvent("exposure", exposureEvent);
@@ -1020,45 +1046,121 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
-	// A held-out unit reads the control value, not the caller's default, when nothing else wins.
-	// The first suppressed candidate is captured even if it lacks the key, so a later one can't win.
+	// Mirrors java-sdk Context.getVariableAssignment. Candidates define the key in any variant, in
+	// experiment-id order. The first one the unit is actually in (assigned, overridden or
+	// rule-assigned) wins regardless of its arm; otherwise the first held-out candidate supplies
+	// its control value. Only the winner gets an exposure, so a unit is never recorded in an
+	// experiment it only got checked against. Like Java, each visited candidate's applicable
+	// holdouts still fire on the non-peek path.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		let suppressedFallback: Record<string, unknown> | undefined;
+		const candidates = this._indexVariables[key];
+		if (!Array.isArray(candidates)) return defaultValue;
 
-		for (const experiment of this._indexVariables[key] ?? []) {
-			const experimentName = experiment.data.name;
+		// Plain locals rather than tuples: this is a hot path and must not allocate per read.
+		let selectedName = "";
+		let selected: Assignment | undefined;
+
+		// Indexed loop: a for...of here compiles to a larger body that slows every warmed read.
+		for (let i = 0; i < candidates.length; i++) {
+			const experimentName = candidates[i].data.name;
 			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (shouldQueueExposure && !assignment.exposed) {
-					assignment.exposed = true;
+			if (shouldQueueExposure) this._triggerApplicableHoldoutExposures(assignment);
 
-					this._triggerExposures(experimentName, assignment);
-				}
+			if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
+				selectedName = experimentName;
+				selected = assignment;
+				break;
+			}
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					return assignment.variables[key] as string;
-				}
-
-				if (
-					assignment.suppressed &&
-					!assignment.overridden &&
-					!assignment.ruleOverride &&
-					suppressedFallback === undefined
-				) {
-					suppressedFallback = assignment.variables;
-				}
+			if (assignment.suppressed && selected === undefined) {
+				selectedName = experimentName;
+				selected = assignment;
 			}
 		}
 
-		if (suppressedFallback !== undefined && key in suppressedFallback) {
-			return suppressedFallback[key] as string;
+		if (selected === undefined) return defaultValue;
+
+		if (shouldQueueExposure && !selected.exposed) {
+			selected.exposed = true;
+
+			this._triggerExposures(selectedName, selected, false);
 		}
 
-		return defaultValue;
+		// A missing key (or out-of-range arm) returns the caller's default, never a later
+		// experiment's value: falling through by arm would bias the winning experiment.
+		const variables = selected.variables;
+		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
+	// A user eventLogger may call finalize() or publish(). Exposure and error callbacks this read
+	// triggers run only after every exposure of the read (candidates' holdouts and the winner) is
+	// queued, so such a call sends all of them instead of sealing the context with one pending.
+	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
-		return this._resolveVariableValue(key, defaultValue, true);
+		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
+
+		this._deferringLogs = true;
+		try {
+			return this._resolveVariableValue(key, defaultValue, true);
+		} finally {
+			this._endDeferral();
+		}
+	}
+
+	// Ends a deferral scope, replaying held callbacks in queue order. Deferral stays on while
+	// replaying, so a nested read or treatment() made from a callback appends its own callbacks
+	// behind the ones already queued.
+	private _endDeferral() {
+		if (this._deferredLogs === undefined) this._deferringLogs = false;
+		else if (this._replayExhausted) this._deliverDeferredLogs();
+		else this._replayDeferredLogs();
+	}
+
+	// A callback that keeps feeding new events would drain forever (or grow the queue without
+	// bound), so once a replay has run DEFERRED_REPLAY_ROUNDS rounds or delivered
+	// DEFERRED_REPLAY_CALLBACKS callbacks, it stops queueing rounds: each later call still holds
+	// its own callbacks until all of its exposures are queued, then delivers that batch at once,
+	// bounded by the call stack as before deferral existed.
+	private _replayDeferredLogs() {
+		let exposed = false;
+		let rounds = 0;
+		let delivered = 0;
+		try {
+			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
+			while (deferred !== undefined) {
+				this._deferredLogs = undefined;
+				delivered += deferred.length;
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS || delivered >= DEFERRED_REPLAY_CALLBACKS) {
+					this._deferringLogs = false;
+					this._replayExhausted = true;
+				}
+				for (let i = 0; i < deferred.length; i++) {
+					if (deferred[i][0] === "exposure") exposed = true;
+					this._logEvent(deferred[i][0], deferred[i][1]);
+				}
+				deferred = this._deferredLogs;
+			}
+		} finally {
+			this._deferringLogs = false;
+			this._replayExhausted = false;
+			// Only exposures need publishing; an error alone must not arm the timer.
+			if (exposed) this._setTimeout();
+		}
+	}
+
+	private _deliverDeferredLogs() {
+		const deferred = this._deferredLogs as [EventName, Record<string, unknown> | Error][];
+		this._deferredLogs = undefined;
+		this._deferringLogs = false;
+		let exposed = false;
+		try {
+			for (let i = 0; i < deferred.length; i++) {
+				if (deferred[i][0] === "exposure") exposed = true;
+				this._logEvent(deferred[i][0], deferred[i][1]);
+			}
+		} finally {
+			if (exposed) this._setTimeout();
+		}
 	}
 
 	private _peekVariable(key: string, defaultValue: string): string {
@@ -1371,7 +1473,7 @@ export default class Context {
 		}
 	}
 
-	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
+	private _logEvent(eventName: EventName, data?: Record<string, unknown> | Error) {
 		if (this._eventLogger) {
 			// A throwing custom eventLogger must never propagate out of this method:
 			// every call site treats logging as a side effect, and letting an
@@ -1389,13 +1491,11 @@ export default class Context {
 	}
 
 	private _logError(error: Error) {
-		if (this._eventLogger) {
-			try {
-				this._eventLogger(this, "error", error);
-			} catch (observerError) {
-				console.error(observerError);
-			}
+		if (this._deferringLogs) {
+			(this._deferredLogs ??= []).push(["error", error]);
+			return;
 		}
+		this._logEvent("error", error);
 	}
 
 	private _unitHash(unitType: string) {
@@ -1519,10 +1619,11 @@ export default class Context {
 
 			index[experiment.name] = entry;
 
+			let hasPrototypeVariable = false;
 			for (let i = 0; i < experiment.variants.length; i++) {
 				const variant = experiment.variants[i];
 				const config = variant.config;
-				let parsed = {};
+				let parsed: Record<string, unknown> = {};
 
 				if (config != null && config.length > 0) {
 					try {
@@ -1540,19 +1641,69 @@ export default class Context {
 				}
 
 				for (const key of Object.keys(parsed)) {
+					if (key in Object.prototype) hasPrototypeVariable = true;
 					const value = entry;
-					if (indexVariables[key]) {
+					if (Array.isArray(indexVariables[key])) {
 						insertUniqueSorted(
 							indexVariables[key],
 							value,
 							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
-					} else indexVariables[key] = [value];
+					} else {
+						Object.defineProperty(indexVariables, key, {
+							value: [value],
+							enumerable: true,
+							writable: true,
+							configurable: true,
+						});
+					}
 				}
 
 				variables[i] = parsed;
 			}
+
+			// Only experiments defining a prototype-named key need dictionary configs. Classify at
+			// indexing time so ordinary variable reads retain their existing fast membership check.
+			if (hasPrototypeVariable) {
+				for (let i = 0; i < variables.length; i++) {
+					variables[i] = Object.assign(Object.create(null), variables[i]);
+				}
+			}
 		});
+
+		// A reused assignment still points at the previous parse of its configs; if a refresh made
+		// the experiment prototype-keyed, its cached variables must not resolve inherited members.
+		for (const experimentName of Object.keys(assignments)) {
+			const assignment = assignments[experimentName];
+			const variables = assignment.variables;
+			// Own lookup: an experiment named like an Object.prototype member must not resolve one.
+			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
+				? index[experimentName]
+				: undefined;
+			if (
+				variables !== undefined &&
+				Object.getPrototypeOf(variables) !== null &&
+				experiment !== undefined &&
+				Object.getPrototypeOf(experiment.variables[0] ?? {}) === null
+			) {
+				assignment.variables = Object.assign(Object.create(null), variables);
+			}
+		}
+
+		// A reused assignment follows its arm across refreshes: no variables while a refresh has removed
+		// the arm, and the arm's current variables again once a later refresh restores it.
+		for (const experimentName of Object.keys(assignments)) {
+			const assignment = assignments[experimentName];
+			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
+				? index[experimentName]
+				: undefined;
+			if (experiment === undefined) continue;
+			if (assignment.variant >= experiment.data.variants.length) {
+				assignment.variables = undefined;
+			} else if (assignment.variables === undefined && assignment.id === experiment.data.id) {
+				assignment.variables = experiment.variables[assignment.variant];
+			}
+		}
 
 		this._index = index;
 		this._indexVariables = indexVariables;

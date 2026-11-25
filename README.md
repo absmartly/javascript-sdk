@@ -221,6 +221,21 @@ const defaultButtonColor = "red";
 const buttonColor = context.variableValue("button.color", defaultButtonColor);
 ```
 
+#### Shared variable keys
+
+When several experiments define the same variable key, the SDK checks them in
+ascending experiment id and uses the first one the user is in (assigned,
+overridden or assigned by a rule). Its variant's value is returned, or your
+default if that variant does not define the key; later experiments are never
+used instead. If the user is in none of them but one is held out by a holdout,
+the first held-out experiment's control value is returned, or your default if
+its control arm does not define the key (no other experiment is checked). Only
+the winning experiment gets an exposure (plus any holdouts covering the
+experiments checked); a held-out experiment that supplies its control value
+records only its holdout's exposure. An experiment the user is not in, such as a
+strict audience mismatch, gets none; call `treatment()` to record it.
+`peekVariableValue()` never queues an exposure.
+
 ### Peek at Treatment Variants
 
 Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure. The A/B Smartly SDK provides a `peek()` method for that.
@@ -359,6 +374,16 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `"exposure"` | `treatment()` method succeeds on first exposure   | Exposure data enqueued for publishing         |
 | `"goal"`     | `track()` method succeeds                         | Goal data enqueued for publishing             |
 | `"finalize"` | `finalize()` method succeeds the first time       | undefined                                     |
+
+`"exposure"` and `"error"` events raised by one `variableValue()` call (and the
+`"exposure"` events of one `treatment()` call) are delivered after all of that
+call's exposures are queued, in the order they were raised, so a logger that
+calls `publish()` or `finalize()` sends every one of them. `"exposure"` and
+`"error"` events a logger triggers itself are delivered after the ones already
+waiting (other events, such as a `"goal"` from `track()`, are delivered
+immediately); a logger that keeps triggering new events is switched to inline
+delivery after a bounded number of rounds or callbacks: each later call then
+delivers its own events together, once all of that call's exposures are queued.
 
 ### HTTP Request Timeout
 
