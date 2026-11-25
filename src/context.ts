@@ -1169,6 +1169,7 @@ export default class Context {
 					if (cutoff) {
 						if (this._deferredLogs !== undefined) this._deliverDeferredLogs();
 						if (remainder?.length) {
+							this._replayExhausted = false;
 							this._deferredLogs = remainder;
 							this._deliverDeferredLogs();
 						}
