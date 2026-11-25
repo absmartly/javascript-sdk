@@ -6772,7 +6772,7 @@ describe("Context", () => {
 					if (eventName !== "exposure" && eventName !== "error") return;
 					if (eventName === "error") errors++;
 					maxRetained = Math.max(maxRetained, ctx._deferredLogs ? ctx._deferredLogs.length : 0);
-					if (++count > 6000) return;
+					if (++count > 2500) return;
 					ctx.attribute("a", count);
 					ctx.variableValue("e1.key", "D");
 					ctx.attribute("b", count);
@@ -6883,6 +6883,84 @@ describe("Context", () => {
 					expect(result.sent).toEqual(["holdout_a", "holdout_b", "exp_win"]);
 				}
 			);
+
+			it("arms no publish timer for an error-only batch after the replay limit", () => {
+				const strict = {
+					...holdoutVarExperiment({}),
+					name: "exp_strict",
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+					variants: [
+						{ name: "A", config: JSON.stringify({ "s.key": "a" }) },
+						{ name: "B", config: JSON.stringify({ "s.key": "b" }) },
+					],
+				};
+				let errors = 0;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "error" || ++errors > 40) return;
+					ctx.attribute("n", errors);
+					ctx.variableValue("s.key", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100000, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("boom");
+					},
+				});
+				context.attribute("user", user);
+				context.variableValue("s.key", "D");
+				expect(errors).toBeGreaterThan(32);
+				expect(context.pending()).toBe(0);
+				expect(context._publishTimeout).toBeUndefined();
+			});
+
+			it.each([
+				[1023, false],
+				[1024, true],
+			])("stops queueing rounds once a replay has delivered %i callbacks: %p", (width, exhausted) => {
+				const experiments = [];
+				for (let i = 0; i < width; i++) {
+					experiments.push({
+						...holdoutVarExperiment({}),
+						id: 100 + i,
+						name: `exp_w${i}`,
+						holdoutIds: null,
+						split: [0, 1],
+						fullOnVariant: 1,
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: JSON.stringify({ [`w${i}`]: i }) },
+						],
+					});
+				}
+				let fanned = false;
+				let after;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					if (!fanned) {
+						fanned = true;
+						for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+					} else if (after === undefined && ctx._deferringLogs !== undefined) {
+						after = ctx._replayExhausted;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse(experiments, [])
+				);
+				expect(context.variableValue("w0", "D")).toBe(0);
+				expect(after).toBe(exhausted);
+				expect(context.pending()).toBe(width);
+			});
 
 			it("delivers a post-limit batch's error and exposure and arms the publish timer", () => {
 				const strict = {
@@ -7329,6 +7407,27 @@ describe("Context", () => {
 					expect(context.variableValue("k", "SENTINEL")).toBe("c");
 				}
 			);
+
+			it("does not restore a removed arm's variables once the experiment id changes", async () => {
+				const variants = [
+					{ name: "A", config: '{"k":"a"}' },
+					{ name: "B", config: '{"k":"b"}' },
+					{ name: "C", config: '{"k":"c"}' },
+				];
+				const before = { ...shared(1, [0, 0, 1], {}), variants };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+				context.override("shared_1", 2);
+				expect(context.variableValue("k", "SENTINEL")).toBe("c");
+				provider.getContextData.mockReturnValue(
+					Promise.resolve({ experiments: [{ ...before, variants: variants.slice(0, 2), split: [0, 1] }] })
+				);
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+				// A different experiment now uses the name: the cached assignment must not adopt its arm.
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [{ ...before, id: 99 }] }));
+				await context.refresh();
+				expect(context.peekVariableValue("k", "SENTINEL")).toBe("SENTINEL");
+			});
 
 			it("returns the default when a refresh removes a cached override's arm", async () => {
 				const before = {
