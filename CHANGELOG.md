@@ -100,11 +100,13 @@
   calls `finalize()` still sends the winner. Callbacks a callback raises are replayed after
   the ones already held, in queue order; once a replay has run a bounded number of
   rounds or callbacks, each later call delivers its own callbacks as soon as all of
-  its exposures are queued, so a read always returns and still sends its whole
-  batch. `treatment()` likewise queues an
+  its exposures are queued, so runaway logger feedback stays bounded in stack and
+  memory and each call still sends its whole batch. `treatment()` likewise queues an
   experiment's and its holdouts' exposures before their `exposure` callbacks run
   (an audience `error` raised by `treatment()` itself is still reported first). `peekVariableValue()`
-  exposes nothing. Keys no experiment defines return the default
+  exposes nothing. A cached assignment whose arm a refresh removes returns the caller
+  default (1.13.4 kept serving the removed arm's value) and gets the arm's
+  values back if a later refresh restores it. Keys no experiment defines return the default
   again, as in 1.13.4, including names like `toString`; a variant config that defines
   such a key (`toString`, `constructor`, `__proto__`) no longer fails the context. Affected: anyone with two or more
   running experiments sharing a variable key. `variableKeys()` keeps its
