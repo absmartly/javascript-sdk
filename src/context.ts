@@ -889,6 +889,14 @@ export default class Context {
 	// reaches the eventLogger only after the call's exposures are queued.
 	private _treatment(experimentName: string) {
 		if (this._deferringLogs) return this._treatmentInScope(experimentName);
+		if (this._replayExhausted) {
+			this._deferringLogs = true;
+			try {
+				return this._treatmentInScope(experimentName);
+			} finally {
+				this._endDeferral();
+			}
+		}
 
 		this._deferringLogs = true;
 		try {
@@ -1103,6 +1111,14 @@ export default class Context {
 	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
 		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
+		if (this._replayExhausted) {
+			this._deferringLogs = true;
+			try {
+				return this._resolveVariableValue(key, defaultValue, true);
+			} finally {
+				this._endDeferral();
+			}
+		}
 
 		this._deferringLogs = true;
 		try {

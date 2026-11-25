@@ -2393,6 +2393,124 @@ describe("Context", () => {
 			});
 		});
 
+		it("revalidates a same-outcome refresh with changed rules once, then reuses the assignment", async () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			const changed = clone(rulesContextResponse);
+			const rules = JSON.parse(changed.experiments.find((x) => x.name === "exp_test_abc").assignmentRules);
+			rules.rules.push({
+				name: "Never",
+				type: "assign",
+				conditions: { value: false },
+				environments: [],
+				variant: 0,
+			});
+			changed.experiments.find((x) => x.name === "exp_test_abc").assignmentRules = JSON.stringify(rules);
+			provider.getContextData.mockReturnValue(Promise.resolve(changed));
+			await context.refresh();
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluateParsedRules");
+			for (let i = 0; i < 3; i++) expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(context.pending()).toEqual(1);
+		});
+
+		it("revalidates once after an unrelated attribute change, then reuses the assignment", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluateParsedRules");
+			context.attribute("age", 30);
+			for (let i = 0; i < 3; i++) expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(context.pending()).toEqual(1);
+		});
+
+		// contracts numeric edge table: the variant is taken as written in the payload JSON. A later rule assigns
+		// `next`, and normal assignment gives 2, so selected, skipped and out-of-bounds outcomes all differ.
+		it.each([
+			["1.0", 0, 1],
+			["1e0", 0, 1],
+			["1.0000000000000001", 0, 1],
+			["0.0", 1, 0],
+			["-0", 1, 0],
+			["1e-400", 1, 0],
+			["1.5", 1, 1],
+			["1e-9", 0, 0],
+			["1e400", 1, 1],
+			["-1e400", 1, 1],
+			["1e999999999", 1, 1],
+			["3", 1, 2],
+			["-1", 1, 2],
+			["2147483648", 1, 2],
+			["-2147483649", 1, 2],
+			["4294967297", 1, 2],
+			["1e20", 1, 2],
+			["99999999999999999999", 1, 2],
+			[`1${"0".repeat(400)}`, 1, 1],
+		])("resolves an assign rule with variant %s (next rule %i) to %i", (variant, next, expected) => {
+			const cond = '{"and":[{"eq":[{"var":"country"},{"value":"US"}]}]}';
+			const response = buildRulesResponse({
+				audience: null,
+				assignmentRules: `{"rules":[{"name":"edge","type":"assign","conditions":${cond},"environments":[],"variant":${variant}},{"name":"next","type":"assign","conditions":${cond},"environments":[],"variant":${next}}]}`,
+			});
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			context.attribute("country", "US");
+			expect(context.peek("exp_test_abc") + 0).toBe(expected);
+			expect(context.treatment("exp_test_abc") + 0).toBe(expected);
+		});
+
+		it.each([
+			["variants[0].config", (x) => delete x.variants[0].config],
+			["variants[0].config", (x) => (x.variants[0].config = null)],
+			["variants[0].name", (x) => delete x.variants[0].name],
+			["variants[0].name", (x) => (x.variants[0].name = null)],
+			["customFieldValues[0].type", (x) => delete x.customFieldValues[0].type],
+			["customFieldValues[0].type", (x) => (x.customFieldValues[0].type = null)],
+			["customFieldValues[0].value", (x) => delete x.customFieldValues[0].value],
+			["customFieldValues[0].value", (x) => (x.customFieldValues[0].value = null)],
+			["customFieldValues[0].name", (x) => delete x.customFieldValues[0].name],
+			["customFieldValues[0].name", (x) => (x.customFieldValues[0].name = null)],
+			["customFieldValues", (x) => delete x.customFieldValues],
+			["customFieldValues", (x) => (x.customFieldValues = null)],
+			["audience", (x) => delete x.audience],
+			["audience", (x) => (x.audience = null)],
+			["audienceStrict", (x) => delete x.audienceStrict],
+			["audienceStrict", (x) => (x.audienceStrict = null)],
+			["assignmentRules", (x) => delete x.assignmentRules],
+			["assignmentRules", (x) => (x.assignmentRules = null)],
+			["applications", (x) => delete x.applications],
+			["applications", (x) => (x.applications = null)],
+			["iteration", (x) => delete x.iteration],
+			["iteration", (x) => (x.iteration = null)],
+			[
+				"(reordered keys)",
+				(x) => {
+					const entries = Object.entries(x).reverse();
+					for (const key of Object.keys(x)) delete x[key];
+					for (const [key, value] of entries) x[key] = value;
+					x.variants = x.variants.map((v) => Object.fromEntries(Object.entries(v).reverse()));
+				},
+			],
+		])(
+			"keeps the context and other experiments working when %s is absent, null or reordered",
+			async (field, edit) => {
+				const damaged = clone(rulesContextResponse);
+				edit(damaged.experiments.find((x) => x.name === "exp_test_abc"));
+				const context = new Context(sdk, contextOptions, contextParams, damaged);
+				expect(context.isReady()).toBe(true);
+				expect(context.isFailed()).toBe(false);
+				expect(context.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+				expect(() => context.treatment("exp_test_abc")).not.toThrow();
+				const refreshed = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+				expect(refreshed.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+				provider.getContextData.mockReturnValue(Promise.resolve(damaged));
+				await expect(refreshed.refresh()).resolves.toBeUndefined();
+				expect(refreshed.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+				expect(() => refreshed.treatment("exp_test_abc")).not.toThrow();
+			}
+		);
+
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
 			context.attribute("country", "GB");
@@ -7181,6 +7299,55 @@ describe("Context", () => {
 				}
 			);
 
+			it("survives a logger that recurses past the stack and stays usable", () => {
+				const depth = 6000;
+				const experiments = [];
+				for (let i = 0; i <= depth + 1; i++) {
+					experiments.push({
+						...holdoutVarExperiment({}),
+						id: 100 + i,
+						name: `exp_r${i}`,
+						holdoutIds: null,
+						split: [0, 1],
+						fullOnVariant: 1,
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: JSON.stringify({ [`r${i}`]: i }) },
+						],
+					});
+				}
+				let calls = 0;
+				let recurse = true;
+				const later = [];
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					if (!recurse) {
+						later.push(data.name);
+						return;
+					}
+					if (++calls < depth) ctx.treatment(`exp_r${calls}`);
+				});
+				const error = jest.spyOn(console, "error").mockImplementation(() => {});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse(experiments, [])
+				);
+				expect(() => context.treatment("exp_r0")).not.toThrow();
+				expect(error.mock.calls.some(([e]) => e instanceof RangeError)).toBe(true);
+				error.mockRestore();
+				expect(context._deferringLogs).toBe(false);
+				expect(context._replayExhausted).toBe(false);
+				expect(context._deferredLogs).toBeUndefined();
+				const queued = context.pending();
+				recurse = false;
+				expect(context.treatment(`exp_r${depth}`)).toBe(1);
+				expect(context.variableValue(`r${depth + 1}`, "D")).toBe(depth + 1);
+				expect(later).toEqual([`exp_r${depth}`, `exp_r${depth + 1}`]);
+				expect(context.pending()).toBe(queued + 2);
+			});
+
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
 				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
 				const context = new Context(sdk, { ...contextOptions, publishDelay: 100 }, contextParams, response);
@@ -7561,6 +7728,42 @@ describe("Context", () => {
 					expect(context.variableValue("k", "SENTINEL")).toBe("c");
 				}
 			);
+
+			it("keeps a retained unit's value and prototype keys across remove and restore refreshes", async () => {
+				const before = {
+					...shared(1, [0, 1], {}),
+					variants: [
+						{ name: "A", config: '{"k":"a1"}' },
+						{ name: "B", config: '{"k":"OLD"}' },
+					],
+				};
+				const plain = { ...shared(2, [0, 1], { other: 1 }), name: "plain" };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before, plain] });
+				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.treatment("plain")).toBe(1);
+				const removed = { ...before, variants: [before.variants[0]] };
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [removed, plain] }));
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+				const restored = {
+					...before,
+					variants: [
+						{ name: "A", config: '{"k":"a1"}' },
+						{
+							name: "B",
+							config: '{"k":"NEW","valueOf":"V","toString":"T","constructor":"C","__proto__":"P"}',
+						},
+					],
+				};
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [restored, plain] }));
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("NEW");
+				expect(context.variableValue("valueOf", "SENTINEL")).toBe("V");
+				expect(context.variableValue("toString", "SENTINEL")).toBe("T");
+				expect(context.variableValue("constructor", "SENTINEL")).toBe("C");
+				expect(context.variableValue("__proto__", "SENTINEL")).toBe("P");
+				expect(Object.getPrototypeOf(context._assignments.plain.variables)).toBe(Object.prototype);
+			});
 
 			it("does not restore a removed arm's variables once the experiment id changes", async () => {
 				const variants = [
