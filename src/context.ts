@@ -1157,15 +1157,21 @@ export default class Context {
 				for (let i = 0; i < deferred.length; i++) {
 					// Counted as delivered, so callbacks already waiting keep queue order up to the limit.
 					const cutoff = ++delivered >= DEFERRED_REPLAY_CALLBACKS;
+					let remainder: [EventName, Record<string, unknown> | Error][] | undefined;
 					if (cutoff) {
 						this._deferringLogs = false;
 						this._replayExhausted = true;
-						this._deferredLogs = deferred.slice(i + 1);
+						remainder = deferred.slice(i + 1);
+						this._deferredLogs = undefined;
 					}
 					if (deferred[i][0] === "exposure") exposed = true;
 					this._logEvent(deferred[i][0], deferred[i][1]);
 					if (cutoff) {
-						if (this._deferredLogs?.length) this._deliverDeferredLogs();
+						if (this._deferredLogs !== undefined) this._deliverDeferredLogs();
+						if (remainder?.length) {
+							this._deferredLogs = remainder;
+							this._deliverDeferredLogs();
+						}
 						break;
 					}
 				}
