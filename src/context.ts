@@ -1167,12 +1167,9 @@ export default class Context {
 					if (deferred[i][0] === "exposure") exposed = true;
 					this._logEvent(deferred[i][0], deferred[i][1]);
 					if (cutoff) {
-						if (this._deferredLogs !== undefined) this._deliverDeferredLogs();
-						if (remainder?.length) {
-							this._replayExhausted = false;
-							this._deferredLogs = remainder;
-							this._deliverDeferredLogs();
-						}
+						const generated: [EventName, Record<string, unknown> | Error][] = this._deferredLogs ?? [];
+						this._deferredLogs = generated.concat(remainder ?? []);
+						this._deliverDeferredLogs();
 						break;
 					}
 				}
