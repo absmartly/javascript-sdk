@@ -95,22 +95,25 @@
   (`null`, `false`, `0` and `""` included), or the caller default if that variant
   lacks the key. With no winner, a held-out candidate supplies its control value,
   otherwise the caller default. Only the winner is exposed; each checked
-  candidate's applicable holdouts still fire, as in Java. All exposures of one read
-  are queued before its `exposure` and `error` callbacks run, so a callback that
-  calls `finalize()` still sends the winner. Callbacks a callback raises are replayed after
-  the ones already held, in queue order; once a replay has run a bounded number of
-  rounds or callbacks, each later call delivers its own callbacks as soon as all of
-  its exposures are queued, so runaway logger feedback stays bounded in stack and
-  memory and each call still sends its whole batch. `treatment()` likewise queues an
-  experiment's and its holdouts' exposures before their `exposure` callbacks run
-  (an audience `error` raised by `treatment()` itself is still reported first). `peekVariableValue()`
-  exposes nothing. A cached assignment whose arm a refresh removes returns the caller
-  default (1.13.4 kept serving the removed arm's value) and gets the arm's
-  values back if a later refresh restores it. Keys no experiment defines return the default
-  again, as in 1.13.4, including names like `toString`; a variant config that defines
-  such a key (`toString`, `constructor`, `__proto__`) no longer fails the context. Affected: anyone with two or more
-  running experiments sharing a variable key. `variableKeys()` keeps its
-  map-of-lists return shape.
+  candidate's applicable holdouts still fire, as in Java. All exposures of one
+  `variableValue()` or `treatment()` call are queued before that call's `exposure`
+  and `error` callbacks run (including an audience `error` raised while
+  `treatment()` assigns), so a callback that calls `finalize()` still sends them.
+  Callbacks a callback raises are replayed after the ones already held, in queue
+  order; once a replay has run a bounded number of rounds or callbacks, each later
+  call delivers its own callbacks as soon as all of its exposures are queued, so
+  runaway logger feedback stays bounded in memory and each call still sends its
+  whole batch. A logger that keeps calling `treatment()` or `variableValue()`
+  without end still overflows the stack, as in 1.13.4; the SDK now catches the
+  overflow in the logger instead of throwing it out of the call, and the context
+  stays usable. `peekVariableValue()` exposes nothing. A cached assignment whose
+  arm a refresh removes returns the caller default (1.13.4 kept serving the
+  removed arm's value) and gets the arm's values back if a later refresh restores
+  it. Keys no experiment defines return the default again, as in 1.13.4, including
+  names like `toString`; a variant config that defines such a key (`toString`,
+  `constructor`, `__proto__`) no longer fails the context. Affected: anyone with
+  two or more running experiments sharing a variable key. `variableKeys()` keeps
+  its map-of-lists return shape.
 - Failed publishes retain queued events in order; failed finalize stays open and
   can be retried. Concurrent flush/finalize waits for in-flight delivery.
 - Custom publisher failures and throwing event loggers no longer strand lifecycle
