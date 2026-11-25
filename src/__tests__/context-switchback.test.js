@@ -821,6 +821,22 @@ describe("switchback serving through Context", () => {
 		seen.push(context.peekVariableValue("k", "DEF"), context.variableValue("k", "DEF"));
 		expect(seen).toEqual(["v2", "DEF", "DEF", "v2", "v2"]);
 	});
+	// A non-override period-less full-on assignment must follow the removed/restored-arm contract.
+	it("follows a period-less fullOn arm across refreshes", async () => {
+		clock = ANCHOR - 1000;
+		const before = switchback(1, "exp_sb", 3, HOUR);
+		before.variants = before.variants.map((v, i) => ({ ...v, config: JSON.stringify({ k: `v${i}` }) }));
+		before.fullOnVariant = 2;
+		const context = createContext(dataOf(before));
+		expect(context.variableValue("k", "DEF")).toBe("v2");
+		const removed = { ...before, variants: before.variants.slice(0, 2), fullOnVariant: 2 };
+		await refreshTo(context, removed);
+		expect(context.peekVariableValue("k", "DEF")).toBe("DEF");
+		expect(context.variableValue("k", "DEF")).toBe("DEF");
+		await refreshTo(context, before);
+		expect(context.peekVariableValue("k", "DEF")).toBe("v2");
+		expect(context.variableValue("k", "DEF")).toBe("v2");
+	});
 
 	it.each(["custom", "draw"])(
 		"follows a %s period slot's arm that a refresh removes and a later refresh restores",
