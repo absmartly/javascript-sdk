@@ -229,12 +229,12 @@ overridden or assigned by a rule). Its variant's value is returned, or your
 default if that variant does not define the key; later experiments are never
 used instead. If the user is in none of them but one is held out by a holdout,
 the first held-out experiment's control value is returned, or your default if
-its control arm does not define the key (no other experiment is checked). Only the winning experiment gets an
-exposure (plus any holdouts covering the experiments checked); a held-out
-experiment that supplies its control value records only its holdout's exposure.
-An experiment the user is not in, such as a strict audience mismatch, gets none;
-call `treatment()` to record it. `peekVariableValue()` never queues an
-exposure.
+its control arm does not define the key (no other experiment is checked). Only
+the winning experiment gets an exposure (plus any holdouts covering the
+experiments checked); a held-out experiment that supplies its control value
+records only its holdout's exposure. An experiment the user is not in, such as a
+strict audience mismatch, gets none; call `treatment()` to record it.
+`peekVariableValue()` never queues an exposure.
 
 ### Peek at Treatment Variants
 
@@ -382,8 +382,8 @@ calls `publish()` or `finalize()` sends every one of them. `"exposure"` and
 `"error"` events a logger triggers itself are delivered after the ones already
 waiting (other events, such as a `"goal"` from `track()`, are delivered
 immediately); a logger that keeps triggering new events is switched to inline
-delivery after a bounded number of rounds, so its later events arrive as they
-are raised.
+delivery after a bounded number of rounds or callbacks: each later call then
+delivers its own events together, once all of that call's exposures are queued.
 
 ### HTTP Request Timeout
 
