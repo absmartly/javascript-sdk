@@ -2103,14 +2103,18 @@ export default class Context {
 			}
 		}
 
-		// A reused assignment whose arm a refresh removed has no variables any more.
+		// A reused assignment follows its arm across refreshes: no variables while a refresh has removed
+		// the arm, and the arm's current variables again once a later refresh restores it.
 		for (const experimentName of Object.keys(assignments)) {
 			const assignment = assignments[experimentName];
 			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
 				? index[experimentName]
 				: undefined;
-			if (experiment !== undefined && assignment.variant >= experiment.data.variants.length) {
+			if (experiment === undefined) continue;
+			if (assignment.variant >= experiment.data.variants.length) {
 				assignment.variables = undefined;
+			} else if (assignment.variables === undefined && assignment.id === experiment.data.id) {
+				assignment.variables = experiment.variables[assignment.variant];
 			}
 		}
 
