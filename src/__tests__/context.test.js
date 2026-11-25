@@ -6953,6 +6953,7 @@ describe("Context", () => {
 				const names = [];
 				let depth = 0;
 				let nestedAt;
+				let exhaustedAt;
 				let fanned = false;
 				let nested = false;
 				const eventLogger = jest.fn((ctx, eventName, data) => {
@@ -6966,6 +6967,7 @@ describe("Context", () => {
 							for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
 						} else if (!nested && data.name === `exp_w${width - 1}`) {
 							nested = true;
+							exhaustedAt = ctx._replayExhausted;
 							ctx.variableValue(`w${width}`, "D");
 						}
 					} finally {
@@ -6983,6 +6985,7 @@ describe("Context", () => {
 				expect(names.slice(0, width)).toEqual(Array.from({ length: width }, (_, i) => `exp_w${i}`));
 				expect(names[width]).toBe(`exp_w${width}`);
 				expect(nestedAt).toBe(nestedDepth);
+				expect(exhaustedAt).toBe(width === 1024);
 				expect(context.pending()).toBe(width + 1);
 			});
 
