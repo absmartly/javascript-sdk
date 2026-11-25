@@ -800,14 +800,54 @@ describe("switchback serving through Context", () => {
 		}
 	});
 
+	const threeArms = (over = {}) => {
+		const experiment = switchback(1, "exp_sb", 3, HOUR);
+		experiment.variants = experiment.variants.map((v, i) => ({ ...v, config: JSON.stringify({ k: `v${i}` }) }));
+		return { ...experiment, ...over };
+	};
+	const twoArms = (over = {}) => {
+		const experiment = threeArms(over);
+		return { ...experiment, variants: experiment.variants.slice(0, 2), split: [0.5, 0.5] };
+	};
+
+	it("follows a period-less slot's arm that a refresh removes and a later refresh restores", async () => {
+		clock = ANCHOR - 1000;
+		const context = createContext(dataOf(threeArms()));
+		context.override("exp_sb", 2);
+		const seen = [context.variableValue("k", "DEF")];
+		await refreshTo(context, twoArms());
+		seen.push(context.peekVariableValue("k", "DEF"), context.variableValue("k", "DEF"));
+		await refreshTo(context, threeArms());
+		seen.push(context.peekVariableValue("k", "DEF"), context.variableValue("k", "DEF"));
+		expect(seen).toEqual(["v2", "DEF", "DEF", "v2", "v2"]);
+	});
+
+	it.each(["custom", "draw"])(
+		"follows a %s period slot's arm that a refresh removes and a later refresh restores",
+		async (kind) => {
+			clock = ANCHOR + HOUR + 3;
+			const seeds = kind === "draw" ? { seedHi: -5, seedLo: -7 } : {};
+			const context = createContext(dataOf(threeArms(seeds)));
+			if (kind === "custom") context.customAssignment("exp_sb", 2);
+			const arm = context.treatment("exp_sb");
+			expect(arm).toEqual(2);
+			const seen = [context.variableValue("k", "DEF")];
+			await refreshTo(context, twoArms(seeds));
+			seen.push(context.peekVariableValue("k", "DEF"), context.variableValue("k", "DEF"));
+			await refreshTo(context, threeArms(seeds));
+			seen.push(context.peekVariableValue("k", "DEF"), context.variableValue("k", "DEF"));
+			expect(seen).toEqual(["v2", "DEF", "DEF", "v2", "v2"]);
+		}
+	);
+
 	it("follows a cached period slot's arm that a refresh removes and a later refresh restores", async () => {
 		const experiment = switchback(1, "exp_sb", 3, HOUR);
 		clock = ANCHOR + HOUR + 3;
 		const context = createContext(dataOf(experiment));
 		context.override("exp_sb", 2);
 		expect(context.variableValue("sb.arm", -1)).toEqual(2);
-		const twoArms = switchback(1, "exp_sb", 2, HOUR);
-		await refreshTo(context, twoArms);
+		const twoArmExperiment = switchback(1, "exp_sb", 2, HOUR);
+		await refreshTo(context, twoArmExperiment);
 		expect(context.peekVariableValue("sb.arm", -1)).toEqual(-1);
 		expect(context.variableValue("sb.arm", -1)).toEqual(-1);
 		await refreshTo(context, experiment);
