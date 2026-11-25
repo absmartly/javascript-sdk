@@ -6363,6 +6363,27 @@ describe("Context", () => {
 				expect(walk).toHaveBeenCalledTimes(2);
 			});
 
+			it("walks a warmed shared key's nonempty candidates without an array iterator", () => {
+				const response = buildHoldoutResponse([holdoutVarExperiment({}), winnerAfterHoldout({})], []);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const first = context.variableValue("button.color", "D");
+				const iterator = Array.prototype[Symbol.iterator];
+				let walks = 0;
+				try {
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = function () {
+						walks++;
+						return iterator.call(this);
+					};
+					expect(context.variableValue("button.color", "D")).toBe(first);
+					expect(context.peekVariableValue("button.color", "D")).toBe(first);
+				} finally {
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = iterator;
+				}
+				expect(walks).toBe(0);
+			});
+
 			it("returns the default for an unindexed key without assigning any experiment", () => {
 				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
 				const context = new Context(sdk, contextOptions, contextParams, response);
