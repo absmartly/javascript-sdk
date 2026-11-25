@@ -6928,12 +6928,15 @@ describe("Context", () => {
 				expect(context._publishTimeout).toBeUndefined();
 			});
 
+			// A 1024-wide round: one callback fans out to 1,023 more reads. Every callback already waiting
+			// is delivered in queue order before a read a callback makes; the read made from the last
+			// waiting callback (the 1,024th delivered) runs once the callback budget is spent.
 			it.each([
-				[1023, false],
-				[1024, true],
-			])("stops queueing rounds once a replay has delivered %i callbacks: %p", (width, exhausted) => {
+				[1023, 1],
+				[1024, 2],
+			])("keeps queue order up to the callback budget (%i callbacks)", (width, nestedDepth) => {
 				const experiments = [];
-				for (let i = 0; i < width; i++) {
+				for (let i = 0; i <= width; i++) {
 					experiments.push({
 						...holdoutVarExperiment({}),
 						id: 100 + i,
@@ -6947,15 +6950,26 @@ describe("Context", () => {
 						],
 					});
 				}
+				const names = [];
+				let depth = 0;
+				let nestedAt;
 				let fanned = false;
-				let after;
-				const eventLogger = jest.fn((ctx, eventName) => {
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
 					if (eventName !== "exposure") return;
-					if (!fanned) {
-						fanned = true;
-						for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
-					} else if (after === undefined && ctx._deferringLogs !== undefined) {
-						after = ctx._replayExhausted;
+					depth++;
+					try {
+						names.push(data.name);
+						if (data.name === `exp_w${width}`) nestedAt = depth;
+						if (!fanned) {
+							fanned = true;
+							for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+						} else if (!nested && data.name === `exp_w${width - 1}`) {
+							nested = true;
+							ctx.variableValue(`w${width}`, "D");
+						}
+					} finally {
+						depth--;
 					}
 				});
 				const context = new Context(
@@ -6965,8 +6979,11 @@ describe("Context", () => {
 					buildHoldoutResponse(experiments, [])
 				);
 				expect(context.variableValue("w0", "D")).toBe(0);
-				expect(after).toBe(exhausted);
-				expect(context.pending()).toBe(width);
+				// Every waiting callback was delivered, in the order its read was made, before the nested one.
+				expect(names.slice(0, width)).toEqual(Array.from({ length: width }, (_, i) => `exp_w${i}`));
+				expect(names[width]).toBe(`exp_w${width}`);
+				expect(nestedAt).toBe(nestedDepth);
+				expect(context.pending()).toBe(width + 1);
 			});
 
 			it("delivers a post-limit batch's error and exposure and arms the publish timer", () => {
@@ -7033,6 +7050,133 @@ describe("Context", () => {
 			it("runs feedback callbacks inline once the replay rounds are spent", () => {
 				expect(feedbackDepths(40)).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
 			});
+
+			const throwingPlan = (context) => {
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+			};
+			const planAudience = JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] });
+
+			it("sends a treatment()'s exposure when its own audience error callback finalizes", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "error" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const audienced = { ...winnerAfterHoldout({}), audience: planAudience };
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([audienced], [])
+				);
+				throwingPlan(context);
+				expect(context.treatment("exp_holdout_var_later_winner")).toBe(1);
+				await finalizing;
+				expect(context.isFinalized()).toBe(true);
+				expect(context.pending()).toBe(0);
+				const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures;
+				expect(sent.map((e) => e.name)).toEqual(["exp_holdout_var_later_winner"]);
+			});
+
+			it.each(["direct", "post-limit"])(
+				"sends a shared key's winner when a strict candidate's error callback finalizes (%s)",
+				async (mode) => {
+					publisher.publish.mockReturnValue(Promise.resolve());
+					let count = 0;
+					let finalizing;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName === "exposure" && data.name === "exp_loop") {
+							if (++count < 40) ctx.variableValue("loop.key", "D");
+							else ctx.variableValue("button.color", "APP_FALLBACK");
+							return;
+						}
+						if (eventName === "error" && finalizing === undefined) finalizing = ctx.finalize();
+					});
+					const strict = {
+						...holdoutVarExperiment({}),
+						name: "exp_strict",
+						holdoutIds: null,
+						audienceStrict: true,
+						audience: planAudience,
+					};
+					const loop = {
+						...winnerAfterHoldout({}),
+						id: 3,
+						name: "exp_loop",
+						variants: [
+							{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+							{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+						],
+					};
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse([strict, winnerAfterHoldout({}), loop], [])
+					);
+					throwingPlan(context);
+					if (mode === "direct") {
+						expect(context.variableValue("button.color", "APP_FALLBACK")).toBe("WINNER_AFTER_HOLDOUT");
+					} else {
+						context.customAssignment("exp_loop", 0);
+						expect(context.variableValue("loop.key", "D")).toBe("B");
+					}
+					await finalizing;
+					expect(context.isFinalized()).toBe(true);
+					expect(context.pending()).toBe(0);
+					const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures;
+					expect(sent.map((e) => e.name)).toContain("exp_holdout_var_later_winner");
+				}
+			);
+
+			it.each(["replay", "post-limit"])(
+				"does not rearm the publish timer after a callback finalizes (%s)",
+				async (mode) => {
+					publisher.publish.mockReturnValue(Promise.resolve());
+					let count = 0;
+					let finalizing;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName !== "exposure") return;
+						if (data.name === "exp_loop") {
+							if (++count < 40) ctx.variableValue("loop.key", "D");
+							else ctx.variableValue("button.color", "APP_FALLBACK");
+							return;
+						}
+						if (finalizing === undefined) finalizing = ctx.finalize();
+					});
+					const loop = {
+						...winnerAfterHoldout({}),
+						id: 3,
+						name: "exp_loop",
+						variants: [
+							{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+							{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+						],
+					};
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, publishDelay: 100000, eventLogger },
+						contextParams,
+						buildHoldoutResponse([winnerAfterHoldout({}), loop], [])
+					);
+					if (mode === "replay") {
+						expect(context.variableValue("button.color", "APP_FALLBACK")).toBe("WINNER_AFTER_HOLDOUT");
+					} else {
+						context.customAssignment("exp_loop", 0);
+						expect(context.variableValue("loop.key", "D")).toBe("B");
+					}
+					await finalizing;
+					expect(context.isFinalized()).toBe(true);
+					expect(context.pending()).toBe(0);
+					expect(context._publishTimeout).toBeUndefined();
+				}
+			);
 
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
 				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);

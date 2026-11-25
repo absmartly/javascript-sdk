@@ -885,24 +885,26 @@ export default class Context {
 		return this._assign(experimentName);
 	}
 
+	// The whole call is one deferral scope, so an error logged while assigning (a throwing audience)
+	// reaches the eventLogger only after the call's exposures are queued.
 	private _treatment(experimentName: string) {
+		if (this._deferringLogs) return this._treatmentInScope(experimentName);
+
+		this._deferringLogs = true;
+		try {
+			return this._treatmentInScope(experimentName);
+		} finally {
+			this._endDeferral();
+		}
+	}
+
+	private _treatmentInScope(experimentName: string) {
 		const assignment = this._assign(experimentName);
 
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
-			// eventLogger that finalizes on the first one still sends the holdout's.
-			if (this._deferringLogs) {
-				this._triggerExposures(experimentName, assignment);
-			} else {
-				this._deferringLogs = true;
-				try {
-					this._triggerExposures(experimentName, assignment);
-				} finally {
-					this._endDeferral();
-				}
-			}
+			this._triggerExposures(experimentName, assignment);
 		}
 
 		return assignment;
@@ -1132,12 +1134,16 @@ export default class Context {
 			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
 			while (deferred !== undefined) {
 				this._deferredLogs = undefined;
-				delivered += deferred.length;
-				if (++rounds >= DEFERRED_REPLAY_ROUNDS || delivered >= DEFERRED_REPLAY_CALLBACKS) {
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS) {
 					this._deferringLogs = false;
 					this._replayExhausted = true;
 				}
 				for (let i = 0; i < deferred.length; i++) {
+					// Counted as delivered, so callbacks already waiting keep queue order up to the limit.
+					if (++delivered >= DEFERRED_REPLAY_CALLBACKS) {
+						this._deferringLogs = false;
+						this._replayExhausted = true;
+					}
 					if (deferred[i][0] === "exposure") exposed = true;
 					this._logEvent(deferred[i][0], deferred[i][1]);
 				}
@@ -1146,8 +1152,9 @@ export default class Context {
 		} finally {
 			this._deferringLogs = false;
 			this._replayExhausted = false;
-			// Only exposures need publishing; an error alone must not arm the timer.
-			if (exposed) this._setTimeout();
+			// Only exposures need publishing, and only while some remain: a callback may have published
+			// or finalized already, and an error alone must not arm the timer.
+			if (exposed && this._pending > 0) this._setTimeout();
 		}
 	}
 
@@ -1162,7 +1169,7 @@ export default class Context {
 				this._logEvent(deferred[i][0], deferred[i][1]);
 			}
 		} finally {
-			if (exposed) this._setTimeout();
+			if (exposed && this._pending > 0) this._setTimeout();
 		}
 	}
 
