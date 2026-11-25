@@ -2103,18 +2103,30 @@ export default class Context {
 			}
 		}
 
-		// A reused assignment follows its arm across refreshes: no variables while a refresh has removed
-		// the arm, and the arm's current variables again once a later refresh restores it.
-		for (const experimentName of Object.keys(assignments)) {
-			const assignment = assignments[experimentName];
-			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
-				? index[experimentName]
-				: undefined;
-			if (experiment === undefined) continue;
+		// A reused assignment (or switchback slot) follows its arm across refreshes: no variables while
+		// a refresh has removed the arm, and the arm's current variables again once a later refresh
+		// restores it.
+		const followArm = (experiment: Experiment, assignment: Assignment | undefined) => {
+			if (assignment === undefined) return;
 			if (assignment.variant >= experiment.data.variants.length) {
 				assignment.variables = undefined;
 			} else if (assignment.variables === undefined && assignment.id === experiment.data.id) {
 				assignment.variables = experiment.variables[assignment.variant];
+			}
+		};
+		const indexed = (experimentName: string) =>
+			Object.prototype.hasOwnProperty.call(index, experimentName) ? index[experimentName] : undefined;
+		for (const experimentName of Object.keys(assignments)) {
+			const experiment = indexed(experimentName);
+			if (experiment !== undefined) followArm(experiment, assignments[experimentName]);
+		}
+		if (epochs !== undefined) {
+			for (const experimentName of Object.keys(epochs)) {
+				const experiment = indexed(experimentName);
+				if (experiment === undefined) continue;
+				const epoch = epochs[experimentName];
+				followArm(experiment, epoch.periodless);
+				for (const period of epoch.periods) followArm(experiment, epoch.slots[period]);
 			}
 		}
 

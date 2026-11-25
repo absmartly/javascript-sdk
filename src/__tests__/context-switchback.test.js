@@ -800,6 +800,21 @@ describe("switchback serving through Context", () => {
 		}
 	});
 
+	it("follows a cached period slot's arm that a refresh removes and a later refresh restores", async () => {
+		const experiment = switchback(1, "exp_sb", 3, HOUR);
+		clock = ANCHOR + HOUR + 3;
+		const context = createContext(dataOf(experiment));
+		context.override("exp_sb", 2);
+		expect(context.variableValue("sb.arm", -1)).toEqual(2);
+		const twoArms = switchback(1, "exp_sb", 2, HOUR);
+		await refreshTo(context, twoArms);
+		expect(context.peekVariableValue("sb.arm", -1)).toEqual(-1);
+		expect(context.variableValue("sb.arm", -1)).toEqual(-1);
+		await refreshTo(context, experiment);
+		expect(context.peekVariableValue("sb.arm", -1)).toEqual(2);
+		expect(context.variableValue("sb.arm", -1)).toEqual(2);
+	});
+
 	it("does not resolve inherited members from a cached period-less slot after a refresh", async () => {
 		const experiment = sb(2, HOUR);
 		experiment.variants = [
