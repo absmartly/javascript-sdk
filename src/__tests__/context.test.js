@@ -7456,7 +7456,7 @@ describe("Context", () => {
 				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
 			});
 
-			it("keeps a retained unit's value and ordinary snapshot across a refresh", async () => {
+			it("keeps a retained unit's value and prototype keys across remove and restore refreshes", async () => {
 				const before = {
 					...shared(1, [0, 1], {}),
 					variants: [
@@ -7468,18 +7468,27 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before, plain] });
 				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
 				expect(context.treatment("plain")).toBe(1);
-				const after = {
+				const removed = { ...before, variants: [before.variants[0]] };
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [removed, plain] }));
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+				const restored = {
 					...before,
 					variants: [
-						{ name: "A", config: '{"k":"a1","valueOf":"V"}' },
-						{ name: "B", config: '{"k":"NEW"}' },
+						{ name: "A", config: '{"k":"a1"}' },
+						{
+							name: "B",
+							config: '{"k":"NEW","valueOf":"V","toString":"T","constructor":"C","__proto__":"P"}',
+						},
 					],
 				};
-				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after, plain] }));
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [restored, plain] }));
 				await context.refresh();
-				expect(context.peekVariableValue("k", "SENTINEL")).toBe("OLD");
-				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
-				expect(context.variableValue("valueOf", "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue("k", "SENTINEL")).toBe("NEW");
+				expect(context.variableValue("valueOf", "SENTINEL")).toBe("V");
+				expect(context.variableValue("toString", "SENTINEL")).toBe("T");
+				expect(context.variableValue("constructor", "SENTINEL")).toBe("C");
+				expect(context.variableValue("__proto__", "SENTINEL")).toBe("P");
 				expect(Object.getPrototypeOf(context._assignments.plain.variables)).toBe(Object.prototype);
 			});
 
