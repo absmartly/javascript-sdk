@@ -918,37 +918,35 @@ export default class Context {
 						assignment.variant = 0;
 					} else if (experiment.data.fullOnVariant === 0) {
 						if (unitType !== null) {
-							if (hasOwn(this._units, unitType)) {
-								const unit = this._unitHash(unitType);
-								if (unit !== null) {
-									const assigner =
-										unitType in this._assigners
-											? this._assigners[unitType]
-											: (this._assigners[unitType] = new VariantAssigner(unit));
-									const eligible =
-										assigner.assign(
-											experiment.data.trafficSplit,
-											experiment.data.trafficSeedHi,
-											experiment.data.trafficSeedLo
-										) === 1;
+							const unit = this._unitHash(unitType);
+							if (unit !== null) {
+								const assigner =
+									unitType in this._assigners
+										? this._assigners[unitType]
+										: (this._assigners[unitType] = new VariantAssigner(unit));
+								const eligible =
+									assigner.assign(
+										experiment.data.trafficSplit,
+										experiment.data.trafficSeedHi,
+										experiment.data.trafficSeedLo
+									) === 1;
 
-									assignment.assigned = true;
-									assignment.eligible = eligible;
+								assignment.assigned = true;
+								assignment.eligible = eligible;
 
-									if (eligible) {
-										if (hasCustom) {
-											assignment.variant = this._cassignments[experimentName];
-											assignment.custom = true;
-										} else {
-											assignment.variant = assigner.assign(
-												experiment.data.split,
-												experiment.data.seedHi,
-												experiment.data.seedLo
-											);
-										}
+								if (eligible) {
+									if (hasCustom) {
+										assignment.variant = this._cassignments[experimentName];
+										assignment.custom = true;
 									} else {
-										assignment.variant = 0;
+										assignment.variant = assigner.assign(
+											experiment.data.split,
+											experiment.data.seedHi,
+											experiment.data.seedLo
+										);
 									}
+								} else {
+									assignment.variant = 0;
 								}
 							}
 						}
@@ -1261,15 +1259,6 @@ export default class Context {
 	// reaches the eventLogger only after the call's exposures are queued.
 	private _treatment(experimentName: string) {
 		if (this._deferringLogs) return this._treatmentInScope(experimentName);
-		if (this._replayExhausted) {
-			this._deferringLogs = true;
-			try {
-				return this._treatmentInScope(experimentName);
-			} finally {
-				this._endDeferral();
-			}
-		}
-
 		this._deferringLogs = true;
 		try {
 			return this._treatmentInScope(experimentName);
@@ -1503,15 +1492,6 @@ export default class Context {
 	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
 		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
-		if (this._replayExhausted) {
-			this._deferringLogs = true;
-			try {
-				return this._resolveVariableValue(key, defaultValue, true);
-			} finally {
-				this._endDeferral();
-			}
-		}
-
 		this._deferringLogs = true;
 		try {
 			return this._resolveVariableValue(key, defaultValue, true);

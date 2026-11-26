@@ -7107,6 +7107,55 @@ describe("Context", () => {
 				expect(context.pending()).toBe(width + 1);
 			});
 
+			// 2,000 callbacks wait in one round, so the 1,024-callback budget is spent mid-round. The ones
+			// still waiting at the cutoff, and the read the cutoff callback makes, are each delivered once,
+			// in queue order, without another replay round.
+			it("delivers every callback still waiting when the budget runs out mid-round", () => {
+				const width = 2000;
+				const experiments = [];
+				for (let i = 0; i <= width; i++) {
+					experiments.push({
+						...holdoutVarExperiment({}),
+						id: 100 + i,
+						name: `exp_w${i}`,
+						holdoutIds: null,
+						split: [0, 1],
+						fullOnVariant: 1,
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: JSON.stringify({ [`w${i}`]: i }) },
+						],
+					});
+				}
+				const names = [];
+				let fanned = false;
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					names.push(data.name);
+					if (!fanned) {
+						fanned = true;
+						for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+					} else if (!nested && data.name === "exp_w1023") {
+						nested = true;
+						ctx.variableValue(`w${width}`, "D");
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse(experiments, [])
+				);
+				expect(context.variableValue("w0", "D")).toBe(0);
+				expect(names).toHaveLength(width + 1);
+				expect(new Set(names).size).toBe(width + 1);
+				expect(names.slice(0, 1024)).toEqual(Array.from({ length: 1024 }, (_, i) => `exp_w${i}`));
+				expect(names.indexOf(`exp_w${width}`)).toBeGreaterThan(names.indexOf("exp_w1023"));
+				expect(context.pending()).toBe(width + 1);
+				expect(context._deferredLogs).toBeUndefined();
+			});
+
 			it("delivers a post-limit batch's error and exposure and arms the publish timer", () => {
 				const strict = {
 					...holdoutVarExperiment({}),
@@ -8000,6 +8049,41 @@ describe("Context", () => {
 					];
 				};
 				expect(served(member)).toEqual(served("ordinary"));
+			});
+
+			it.each(memberNames)("treats an unset unit type named %s as missing", (unitType) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{ experiments: [named("e", { unitType })] }
+				);
+				expect(context.peek("e")).toBe(0);
+				expect(context.treatment("e")).toBe(0);
+				expect(context._exposures.map((x) => [x.name, x.assigned, x.unit])).toEqual([["e", false, unitType]]);
+			});
+
+			it.each(memberNames)("keeps a cached assignment whose unset unit type is named %s", (unitType) => {
+				// Split [1, 0] always holds out; with no unit the holdout entry is null, which marks the
+				// assignment for re-resolution once that unit is set (and only then).
+				const holdout = { ...shared(9, [1, 0], {}), name: "h", holdoutType: "full", unitType };
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{
+						experiments: [named("e", { unitType, holdoutIds: [9] })],
+						holdouts: [holdout],
+					}
+				);
+				context.peek("e");
+				const cached = context._assignments.e;
+				expect(cached.holdoutAssignments).toEqual([null]);
+				context.peek("e");
+				expect(context._assignments.e).toBe(cached);
+				context.unit(unitType, "u1");
+				context.peek("e");
+				expect(context._assignments.e).not.toBe(cached);
 			});
 
 			it("keeps getUnits() an ordinary object, as in 1.13.4", () => {
