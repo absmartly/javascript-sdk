@@ -109,6 +109,12 @@
 
 ### Fixed
 
+- Experiments, overrides, custom assignments and unit types named like
+  `Object.prototype` members (`constructor`, `toString`, `__proto__`, ...) behave
+  like any other name. 1.13.4 returned `{}` as the variant, lost custom
+  assignments, threw for unknown experiments and for unit types such as
+  `toString`, and re-exposed an experiment named `__proto__` on every
+  `treatment()`. `getUnits()` still returns the same plain object.
 - Shared variable keys now pick and expose one experiment, as the Java SDK does.
   Previously `variableValue()` exposed every experiment it checked that had the
   key, including ones the unit was not in (for example a strict audience

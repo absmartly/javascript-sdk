@@ -1531,17 +1531,21 @@ export default class Context {
 					const cutoff = ++delivered >= DEFERRED_REPLAY_CALLBACKS;
 					let remainder: [EventName, Record<string, unknown> | Error][] | undefined;
 					if (cutoff) {
+						// Deferral ends with this callback, so a read it makes is delivered inline before it
+						// returns, as in 1.13.4. The rest of the batch follows: this round's waiting callbacks,
+						// then those its earlier callbacks queued for the next round.
 						this._deferringLogs = false;
 						this._replayExhausted = true;
-						remainder = deferred.slice(i + 1);
+						remainder = deferred.slice(i + 1).concat(this._deferredLogs ?? []);
 						this._deferredLogs = undefined;
 					}
 					if (deferred[i][0] === "exposure") exposed = true;
 					this._logEvent(deferred[i][0], deferred[i][1]);
-					if (cutoff) {
-						const generated: [EventName, Record<string, unknown> | Error][] = this._deferredLogs ?? [];
-						this._deferredLogs = generated.concat(remainder ?? []);
-						this._deliverDeferredLogs();
+					if (remainder !== undefined) {
+						if (remainder.length > 0) {
+							this._deferredLogs = remainder;
+							this._deliverDeferredLogs();
+						}
 						break;
 					}
 				}

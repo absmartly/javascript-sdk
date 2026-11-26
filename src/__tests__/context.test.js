@@ -7110,51 +7110,66 @@ describe("Context", () => {
 			// 2,000 callbacks wait in one round, so the 1,024-callback budget is spent mid-round. The ones
 			// still waiting at the cutoff, and the read the cutoff callback makes, are each delivered once,
 			// in queue order, without another replay round.
-			it("delivers every callback still waiting when the budget runs out mid-round", () => {
-				const width = 2000;
-				const experiments = [];
-				for (let i = 0; i <= width; i++) {
-					experiments.push({
-						...holdoutVarExperiment({}),
-						id: 100 + i,
-						name: `exp_w${i}`,
-						holdoutIds: null,
-						split: [0, 1],
-						fullOnVariant: 1,
-						variants: [
-							{ name: "A", config: null },
-							{ name: "B", config: JSON.stringify({ [`w${i}`]: i }) },
-						],
-					});
-				}
-				const names = [];
-				let fanned = false;
-				let nested = false;
-				const eventLogger = jest.fn((ctx, eventName, data) => {
-					if (eventName !== "exposure") return;
-					names.push(data.name);
-					if (!fanned) {
-						fanned = true;
-						for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
-					} else if (!nested && data.name === "exp_w1023") {
-						nested = true;
-						ctx.variableValue(`w${width}`, "D");
+			// 2,000 callbacks wait in one round, so the 1,024-callback budget is spent mid-round. A read made
+			// from a callback before the cutoff, from the cutoff callback itself, or after it is delivered once
+			// with everything else: the cutoff callback's own callbacks first, then the round's remaining ones,
+			// then those earlier callbacks queued for the next round. After the cutoff, delivery is inline as in
+			// 1.13.4, so a read made from a later callback runs right after it.
+			it.each([
+				["exp_w5", 2000],
+				["exp_w1022", 2000],
+				["exp_w1023", 1024],
+				["exp_w1500", 1501],
+			])(
+				"delivers every callback when the budget runs out mid-round (extra read from %s)",
+				(trigger, position) => {
+					const width = 2000;
+					const experiments = [];
+					for (let i = 0; i <= width; i++) {
+						experiments.push({
+							...holdoutVarExperiment({}),
+							id: 100 + i,
+							name: `exp_w${i}`,
+							holdoutIds: null,
+							split: [0, 1],
+							fullOnVariant: 1,
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: JSON.stringify({ [`w${i}`]: i }) },
+							],
+						});
 					}
-				});
-				const context = new Context(
-					sdk,
-					{ ...contextOptions, eventLogger },
-					contextParams,
-					buildHoldoutResponse(experiments, [])
-				);
-				expect(context.variableValue("w0", "D")).toBe(0);
-				expect(names).toHaveLength(width + 1);
-				expect(new Set(names).size).toBe(width + 1);
-				expect(names.slice(0, 1024)).toEqual(Array.from({ length: 1024 }, (_, i) => `exp_w${i}`));
-				expect(names.indexOf(`exp_w${width}`)).toBeGreaterThan(names.indexOf("exp_w1023"));
-				expect(context.pending()).toBe(width + 1);
-				expect(context._deferredLogs).toBeUndefined();
-			});
+					const names = [];
+					let fanned = false;
+					let nested = false;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName !== "exposure") return;
+						names.push(data.name);
+						if (!fanned) {
+							fanned = true;
+							for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+						} else if (!nested && data.name === trigger) {
+							nested = true;
+							ctx.variableValue(`w${width}`, "D");
+						}
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse(experiments, [])
+					);
+					expect(context.variableValue("w0", "D")).toBe(0);
+					expect(names).toHaveLength(width + 1);
+					expect(new Set(names).size).toBe(width + 1);
+					expect(names.indexOf(`exp_w${width}`)).toBe(position);
+					expect(names.filter((n) => n !== `exp_w${width}`)).toEqual(
+						Array.from({ length: width }, (_, i) => `exp_w${i}`)
+					);
+					expect(context.pending()).toBe(width + 1);
+					expect(context._deferredLogs).toBeUndefined();
+				}
+			);
 
 			it("delivers a post-limit batch's error and exposure and arms the publish timer", () => {
 				const strict = {
