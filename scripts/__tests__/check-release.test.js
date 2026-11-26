@@ -125,7 +125,9 @@ describe("publish workflow", () => {
 		() => {
 			const npmVersion = pinnedNpm;
 			const effectiveDryRun = (run) => {
-				const line = run.split("\n").filter((l) => /\bnpm\s+publish\b/.test(l))[0];
+				const lines = run.split("\n").filter((l) => /\bnpm\s+publish\b/.test(l));
+				expect(lines).toHaveLength(1);
+				const line = lines[0];
 				const args = line
 					.trim()
 					.split(/\s+/)
