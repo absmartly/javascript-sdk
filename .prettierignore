@@ -6,3 +6,5 @@ js
 lib
 types
 package-lock.json
+# Vendored byte-for-byte from absmartly/abs; never reformat.
+src/__tests__/fixtures/switchback

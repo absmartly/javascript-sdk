@@ -6025,24 +6025,23 @@ describe("Context", () => {
 				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 			});
 
-			// A throwing eventLogger for one candidate's exposure is isolated by _logEvent (it never
-			// propagates), so it must not stop the loop from visiting (and firing exposures for) the
-			// remaining candidates sharing the key.
-			it("a throwing eventLogger for one candidate does not stop later candidates in the loop from being visited and exposed", () => {
-				const firstExperiment = holdoutVarExperiment({
-					id: 1,
-					name: "exp_holdout_var_throw_first",
-					holdoutIds: [11],
-				});
+			const winnerAfterHoldout = (over) => ({
+				...holdoutVarExperiment({}),
+				id: 2,
+				name: "exp_holdout_var_later_winner",
+				split: [0, 1],
+				fullOnVariant: 1,
+				holdoutIds: null,
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: JSON.stringify({ "button.color": "WINNER_AFTER_HOLDOUT" }) },
+				],
+				...over,
+			});
 
-				const secondExperiment = holdoutVarExperiment({
-					id: 2,
-					name: "exp_holdout_var_throw_second",
-					holdoutIds: [12],
-				});
-
-				const secondHoldout = alwaysHoldsOut({ id: 12, name: "holdout_var_second" });
-
+			// A throwing eventLogger for the first candidate's holdout exposure is isolated by _logEvent,
+			// so the loop still reaches the later winner and exposes it.
+			it("a throwing eventLogger for one candidate does not stop the loop from reaching and exposing the winner", () => {
 				const eventLogger = jest.fn((ctx, eventName, data) => {
 					if (eventName === "exposure" && data.name === "holdout_var") {
 						throw new Error("boom");
@@ -6050,22 +6049,1034 @@ describe("Context", () => {
 				});
 
 				const response = buildHoldoutResponse(
-					[firstExperiment, secondExperiment],
-					[alwaysHoldsOut({}), secondHoldout]
+					[holdoutVarExperiment({}), winnerAfterHoldout({})],
+					[alwaysHoldsOut({})]
 				);
 				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
 
-				expect(() => context.variableValue("button.color", "APP_FALLBACK")).not.toThrow();
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
 
 				const exposureCalls = eventLogger.mock.calls.filter((c) => c[1] === "exposure");
-				expect(exposureCalls.map((c) => c[2].name).sort()).toEqual(
-					["holdout_var", "holdout_var_second"].sort()
+				expect(exposureCalls.map((c) => c[2].name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
+				expect(context.pending()).toEqual(2);
+			});
+
+			// A logger that finalizes from a holdout's exposure callback must still send the winner:
+			// every exposure of the read is queued before any user callback runs.
+			it("sends the winner when an exposure callback finalizes the context mid-read", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure" && data.name === "holdout_var" && finalizing === undefined) {
+						finalizing = ctx.finalize();
+					}
+				});
+
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({})],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+
+				expect(context.isFinalized()).toBe(true);
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
+			});
+
+			it("queues no extra callbacks when a callback re-reads an already exposed key", () => {
+				const names = [];
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					names.push(data.name);
+					if (!nested) {
+						nested = true;
+						ctx.variableValue("button.color", "APP_FALLBACK");
+					}
+				});
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({})],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(names).toEqual(["holdout_var", "exp_holdout_var_later_winner"]);
+				expect(context.pending()).toEqual(2);
+			});
+
+			// An attribute getter is user code that can re-enter variableValue() mid-read; the nested read
+			// must not release the outer read's deferral before the outer winner is queued.
+			it("keeps deferring when an attribute getter re-enters variableValue() mid-read", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let reentered = false;
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const strictFirst = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const other = {
+					...winnerAfterHoldout({}),
+					id: 3,
+					name: "exp_other_key",
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "other.key": "OTHER" }) },
+					],
+				};
+				const response = buildHoldoutResponse([strictFirst, winnerAfterHoldout({}), other], []);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						if (!reentered) {
+							reentered = true;
+							context.variableValue("other.key", "D");
+						}
+						return "free";
+					},
+				});
+				context.attribute("user", user);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual([
+					"exp_other_key",
+					"exp_holdout_var_later_winner",
+				]);
+			});
+
+			it("creates no deferred list and arms no timer on a warmed read", () => {
+				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
+				const context = new Context(sdk, { ...contextOptions, publishDelay: 100 }, contextParams, response);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				clearTimeout(context._publishTimeout);
+				context._publishTimeout = undefined;
+				const schedule = jest.spyOn(context, "_setTimeout");
+				const lists = [];
+				let deferredLogs;
+				Object.defineProperty(context, "_deferredLogs", {
+					configurable: true,
+					get: () => deferredLogs,
+					set: (value) => {
+						if (value !== undefined) lists.push(value);
+						deferredLogs = value;
+					},
+				});
+				for (let i = 0; i < 5; i++) context.variableValue("button.color", "APP_FALLBACK");
+				expect(lists).toEqual([]);
+				expect(schedule).not.toHaveBeenCalled();
+			});
+
+			it("replays a read's exposure and error callbacks in the order they were raised", () => {
+				const events = [];
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure") events.push(`exposure:${data.name}`);
+					if (eventName === "error") events.push("error");
+				});
+				const strictSecond = {
+					...holdoutVarExperiment({}),
+					id: 2,
+					name: "exp_strict_second",
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), strictSecond, winnerAfterHoldout({ id: 3 })],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(events).toEqual(["exposure:holdout_var", "error", "exposure:exp_holdout_var_later_winner"]);
+			});
+
+			it("arms no publish timer when a read raises only an error", () => {
+				const strictOnly = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100, eventLogger: jest.fn() },
+					contextParams,
+					buildHoldoutResponse([strictOnly], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.pending()).toEqual(0);
+				expect(context._publishTimeout).toBeUndefined();
+			});
+
+			it("sends a treatment's holdout exposure when its exposure callback finalizes", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const covered = { ...winnerAfterHoldout({}), holdoutIds: [11] };
+				const neverHolds = alwaysHoldsOut({ split: [0, 1] });
+				const response = buildHoldoutResponse([covered], [neverHolds]);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				expect(context.treatment("exp_holdout_var_later_winner")).toBe(1);
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name).sort()).toEqual(
+					["exp_holdout_var_later_winner", "holdout_var"].sort()
 				);
 			});
 
-			// peekVariableValue() shares the exact same suppressedFallback capture as variableValue()
-			// (both fixed together in the same commit), but never triggers exposures, so it needs its
-			// own ordering regression test rather than relying on variableValue()'s coverage.
+			it("reports a nested treatment() exposure raised from an exposure callback", () => {
+				const names = [];
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					names.push(data.name);
+					if (!nested) {
+						nested = true;
+						ctx.treatment("exp_holdout_var_later_winner");
+					}
+				});
+				const covered = { ...winnerAfterHoldout({ id: 3, name: "exp_covered" }), holdoutIds: [11] };
+				const neverHolds = alwaysHoldsOut({ split: [0, 1] });
+				const response = buildHoldoutResponse([covered, winnerAfterHoldout({})], [neverHolds]);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				context.treatment("exp_covered");
+				expect(names).toEqual(["exp_covered", "holdout_var", "exp_holdout_var_later_winner"]);
+				expect(context._deferredLogs).toBeUndefined();
+				expect(context.pending()).toEqual(3);
+			});
+
+			it("keeps a read's deferral when an attribute getter calls treatment() mid-read", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				let reentered = false;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const strictFirst = {
+					...holdoutVarExperiment({}),
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const plain = {
+					...winnerAfterHoldout({}),
+					id: 3,
+					name: "exp_plain",
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: null },
+					],
+				};
+				const response = buildHoldoutResponse(
+					[strictFirst, winnerAfterHoldout({}), plain],
+					[alwaysHoldsOut({ split: [0, 1] })]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						if (!reentered) {
+							reentered = true;
+							context.treatment("exp_plain");
+						}
+						return "free";
+					},
+				});
+				context.attribute("user", user);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual([
+					"exp_plain",
+					"holdout_var",
+					"exp_holdout_var_later_winner",
+				]);
+			});
+
+			it("logs callbacks in queue order when a replayed callback reads another key", () => {
+				const names = [];
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					names.push(data.name);
+					if (!nested) {
+						nested = true;
+						ctx.variableValue("other.key", "D");
+					}
+				});
+				const other = {
+					...winnerAfterHoldout({}),
+					id: 3,
+					name: "exp_other_key",
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "other.key": "OTHER" }) },
+					],
+				};
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({}), other],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(names).toEqual(context._exposures.map((e) => e.name));
+				expect(names).toEqual(["holdout_var", "exp_holdout_var_later_winner", "exp_other_key"]);
+			});
+
+			it("walks each visited candidate's holdouts once per read", () => {
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), { ...winnerAfterHoldout({}), holdoutIds: [12] }],
+					[alwaysHoldsOut({}), alwaysHoldsOut({ id: 12, name: "holdout_never", split: [0, 1] })]
+				);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const walk = jest.spyOn(context, "_triggerApplicableHoldoutExposures");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(walk).toHaveBeenCalledTimes(2);
+			});
+
+			it("returns the default for an unindexed key without assigning any experiment", () => {
+				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const assign = jest.spyOn(context, "_assign");
+				expect(context.variableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.peekVariableValue("not.indexed", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(assign).not.toHaveBeenCalled();
+				expect(context._deferredLogs).toBeUndefined();
+			});
+
+			it("walks a warmed shared key's candidates without an array iterator", () => {
+				const response = buildHoldoutResponse([holdoutVarExperiment({}), winnerAfterHoldout({})], []);
+				const context = new Context(sdk, contextOptions, contextParams, response);
+				const first = context.variableValue("button.color", "D");
+				expect(first).not.toEqual("D");
+				const iterator = Array.prototype[Symbol.iterator];
+				let walks = 0;
+				let value;
+				let peeked;
+				try {
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = function () {
+						walks++;
+						return iterator.call(this);
+					};
+					value = context.variableValue("button.color", "D");
+					peeked = context.peekVariableValue("button.color", "D");
+				} finally {
+					// eslint-disable-next-line no-extend-native
+					Array.prototype[Symbol.iterator] = iterator;
+				}
+				expect([value, peeked, walks]).toEqual([first, first, 0]);
+			});
+
+			it("arms the timer for an exposure first queued from a replayed error callback", () => {
+				const strict = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const other = {
+					...winnerAfterHoldout({}),
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: '{"other.key":"OTHER"}' },
+					],
+				};
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "error") ctx.variableValue("other.key", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict, other], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "D")).toBe("D");
+				expect(context.pending()).toBe(1);
+				expect(context._publishTimeout).toBeDefined();
+				clearTimeout(context._publishTimeout);
+			});
+
+			it("does not feed error-observer errors into the replay queue forever", () => {
+				let count = 0;
+				const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+				try {
+					const eventLogger = jest.fn((ctx, eventName) => {
+						if (eventName === "exposure" || eventName === "error") {
+							if (++count < 50000) {
+								ctx.attribute("observer.seq", count);
+								ctx.variableValue("error.key", "D");
+							}
+						}
+					});
+					const experiment = winnerAfterHoldout({
+						customFieldValues: [{ name: "bad", type: "future", value: "x" }],
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse(
+							[
+								experiment,
+								{
+									...holdoutVarExperiment({}),
+									id: 4,
+									name: "error_exp",
+									holdoutIds: null,
+									audienceStrict: true,
+									audience: JSON.stringify({
+										filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }],
+									}),
+									variants: [
+										{ name: "A", config: null },
+										{ name: "B", config: '{"error.key":1}' },
+									],
+								},
+							],
+							[]
+						)
+					);
+					const user = {};
+					Object.defineProperty(user, "plan", {
+						get() {
+							throw new Error("observer getter");
+						},
+					});
+					context.attribute("user", user);
+					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+					expect(count).toBeLessThan(2000);
+					expect(context._deferredLogs).toBeUndefined();
+				} finally {
+					consoleError.mockRestore();
+				}
+			});
+
+			it("delivers every callback of finite exposure feedback", () => {
+				let count = 0;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "exposure" && ++count < 100) ctx.variableValue("button.color", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				expect(count).toBe(100);
+				expect(context.pending()).toBe(100);
+				expect(context._deferredLogs).toBeUndefined();
+				expect(context._deferringLogs).toBe(false);
+			});
+
+			it("returns from unbounded exposure feedback when the clock advances on every callback", () => {
+				let count = 0;
+				let now = timeOrigin;
+				Date.now.mockImplementation(() => now);
+				const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+				try {
+					const eventLogger = jest.fn((ctx, eventName) => {
+						if (eventName !== "exposure") return;
+						now += 2;
+						if (++count < 50000) ctx.variableValue("button.color", "D");
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse([winnerAfterHoldout({})], [])
+					);
+					context.customAssignment("exp_holdout_var_later_winner", 0);
+					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+					expect(count).toBeLessThan(2000);
+					expect(context._deferringLogs).toBe(false);
+				} finally {
+					consoleError.mockRestore();
+				}
+			});
+
+			it("reports a re-exposure whose flags differ within the same drain", () => {
+				const reported = [];
+				const strict = {
+					...winnerAfterHoldout({}),
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "plan" }, { value: "pro" }] }] }),
+				};
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					reported.push(data.audienceMismatch);
+					if (reported.length === 1) {
+						ctx.attribute("plan", "pro");
+						ctx.treatment("exp_holdout_var_later_winner");
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict], [])
+				);
+				context.treatment("exp_holdout_var_later_winner");
+				expect(reported).toEqual([true, false]);
+				expect(context.pending()).toBe(2);
+			});
+
+			it("reports an error raised inside an error callback", () => {
+				const errors = [];
+				const strict = (id, experimentName, key) => ({
+					...holdoutVarExperiment({}),
+					id,
+					name: experimentName,
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ [key]: 1 }) },
+					],
+				});
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "error") return;
+					errors.push(data.message);
+					if (errors.length === 1) {
+						ctx.attribute("seq", 1);
+						ctx.variableValue("second.key", "D");
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict(1, "e_first", "first.key"), strict(2, "e_second", "second.key")], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("first.key", "D")).toBe("D");
+				expect(errors).toHaveLength(2);
+			});
+
+			const feedbackDepths = (limit) => {
+				let depth = 0;
+				const depths = [];
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					depths.push(++depth);
+					try {
+						if (depths.length < limit) ctx.variableValue("button.color", "D");
+					} finally {
+						depth--;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				return depths;
+			};
+
+			it("keeps finite feedback within the replay rounds at depth 1", () => {
+				expect(feedbackDepths(31)).toEqual(Array(31).fill(1));
+			});
+
+			it("runs treatment() feedback inline once the replay rounds are spent", () => {
+				let depth = 0;
+				const depths = [];
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					depths.push(++depth);
+					try {
+						if (depths.length < 40) ctx.treatment("exp_holdout_var_later_winner");
+					} finally {
+						depth--;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				context.treatment("exp_holdout_var_later_winner");
+				expect(depths).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
+			});
+
+			it("defers again in a later read after a replay spent its rounds", () => {
+				let depth = 0;
+				let limit = 40;
+				const depths = [];
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					depths.push(++depth);
+					try {
+						if (depths.length < limit) ctx.variableValue("button.color", "D");
+					} finally {
+						depth--;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([winnerAfterHoldout({})], [])
+				);
+				context.customAssignment("exp_holdout_var_later_winner", 0);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				depths.length = 0;
+				limit = 10;
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				expect(depths).toEqual(Array(10).fill(1));
+			});
+
+			it("sends the winner when a later read finalizes after a replay spent its rounds", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let mode = "loop";
+				let count = 0;
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					if (mode === "loop") {
+						if (++count < 40) ctx.variableValue("loop.key", "D");
+					} else if (data.name === "holdout_var" && finalizing === undefined) {
+						finalizing = ctx.finalize();
+					}
+				});
+				const loop = {
+					...winnerAfterHoldout({}),
+					id: 3,
+					name: "exp_loop",
+					variants: [
+						{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+						{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+					],
+				};
+				const response = buildHoldoutResponse(
+					[holdoutVarExperiment({}), winnerAfterHoldout({}), loop],
+					[alwaysHoldsOut({})]
+				);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				context.customAssignment("exp_loop", 0);
+				expect(context.variableValue("loop.key", "D")).toBe("B");
+				expect(count).toBe(40);
+				mode = "finalize";
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name).filter((n) => n !== "exp_loop")).toEqual([
+					"holdout_var",
+					"exp_holdout_var_later_winner",
+				]);
+			});
+
+			it.each([30, 31, 32, 33, 40])(
+				"sends a read's whole exposure batch when its logger finalizes after %i feedback callbacks",
+				async (chain) => {
+					publisher.publish.mockReturnValue(Promise.resolve());
+					let count = 0;
+					let finalizing;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName !== "exposure") return;
+						if (data.name === "exp_loop") {
+							if (++count < chain) ctx.variableValue("loop.key", "D");
+							else if (count === chain) ctx.variableValue("button.color", "APP_FALLBACK");
+						} else if (data.name === "holdout_var" && finalizing === undefined) {
+							finalizing = ctx.finalize();
+						}
+					});
+					const loop = {
+						...winnerAfterHoldout({}),
+						id: 3,
+						name: "exp_loop",
+						variants: [
+							{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+							{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+						],
+					};
+					const response = buildHoldoutResponse(
+						[holdoutVarExperiment({}), winnerAfterHoldout({}), loop],
+						[alwaysHoldsOut({})]
+					);
+					const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+					context.customAssignment("exp_loop", 0);
+					expect(context.variableValue("loop.key", "D")).toBe("B");
+					await finalizing;
+					expect(context.isFinalized()).toBe(true);
+					expect(context.pending()).toBe(0);
+					const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures;
+					expect(sent.map((e) => e.name).filter((n) => n !== "exp_loop")).toEqual([
+						"holdout_var",
+						"exp_holdout_var_later_winner",
+					]);
+				}
+			);
+
+			it("bounds the callbacks a replay retains when each callback raises two more", () => {
+				const strict = (id, experimentName, key) => ({
+					...holdoutVarExperiment({}),
+					id,
+					name: experimentName,
+					holdoutIds: null,
+					split: [0, 1],
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ [key]: 1 }) },
+					],
+				});
+				let count = 0;
+				let errors = 0;
+				let maxRetained = 0;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure" && eventName !== "error") return;
+					if (eventName === "error") errors++;
+					maxRetained = Math.max(maxRetained, ctx._deferredLogs ? ctx._deferredLogs.length : 0);
+					if (++count > 2500) return;
+					ctx.attribute("a", count);
+					ctx.variableValue("e1.key", "D");
+					ctx.attribute("b", count);
+					ctx.variableValue("e2.key", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse(
+						[winnerAfterHoldout({}), strict(5, "e1", "e1.key"), strict(6, "e2", "e2.key")],
+						[]
+					)
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("boom");
+					},
+				});
+				context.attribute("user", user);
+				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				// Without the callback budget each round doubles the held list until round 32.
+				expect(errors).toBeGreaterThan(2048);
+				expect(maxRetained).toBeLessThanOrEqual(1024);
+				expect(context._deferredLogs).toBeUndefined();
+			});
+
+			const cutoffResponse = () =>
+				buildHoldoutResponse(
+					[
+						{
+							...holdoutVarExperiment({}),
+							name: "exp_held",
+							variants: [
+								{ name: "A", config: JSON.stringify({ "cut.key": "CONTROL" }) },
+								{ name: "B", config: JSON.stringify({ "cut.key": "T" }) },
+							],
+						},
+						{
+							...winnerAfterHoldout({}),
+							name: "exp_win",
+							holdoutIds: [12],
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: JSON.stringify({ "cut.key": "WIN" }) },
+							],
+						},
+						{
+							...winnerAfterHoldout({}),
+							id: 3,
+							name: "exp_loop",
+							variants: [
+								{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+								{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+							],
+						},
+					],
+					[
+						alwaysHoldsOut({ name: "holdout_a" }),
+						alwaysHoldsOut({ id: 12, name: "holdout_b", split: [0, 1] }),
+					]
+				);
+
+			const cutoff = async (chain, mode) => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				const callbacks = [];
+				let count = 0;
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					if (data.name === "exp_loop") {
+						if (++count < chain) ctx.variableValue("loop.key", "D");
+						else if (count === chain) {
+							if (mode === "treatment") ctx.treatment("exp_win");
+							else ctx.variableValue("cut.key", "D");
+						}
+						return;
+					}
+					callbacks.push(data.name);
+					if (finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, cutoffResponse());
+				context.customAssignment("exp_loop", 0);
+				if (mode === "treatment") context.override("exp_win", 1);
+				context.variableValue("loop.key", "D");
+				await finalizing;
+				const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures
+					.map((e) => e.name)
+					.filter((n) => n !== "exp_loop");
+				return { callbacks, sent, pending: context.pending() };
+			};
+
+			it.each([31, 32, 40])(
+				"sends a treatment()'s whole batch when its logger finalizes after %i feedback callbacks",
+				async (chain) => {
+					const result = await cutoff(chain, "treatment");
+					expect(result.sent).toEqual(["exp_win", "holdout_b"]);
+					expect(result.pending).toBe(0);
+				}
+			);
+
+			it.each([31, 32, 40])(
+				"delivers every callback of a batch after %i feedback callbacks once, in queue order",
+				async (chain) => {
+					const result = await cutoff(chain, "variableValue");
+					expect(result.callbacks).toEqual(["holdout_a", "holdout_b", "exp_win"]);
+					expect(result.sent).toEqual(["holdout_a", "holdout_b", "exp_win"]);
+				}
+			);
+
+			it("arms no publish timer for an error-only batch after the replay limit", () => {
+				const strict = {
+					...holdoutVarExperiment({}),
+					name: "exp_strict",
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+					variants: [
+						{ name: "A", config: JSON.stringify({ "s.key": "a" }) },
+						{ name: "B", config: JSON.stringify({ "s.key": "b" }) },
+					],
+				};
+				let errors = 0;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "error" || ++errors > 40) return;
+					ctx.attribute("n", errors);
+					ctx.variableValue("s.key", "D");
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100000, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("boom");
+					},
+				});
+				context.attribute("user", user);
+				context.variableValue("s.key", "D");
+				expect(errors).toBeGreaterThan(32);
+				expect(context.pending()).toBe(0);
+				expect(context._publishTimeout).toBeUndefined();
+			});
+
+			it.each([
+				[1023, false],
+				[1024, true],
+			])("stops queueing rounds once a replay has delivered %i callbacks: %p", (width, exhausted) => {
+				const experiments = [];
+				for (let i = 0; i < width; i++) {
+					experiments.push({
+						...holdoutVarExperiment({}),
+						id: 100 + i,
+						name: `exp_w${i}`,
+						holdoutIds: null,
+						split: [0, 1],
+						fullOnVariant: 1,
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: JSON.stringify({ [`w${i}`]: i }) },
+						],
+					});
+				}
+				let fanned = false;
+				let after;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName !== "exposure") return;
+					if (!fanned) {
+						fanned = true;
+						for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+					} else if (after === undefined && ctx._deferringLogs !== undefined) {
+						after = ctx._replayExhausted;
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse(experiments, [])
+				);
+				expect(context.variableValue("w0", "D")).toBe(0);
+				expect(after).toBe(exhausted);
+				expect(context.pending()).toBe(width);
+			});
+
+			it("delivers a post-limit batch's error and exposure and arms the publish timer", () => {
+				const strict = {
+					...holdoutVarExperiment({}),
+					name: "exp_strict",
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+					variants: [
+						{ name: "A", config: JSON.stringify({ "s.key": "a" }) },
+						{ name: "B", config: JSON.stringify({ "s.key": "b" }) },
+					],
+				};
+				const plain = {
+					...winnerAfterHoldout({}),
+					variants: [
+						{ name: "A", config: null },
+						{ name: "B", config: JSON.stringify({ "p.key": "P" }) },
+					],
+				};
+				const events = [];
+				let errors = 0;
+				let done = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName === "exposure") events.push(`exposure:${data.name}`);
+					if (eventName !== "error") return;
+					if (++errors < 40) {
+						ctx.attribute("n", errors);
+						ctx.variableValue("s.key", "D");
+					} else if (!done) {
+						done = true;
+						events.length = 0;
+						ctx.attribute("n", errors);
+						ctx.variableValue("s.key", "D");
+						ctx.variableValue("p.key", "D");
+					} else {
+						events.push("error");
+					}
+				});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, publishDelay: 100000, eventLogger },
+					contextParams,
+					buildHoldoutResponse([strict, plain], [])
+				);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("boom");
+					},
+				});
+				context.attribute("user", user);
+				context.variableValue("s.key", "D");
+				try {
+					expect(events).toEqual(["error", "exposure:exp_holdout_var_later_winner"]);
+					expect(context.pending()).toBe(1);
+					expect(context._publishTimeout).toBeDefined();
+				} finally {
+					clearTimeout(context._publishTimeout);
+				}
+			});
+
+			it("runs feedback callbacks inline once the replay rounds are spent", () => {
+				expect(feedbackDepths(40)).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
+			});
+
+			it("schedules the publish timer after a variable read's deferred exposures", () => {
+				const response = buildHoldoutResponse([winnerAfterHoldout({})], []);
+				const context = new Context(sdk, { ...contextOptions, publishDelay: 100 }, contextParams, response);
+				const schedule = jest.spyOn(context, "_setTimeout");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				expect(context.pending()).toEqual(1);
+				expect(schedule).toHaveBeenCalled();
+				expect(context._publishTimeout).toBeDefined();
+				clearTimeout(context._publishTimeout);
+			});
+
+			it("defers an error callback raised mid-read so finalizing from it still sends the winner", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "error" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const strictFirst = {
+					...holdoutVarExperiment({}),
+					holdoutIds: null,
+					audienceStrict: true,
+					audience: JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] }),
+				};
+				const response = buildHoldoutResponse([strictFirst, winnerAfterHoldout({})], []);
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, response);
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("WINNER_AFTER_HOLDOUT");
+				await finalizing;
+				expect(context.isFinalized()).toBe(true);
+				expect(context.pending()).toEqual(0);
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0];
+				expect(published.exposures.map((e) => e.name)).toEqual(["exp_holdout_var_later_winner"]);
+			});
+
+			// peekVariableValue() picks the same first held-out fallback as variableValue() but never
+			// triggers exposures, so it needs its own ordering regression test.
 			it("peekVariableValue(): an earlier suppressed candidate without the key blocks a later suppressed candidate that has it", () => {
 				const firstSuppressed = holdoutVarExperiment({
 					id: 1,
@@ -6140,13 +7151,9 @@ describe("Context", () => {
 				expect(exposureCalls.map((c) => c[2].name)).toContain("exp_holdout_var_winner_after_throw_2");
 			});
 
-			// java's override write path never sets `suppressed` at all (see Assignment.suppressed's
-			// doc comment), so an override can never become java's suppressedFallback. The JS port
-			// pins `suppressed` eagerly on the override path too, so the fallback capture must
-			// explicitly exclude overridden assignments to reproduce the same outcome — otherwise an
-			// override to a variant that happens to omit the requested key could win the fallback
-			// slot ahead of a genuinely suppressed sibling that actually defines it.
-			it("excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
+			// An override wins even when its selected variant omits the key; holdout fallback
+			// must not replace it with another experiment's control value.
+			it("returns the winning override default even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
 					name: "exp_holdout_var_overridden",
@@ -6161,8 +7168,6 @@ describe("Context", () => {
 					fullOnVariant: 0,
 					applications: [{ name: "website" }],
 					variants: [
-						// Override target (variant 0) omits the key, so this candidate can't win
-						// outright, and must not be allowed to claim the fallback slot either.
 						{ name: "A", config: null },
 						{ name: "B", config: JSON.stringify({ "button.color": "OVERRIDE_SIBLING" }) },
 					],
@@ -6204,13 +7209,13 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, response);
 				context.override("exp_holdout_var_overridden", 0);
 
-				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
+				expect(context.variableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
+				expect(context.pending()).toEqual(2);
 			});
 
-			// _peekVariable carries the identical override-exclusion guard as _variableValue (same
-			// fix, same commit), but never triggers exposures, so it needs its own regression test
-			// rather than relying on variableValue()'s coverage of the guard.
-			it("peekVariableValue(): excludes an overridden assignment from the suppressedFallback even when it is also held out", () => {
+			// peekVariableValue() stops at the same override winner as variableValue() but never
+			// triggers exposures, so it needs its own regression test.
+			it("peekVariableValue(): returns the winning override default even when it is also held out", () => {
 				const overriddenExperiment = {
 					id: 1,
 					name: "exp_holdout_var_peek_overridden",
@@ -6266,9 +7271,389 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, response);
 				context.override("exp_holdout_var_peek_overridden", 0);
 
-				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("GENUINE_SUPPRESSED_CTRL");
+				expect(context.peekVariableValue("button.color", "APP_FALLBACK")).toEqual("APP_FALLBACK");
 				expect(context.pending()).toEqual(0);
 			});
+		});
+	});
+
+	describe("shared variable winner", () => {
+		const shared = (id, split, config, over = {}) => ({
+			...getContextResponse.experiments[0],
+			id,
+			name: `shared_${id}`,
+			split,
+			trafficSplit: [0, 1],
+			variants: [
+				{ name: "A", config: JSON.stringify(config) },
+				{ name: "B", config: JSON.stringify({ shared: `value_${id}` }) },
+			],
+			...over,
+		});
+
+		it.each([0, 1])("keeps the first assigned experiment in arm %i, independent of key presence", (arm) => {
+			const eventLogger = jest.fn();
+			// Reverse payload order to test experiment-id precedence, not insertion order.
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(2, [1, 0], { shared: "SECOND" }), shared(1, arm ? [0, 1] : [1, 0], {})],
+			});
+			const expected = arm ? "value_1" : "SENTINEL";
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe(expected);
+			expect(context.pending()).toBe(0);
+			expect(eventLogger.mock.calls.filter((c) => c[1] === "exposure")).toEqual([]);
+			expect(context.variableValue("shared", "SENTINEL")).toBe(expected);
+			expect(context.variableValue("shared", "SENTINEL")).toBe(expected);
+			expect(context.pending()).toBe(1);
+			expect(eventLogger.mock.calls.filter((c) => c[1] === "exposure").map((c) => c[2])).toEqual([
+				expect.objectContaining({ name: "shared_1", variant: arm, assigned: true }),
+			]);
+		});
+
+		it.each([null, false, 0, ""])(
+			"returns the present value %p rather than default or another experiment",
+			(value) => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [1, 0], { shared: value }), shared(2, [1, 0], { shared: "SECOND" })],
+				});
+				expect(context.peekVariableValue("shared", "SENTINEL")).toBe(value);
+				expect(context.pending()).toBe(0);
+				expect(context.variableValue("shared", "SENTINEL")).toBe(value);
+				expect(context.pending()).toBe(1);
+			}
+		);
+
+		it.each(["override", "rule"])("stops at a missing key when the first experiment wins by %s", (mode) => {
+			const assignmentRules = JSON.stringify({
+				rules: [{ name: "control", type: "assign", conditions: { value: true }, environments: [], variant: 0 }],
+			});
+			const context = new Context(sdk, contextOptions, contextParams, {
+				experiments: [
+					shared(1, [0, 1], {}, { trafficSplit: [1, 0], ...(mode === "rule" ? { assignmentRules } : {}) }),
+					shared(2, [1, 0], { shared: "SECOND" }),
+				],
+			});
+			if (mode === "override") context.override("shared_1", 0);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(1);
+		});
+
+		describe("variables named like Object.prototype members", () => {
+			const protoKeyed = (config) => ({
+				...shared(1, [0, 1], {}),
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: JSON.stringify(config) },
+				],
+			});
+			const keys = ["toString", "constructor", "hasOwnProperty", "__proto__", "valueOf"];
+			// From JSON, as the payload arrives: a `__proto__:` literal key would set the prototype instead.
+			const config = JSON.parse(
+				'{"toString":"ts","constructor":0,"hasOwnProperty":false,"__proto__":"p","valueOf":null}'
+			);
+
+			it("creates a ready context and resolves each defined key", () => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [protoKeyed(config)] });
+				expect(context.isReady()).toBe(true);
+				expect(context.isFailed()).toBe(false);
+				for (const key of keys) {
+					expect(context.peekVariableValue(key, "SENTINEL")).toBe(config[key]);
+					expect(context.variableValue(key, "SENTINEL")).toBe(config[key]);
+				}
+				expect(context.pending()).toBe(1);
+			});
+
+			it.each([null, "", "[]", "0", "false", '"string"', "null", '{"other":1}'])(
+				"returns the default when the winner config %p does not define the key",
+				(selectedConfig) => {
+					const winner = { ...protoKeyed(config), split: [1, 0] };
+					winner.variants = [{ name: "A", config: selectedConfig }, winner.variants[1]];
+					const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
+					for (const key of keys) {
+						expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+						expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+					}
+					expect(context.pending()).toBe(1);
+				}
+			);
+
+			it("treats a config defining only toString as prototype-keyed", () => {
+				const winner = { ...protoKeyed({ toString: "T" }), split: [1, 0] };
+				winner.variants = [
+					{ name: "A", config: '{"other":1}' },
+					{ name: "B", config: '{"toString":"T"}' },
+				];
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [winner] });
+				expect(context.peekVariableValue("toString", "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue("toString", "SENTINEL")).toBe("SENTINEL");
+			});
+
+			it.each(["override", "assigned", "custom"])(
+				"follows a cached %s arm that a refresh removes and a later refresh restores",
+				async (kind) => {
+					const variants = [
+						{ name: "A", config: '{"k":"a"}' },
+						{ name: "B", config: '{"k":"b"}' },
+						{ name: "C", config: '{"k":"c"}' },
+					];
+					const before = { ...shared(1, [0, 0, 1], {}), variants };
+					const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+					if (kind === "override") context.override("shared_1", 2);
+					if (kind === "custom") context.customAssignment("shared_1", 2);
+					expect(context.variableValue("k", "SENTINEL")).toBe("c");
+					provider.getContextData.mockReturnValue(
+						Promise.resolve({ experiments: [{ ...before, variants: variants.slice(0, 2), split: [0, 1] }] })
+					);
+					await context.refresh();
+					expect(context.peekVariableValue("k", "SENTINEL")).toBe("SENTINEL");
+					expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+					provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [before] }));
+					await context.refresh();
+					expect(context.peekVariableValue("k", "SENTINEL")).toBe("c");
+					expect(context.variableValue("k", "SENTINEL")).toBe("c");
+				}
+			);
+
+			it("does not restore a removed arm's variables once the experiment id changes", async () => {
+				const variants = [
+					{ name: "A", config: '{"k":"a"}' },
+					{ name: "B", config: '{"k":"b"}' },
+					{ name: "C", config: '{"k":"c"}' },
+				];
+				const before = { ...shared(1, [0, 0, 1], {}), variants };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+				context.override("shared_1", 2);
+				expect(context.variableValue("k", "SENTINEL")).toBe("c");
+				provider.getContextData.mockReturnValue(
+					Promise.resolve({ experiments: [{ ...before, variants: variants.slice(0, 2), split: [0, 1] }] })
+				);
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+				// A different experiment now uses the name: the cached assignment must not adopt its arm.
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [{ ...before, id: 99 }] }));
+				await context.refresh();
+				expect(context.peekVariableValue("k", "SENTINEL")).toBe("SENTINEL");
+			});
+
+			it("returns the default when a refresh removes a cached override's arm", async () => {
+				const before = {
+					...shared(1, [1, 0], {}),
+					variants: [
+						{ name: "A", config: '{"k":"a"}' },
+						{ name: "B", config: '{"k":"b"}' },
+						{ name: "C", config: '{"k":"c"}' },
+					],
+					split: [0.34, 0.33, 0.33],
+				};
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+				context.override("shared_1", 2);
+				expect(context.variableValue("k", "SENTINEL")).toBe("c");
+				const after = { ...before, variants: before.variants.slice(0, 2), split: [0.5, 0.5] };
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after] }));
+				await context.refresh();
+				expect(context.peekVariableValue("k", "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+			});
+
+			it("keeps a retained unit's value and ordinary snapshot across a refresh", async () => {
+				const before = {
+					...shared(1, [0, 1], {}),
+					variants: [
+						{ name: "A", config: '{"k":"a1"}' },
+						{ name: "B", config: '{"k":"OLD"}' },
+					],
+				};
+				const plain = { ...shared(2, [0, 1], { other: 1 }), name: "plain" };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before, plain] });
+				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.treatment("plain")).toBe(1);
+				const after = {
+					...before,
+					variants: [
+						{ name: "A", config: '{"k":"a1","valueOf":"V"}' },
+						{ name: "B", config: '{"k":"NEW"}' },
+					],
+				};
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after, plain] }));
+				await context.refresh();
+				expect(context.peekVariableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.variableValue("valueOf", "SENTINEL")).toBe("SENTINEL");
+				expect(Object.getPrototypeOf(context._assignments.plain.variables)).toBe(Object.prototype);
+			});
+
+			it("refreshes after an overridden experiment named like an Object.prototype member stops", async () => {
+				const named = { ...shared(1, [0, 1], {}), name: "toString" };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named] });
+				context.override("toString", 1);
+				expect(context.treatment("toString")).toBe(1);
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [] }));
+				await expect(context.refresh()).resolves.toBeUndefined();
+				expect(context.experiments()).toEqual([]);
+			});
+
+			it("keeps Object.prototype on ordinary configs", () => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [0, 1], {}), { ...protoKeyed(config), id: 2, name: "shared_2" }],
+				});
+				expect(Object.getPrototypeOf(context._index.shared_1.variables[1])).toBe(Object.prototype);
+				expect(Object.getPrototypeOf(context._index.shared_2.variables[1])).toBe(null);
+			});
+
+			it("does not resolve inherited members after a refresh makes an experiment prototype-keyed", async () => {
+				const before = {
+					...shared(1, [1, 0], {}),
+					variants: [
+						{ name: "A", config: '{"other":1}' },
+						{ name: "B", config: null },
+					],
+				};
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before] });
+				expect(context.treatment("shared_1")).toBe(0);
+				const after = {
+					...before,
+					variants: [before.variants[0], { name: "B", config: '{"toString":"T","valueOf":"V"}' }],
+				};
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after] }));
+				await context.refresh();
+				for (const key of ["toString", "valueOf"]) {
+					expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+					expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+				}
+			});
+
+			it("lists each key as an own entry of variableKeys()", () => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [protoKeyed(config), { ...protoKeyed({ toString: "x" }), id: 2, name: "shared_2" }],
+				});
+				const variableKeys = context.variableKeys();
+				expect(Object.getPrototypeOf(variableKeys)).toBe(Object.prototype);
+				expect(Object.keys(variableKeys).sort()).toEqual([...keys].sort());
+				expect(variableKeys.toString).toEqual(["shared_1", "shared_2"]);
+				expect(Object.getOwnPropertyDescriptor(variableKeys, "__proto__").value).toEqual(["shared_1"]);
+			});
+		});
+
+		it.each(["toString", "valueOf", "hasOwnProperty", "__proto__", "constructor"])(
+			"returns the caller default for the unindexed prototype-named key %s",
+			(key) => {
+				const context = new Context(sdk, contextOptions, contextParams, {
+					experiments: [shared(1, [0, 1], {})],
+				});
+				expect(context.peekVariableValue(key, "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue(key, "SENTINEL")).toBe("SENTINEL");
+				expect(context.pending()).toBe(0);
+			}
+		);
+
+		const exposures = (eventLogger) => eventLogger.mock.calls.filter((c) => c[1] === "exposure").map((c) => c[2]);
+		const notInFirst = {
+			audienceMismatch: { audienceStrict: true, audience: '{"filter":[{"value":false}]}' },
+			missingUnit: { unitType: "device_id" },
+		};
+
+		it.each(Object.keys(notInFirst))(
+			"exposes only the later winner when the lower-id candidate is not entered (%s)",
+			(reason) => {
+				const eventLogger = jest.fn();
+				const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+					experiments: [shared(1, [1, 0], {}, notInFirst[reason]), shared(2, [1, 0], { shared: "SECOND" })],
+				});
+				expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SECOND");
+				expect(context.pending()).toBe(0);
+				expect(context.variableValue("shared", "SENTINEL")).toBe("SECOND");
+				expect(context.variableValue("shared", "SENTINEL")).toBe("SECOND");
+				expect(context.pending()).toBe(1);
+				expect(exposures(eventLogger)).toEqual([expect.objectContaining({ name: "shared_2", variant: 0 })]);
+			}
+		);
+
+		it("exposes only the winner whose variant lacks the key, not the later candidate", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(1, [1, 0], {}), shared(2, [1, 0], { shared: "SECOND" })],
+			});
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(exposures(eventLogger)).toEqual([expect.objectContaining({ name: "shared_1", variant: 0 })]);
+		});
+
+		it("returns the default and exposes nothing when no candidate is entered", () => {
+			const eventLogger = jest.fn();
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [
+					shared(1, [1, 0], {}, notInFirst.audienceMismatch),
+					shared(2, [1, 0], { shared: "SECOND" }, notInFirst.missingUnit),
+				],
+			});
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.variableValue("unknown", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(0);
+			expect(exposures(eventLogger)).toEqual([]);
+		});
+
+		it.each(["override", "rule"])("a lower-id %s winner beats a later assigned candidate", (mode) => {
+			const eventLogger = jest.fn();
+			const assignmentRules = JSON.stringify({
+				rules: [{ name: "treat", type: "assign", conditions: { value: true }, environments: [], variant: 1 }],
+			});
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [
+					shared(
+						1,
+						[1, 0],
+						{},
+						{ ...notInFirst.audienceMismatch, ...(mode === "rule" ? { assignmentRules } : {}) }
+					),
+					shared(2, [1, 0], { shared: "SECOND" }),
+				],
+			});
+			if (mode === "override") context.override("shared_1", 1);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("value_1");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("value_1");
+			expect(exposures(eventLogger)).toEqual([
+				expect.objectContaining({
+					name: "shared_1",
+					variant: 1,
+					overridden: mode === "override",
+					ruleOverride: mode === "rule",
+				}),
+			]);
+		});
+
+		it("fires the winner's applicable holdouts before its own exposure, like Java", () => {
+			const eventLogger = jest.fn();
+			const holdout = {
+				...shared(11, [0, 1], {}),
+				name: "holdout_11",
+				variants: [
+					{ name: "A", config: null },
+					{ name: "B", config: null },
+				],
+			};
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [shared(1, [1, 0], { shared: "FIRST" }, { holdoutIds: [11] })],
+				holdouts: [holdout],
+			});
+			expect(context.variableValue("shared", "SENTINEL")).toBe("FIRST");
+			expect(exposures(eventLogger).map((e) => e.name)).toEqual(["holdout_11", "shared_1"]);
+		});
+
+		it.each(["override", "custom", "fullOn"])("exposes an out-of-range %s winner like Java", (mode) => {
+			const eventLogger = jest.fn();
+			// Control defines the key, so serving variant 0 instead of the default would be caught.
+			const first = shared(1, [1, 0], { shared: "CONTROL" }, mode === "fullOn" ? { fullOnVariant: 7 } : {});
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, {
+				experiments: [first, shared(2, [1, 0], { shared: "SECOND" })],
+			});
+			if (mode === "override") context.override("shared_1", 7);
+			if (mode === "custom") context.customAssignment("shared_1", 7);
+			expect(context.peekVariableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(context.pending()).toBe(0);
+			expect(context.variableValue("shared", "SENTINEL")).toBe("SENTINEL");
+			expect(exposures(eventLogger)).toEqual([expect.objectContaining({ name: "shared_1", variant: 7 })]);
 		});
 	});
 
@@ -6645,46 +8030,14 @@ describe("Context", () => {
 			});
 		});
 
-		it("should queue exposure with audienceMatch false and control variant on audience mismatch in strict mode", (done) => {
+		// The unit is not in a strict-mismatched experiment, so a variable read must not expose it;
+		// treatment() still records the audience mismatch (see the treatment() tests).
+		it("should not queue an exposure on audience mismatch in strict mode", () => {
 			const context = new Context(sdk, contextOptions, contextParams, audienceStrictContextResponse);
 
 			expect(context.variableValue("banner.size", "small")).toEqual("small");
 
-			expect(context.pending()).toEqual(1);
-
-			publisher.publish.mockReturnValue(Promise.resolve());
-
-			context.publish().then(() => {
-				expect(publisher.publish).toHaveBeenCalledWith(
-					{
-						publishedAt: 1611141535729,
-						units: publishUnits,
-						hashed: true,
-						sdkVersion: SDK_VERSION,
-						exposures: [
-							{
-								id: 1,
-								assigned: false,
-								eligible: true,
-								exposedAt: 1611141535729,
-								name: "exp_test_ab",
-								overridden: false,
-								unit: "session_id",
-								variant: 0,
-								fullOn: false,
-								custom: false,
-								audienceMismatch: true,
-								ruleOverride: false,
-							},
-						],
-					},
-					sdk,
-					context,
-					undefined
-				);
-
-				done();
-			});
+			expect(context.pending()).toEqual(0);
 		});
 
 		it("should throw after finalized() call", (done) => {

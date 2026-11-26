@@ -7,6 +7,20 @@ import { ContextPublisher, type PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { type ClientRequestOptions } from "./client";
 import { SDK_VERSION } from "./version";
+import {
+	assignSwitchbackPeriod,
+	legacySwitchbackServing,
+	resolveSwitchbackPath,
+	resolveSwitchbackServing,
+	sameSwitchbackIdentity,
+	switchbackPeriodIndex,
+	switchbackSources,
+	SWITCHBACK_ABSENT,
+	SWITCHBACK_ELIGIBLE,
+	SWITCHBACK_INELIGIBLE,
+	type SwitchbackServing,
+	type SwitchbackSources,
+} from "./switchback";
 
 type JSONPrimitive = string | number | boolean | null;
 type JSONObject = { [key: string]: JSONValue };
@@ -21,6 +35,8 @@ type CustomFieldValue = {
 	type: CustomFieldValueType;
 };
 
+const DEFERRED_REPLAY_ROUNDS = 32;
+const DEFERRED_REPLAY_CALLBACKS = 1024;
 export type ExperimentData = {
 	id: number;
 	name: string;
@@ -48,6 +64,20 @@ export type ExperimentData = {
 	audienceMismatch: boolean;
 	customFieldValues: CustomFieldValue[] | null;
 	holdoutIds?: number[];
+	// Switchback experiments (R33). Absent on unit experiments; only `randomizationType`,
+	// `switchbackClusters`, `switchbackClusterValues`, `switchbackStartAt` and `switchbackPeriodMs`
+	// affect serving. `switchbackClusters` maps a unit type to an attribute path; its key order is
+	// the declared serving order.
+	randomizationType?: string | null;
+	switchbackClusters?: Record<string, string> | null;
+	switchbackClusterValues?: string[] | null;
+	switchbackStartAt?: number | null;
+	switchbackPeriodMs?: number | null;
+	switchbackCarryoverDurationMs?: number | null;
+	switchbackBurnInDurationMs?: number | null;
+	switchbackBurnOutDurationMs?: number | null;
+	switchbackDesignType?: string | null;
+	switchbackEstimand?: string | null;
 };
 
 type Assignment = {
@@ -76,7 +106,26 @@ type Assignment = {
 	// `split.length` at the time `variant` was resolved; a same-iteration refresh can change
 	// the live value without invalidating the cache.
 	holdoutArmCount?: number;
+	// Set only on switchback assignments: the generation they were resolved under, the serving unit
+	// and cluster key read for their period slot, the custom assignment read while resolving, and
+	// whether the resolution records no exposure (no linked unit, an ineligible cluster, no period).
+	switchbackGeneration?: number;
+	switchbackServing?: SwitchbackServing;
+	switchbackCustom?: number;
+	switchbackSilent?: boolean;
 };
+
+// The cache slots of one switchback experiment, all of one generation and kept apart from
+// `_assignments` so no experiment name can collide with them: the period-less slot (before the anchor
+// or with an unservable schedule) and at most SWITCHBACK_RETAINED_PERIODS period slots.
+type SwitchbackEpoch = {
+	generation: number;
+	periods: number[];
+	slots: Record<number, Assignment>;
+	periodless?: Assignment;
+};
+
+const SWITCHBACK_RETAINED_PERIODS = 2;
 
 export type HoldoutData = {
 	id: number;
@@ -100,6 +149,9 @@ export type Experiment = {
 	// Parsed `data.assignmentRules`, filled on first use; `undefined` until then. The entry is rebuilt
 	// whenever context data is installed, so the cache never outlives the rules it was parsed from.
 	rules?: unknown[] | null;
+	// Set only for a switchback experiment: its generation, carried over a refresh while its
+	// switchback identity is unchanged, and its cluster sources (null on the legacy path).
+	switchback?: { generation: number; sources: SwitchbackSources | null };
 };
 
 export type Unit = {
@@ -189,9 +241,16 @@ export default class Context {
 	private _holdoutAssignments: Record<string, Assignment>;
 	private _overrides: Record<string, number>;
 	private _pending: number;
+	// While a variable read runs, user eventLogger callbacks it would trigger are held here (the
+	// list is created on first use) and replayed once every exposure of the read is queued.
+	private _deferringLogs = false;
+	private _replayExhausted = false;
+	private _deferredLogs?: [EventName, Record<string, unknown> | Error][];
 	private _attrsSeq: number;
 	private _attrsMapCache: Record<string, unknown> | null;
 	private _attrsMapCacheSeq: number;
+	private _switchbackGenerations: number;
+	private _switchbackEpochs?: Record<string, SwitchbackEpoch>;
 	private _hashes?: Record<string, string | null>;
 	private _promise?: Promise<ContextData | void>;
 	private _publishTimeout?: ReturnType<typeof setTimeout>;
@@ -221,6 +280,7 @@ export default class Context {
 		this._attrsSeq = 0;
 		this._attrsMapCache = null;
 		this._attrsMapCacheSeq = -1;
+		this._switchbackGenerations = 0;
 
 		if (params.units) {
 			this.units(params.units);
@@ -365,6 +425,21 @@ export default class Context {
 	// the assignment was resolved. Evict so `_assign()` rebuilds it; already-exposed ones are kept
 	// since re-resolving would queue a second, conflicting exposure.
 	private _invalidateAssignmentsPinnedWithMissingUnit(unitType: string): void {
+		const epochs = this._switchbackEpochs;
+		if (epochs !== undefined) {
+			for (const experimentName in epochs) {
+				const slots = epochs[experimentName].slots;
+				// Period indices stay retained, as in Java's invalidateAssignmentsPinnedWithMissingUnit.
+				for (const period in slots) {
+					if (this._isSwitchbackSlotWithoutUnit(slots[period])) delete slots[period];
+				}
+				const periodless = epochs[experimentName].periodless;
+				if (periodless !== undefined && this._isSwitchbackSlotWithoutUnit(periodless)) {
+					delete epochs[experimentName].periodless;
+				}
+			}
+		}
+
 		for (const experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
 			if (assignment.unitType !== unitType || assignment.exposed) continue;
@@ -377,6 +452,14 @@ export default class Context {
 				delete this._assignments[experimentName];
 			}
 		}
+	}
+
+	// A switchback resolved with no linked unit set is resolved again once one may be. Unless overridden
+	// it published nothing, so it is dropped even when exposed.
+	private _isSwitchbackSlotWithoutUnit(assignment: Assignment): boolean {
+		return (
+			assignment.switchbackServing?.status === SWITCHBACK_ABSENT && (!assignment.overridden || !assignment.exposed)
+		);
 	}
 
 	getUnits() {
@@ -462,11 +545,14 @@ export default class Context {
 
 		const variableExperiments: Record<string, unknown[]> = {};
 
+		// defineProperty keeps a key such as "__proto__" an own entry of the returned plain object.
 		for (const [key, values] of Object.entries(this._indexVariables)) {
-			for (const value of values) {
-				if (variableExperiments[key]) variableExperiments[key].push(value.data.name);
-				else variableExperiments[key] = [value.data.name];
-			}
+			Object.defineProperty(variableExperiments, key, {
+				value: values.map((value) => value.data.name),
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
 		}
 
 		return variableExperiments;
@@ -514,7 +600,13 @@ export default class Context {
 		}
 	}
 
-	private _resolveRule(entry: Experiment, attrs: Record<string, unknown>, isUnitPinnedMissing: boolean) {
+	// A split rule randomizes over `unitType`: the experiment's own, or a switchback's serving unit.
+	private _resolveRule(
+		entry: Experiment,
+		attrs: Record<string, unknown>,
+		isUnitPinnedMissing: boolean,
+		unitType: string | null = entry.data.unitType
+	) {
 		const experiment = entry.data;
 		const variantCount = experiment.variants.length;
 		if (entry.rules === undefined) {
@@ -531,7 +623,6 @@ export default class Context {
 		}
 		if (action.split.length !== variantCount) return null;
 
-		const unitType = experiment.unitType;
 		const unit = unitType != null && !isUnitPinnedMissing ? this._unitHash(unitType) : null;
 		if (unitType == null || unit === null) return { variant: experiment.fullOnVariant, isMissingUnit: true };
 
@@ -590,7 +681,8 @@ export default class Context {
 		}
 	}
 
-	private _assign(experimentName: string) {
+	// `now` is the clock reading a switchback resolves its period at; read here when not given.
+	private _assign(experimentName: string, now?: number) {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
 				experiment.id === assignment.id &&
@@ -676,6 +768,13 @@ export default class Context {
 		const hasCustom = experimentName in this._cassignments;
 		const hasOverride = experimentName in this._overrides;
 		const experiment = experimentName in this._index ? this._index[experimentName] : null;
+
+		if (this._switchbackEpochs !== undefined) {
+			this._dropStaleSwitchbackEpoch(experimentName, experiment);
+		}
+		if (experiment != null && experiment.switchback !== undefined) {
+			return this._assignSwitchback(experimentName, experiment, now ?? Date.now());
+		}
 
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
@@ -864,24 +963,330 @@ export default class Context {
 		return this._assign(experimentName);
 	}
 
+	// Port of java-sdk's switchback branch of getAssignment (the Collector's ContextAPI, R33). The
+	// serving unit and cluster key decide whether the experiment applies and under which unit; for an
+	// eligible cluster the precedence is override, assignment rule (a split randomizes over the
+	// serving unit), strict audience mismatch (recorded), full-on, no period (silent control), traffic
+	// on the serving unit's hash (a miss is recorded), custom assignment, then the schedule draw over
+	// the raw cluster key. Holdouts never apply.
+	private _assignSwitchback(experimentName: string, experiment: Experiment, now: number): Assignment {
+		const switchback = experiment.switchback as { generation: number; sources: SwitchbackSources | null };
+		const data = experiment.data;
+		const periodIndex = switchback.sources !== null ? switchbackPeriodIndex(data, now) : null;
+		// Own properties only: an experiment can be named like an Object member (`constructor`).
+		const hasOverride = Object.prototype.hasOwnProperty.call(this._overrides, experimentName);
+		const custom = Object.prototype.hasOwnProperty.call(this._cassignments, experimentName)
+			? this._cassignments[experimentName]
+			: undefined;
+
+		// `_assign` dropped the slots of any earlier generation, so a slot found here is current.
+		const epoch = this._switchbackEpochs?.[experimentName];
+		const current = periodIndex === null ? epoch?.periodless : epoch?.slots[periodIndex];
+		if (current !== undefined && this._isSwitchbackAssignmentCurrent(experiment, current, hasOverride, custom)) {
+			return current;
+		}
+
+		const assignment: Assignment = {
+			id: data.id,
+			iteration: data.iteration,
+			fullOnVariant: data.fullOnVariant,
+			unitType: null,
+			variant: 0,
+			overridden: false,
+			assigned: false,
+			exposed: false,
+			eligible: true,
+			fullOn: false,
+			custom: false,
+			audienceMismatch: false,
+			ruleOverride: false,
+			trafficSplit: data.trafficSplit,
+			attrsSeq: this._attrsSeq,
+			switchbackGeneration: switchback.generation,
+			switchbackCustom: custom,
+		};
+
+		// Within one period slot the serving unit and cluster key are read once: a slot rebuilt in the
+		// same epoch, e.g. after an attribute change flipped the audience, keeps its cluster.
+		const cachedServing = current?.switchbackServing;
+		const serving =
+			cachedServing !== undefined && cachedServing.status !== SWITCHBACK_ABSENT
+				? cachedServing
+				: this._resolveSwitchbackServing(experiment, now);
+		assignment.switchbackServing = serving;
+		assignment.unitType =
+			serving.unitType ?? (switchback.sources !== null ? switchback.sources.types[0] : data.unitType);
+
+		if (hasOverride) {
+			assignment.overridden = true;
+			assignment.variant = this._overrides[experimentName];
+		} else {
+			this._resolveSwitchbackVariant(experiment, assignment, serving, periodIndex, custom);
+		}
+
+		if (assignment.variant < data.variants.length) {
+			assignment.variables = experiment.variables[assignment.variant];
+		}
+
+		this._retainSwitchbackSlot(experimentName, switchback.generation, periodIndex, assignment);
+		return assignment;
+	}
+
+	private _resolveSwitchbackVariant(
+		experiment: Experiment,
+		assignment: Assignment,
+		serving: SwitchbackServing,
+		periodIndex: number | null,
+		custom: number | undefined
+	) {
+		const data = experiment.data;
+		if (serving.status === SWITCHBACK_ABSENT) {
+			// No linked unit: the experiment does not apply, like an unset unit type.
+			assignment.eligible = false;
+			assignment.switchbackSilent = true;
+			return;
+		}
+
+		assignment.assigned = true;
+		if (serving.status === SWITCHBACK_INELIGIBLE) {
+			// No rule, audience or full-on is evaluated for an ineligible cluster.
+			assignment.eligible = false;
+			assignment.switchbackSilent = true;
+			return;
+		}
+
+		assignment.ruleKey = data.assignmentRules ? `${data.assignmentRules}:${this._environmentName}` : "";
+		const rule =
+			data.assignmentRules && data.assignmentRules.length > 0
+				? this._resolveRule(experiment, this._getAttributesMap(), false, serving.unitType)
+				: null;
+		assignment.ruleVariant = rule?.variant ?? null;
+		assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
+		if (rule !== null) {
+			// Recorded like a unit experiment's rule win: ruleOverride set, not "assigned".
+			assignment.assigned = false;
+			assignment.ruleOverride = true;
+			assignment.variant = rule.variant;
+			return;
+		}
+
+		if (data.audience && data.audience.length > 0) {
+			const result = this._evaluateAudience(data.audience);
+			if (typeof result === "boolean") {
+				assignment.audienceMismatch = !result;
+			}
+		}
+		if (data.audienceStrict && assignment.audienceMismatch) {
+			// Recorded like a unit experiment's strict mismatch: control, not "assigned".
+			assignment.assigned = false;
+			return;
+		}
+		if (data.fullOnVariant !== 0) {
+			assignment.variant = data.fullOnVariant;
+			assignment.fullOn = true;
+			return;
+		}
+		if (periodIndex === null) {
+			// Before the anchor or with an unservable schedule there is no draw: control, no exposure.
+			assignment.eligible = false;
+			assignment.switchbackSilent = true;
+			return;
+		}
+
+		const unitType = serving.unitType as string;
+		const unit = this._unitHash(unitType) as string;
+		const assigner =
+			unitType in this._assigners ? this._assigners[unitType] : (this._assigners[unitType] = new VariantAssigner(unit));
+		if (assigner.assign(data.trafficSplit, data.trafficSeedHi, data.trafficSeedLo) !== 1) {
+			// A traffic miss on an eligible cluster is recorded, as for a unit experiment.
+			assignment.eligible = false;
+			return;
+		}
+		if (custom !== undefined) {
+			assignment.variant = custom;
+			assignment.custom = true;
+			return;
+		}
+		assignment.variant = assignSwitchbackPeriod(
+			serving.clusterKey as string,
+			periodIndex,
+			data.seedHi,
+			data.seedLo,
+			data.split.length
+		);
+	}
+
+	// Revalidates a cached slot of the current generation. Like the unit path, a rule or audience
+	// re-evaluation that keeps the outcome advances the slot's stamps in place.
+	private _isSwitchbackAssignmentCurrent(
+		experiment: Experiment,
+		assignment: Assignment,
+		hasOverride: boolean,
+		custom: number | undefined
+	): boolean {
+		if (hasOverride) {
+			return assignment.overridden && assignment.variant === this._overrides[experiment.data.name];
+		}
+
+		const data = experiment.data;
+		if (
+			assignment.overridden ||
+			assignment.fullOnVariant !== data.fullOnVariant ||
+			!arrayEqualsShallow(assignment.trafficSplit, data.trafficSplit) ||
+			(!assignment.ruleOverride && assignment.switchbackCustom !== custom)
+		) {
+			return false;
+		}
+
+		// A slot without an eligible cluster never consulted its rules or audience.
+		if (assignment.switchbackServing?.status !== SWITCHBACK_ELIGIBLE) return true;
+
+		const ruleKey = data.assignmentRules ? `${data.assignmentRules}:${this._environmentName}` : "";
+		if (ruleKey === assignment.ruleKey && this._attrsSeq <= (assignment.attrsSeq ?? 0)) return true;
+
+		const rule =
+			data.assignmentRules && data.assignmentRules.length > 0
+				? this._resolveRule(experiment, this._getAttributesMap(), false, assignment.unitType)
+				: null;
+		if ((rule?.variant ?? null) !== (assignment.ruleVariant ?? null)) return false;
+
+		if (!assignment.ruleOverride && data.audience && data.audience.length > 0) {
+			const result = this._evaluateAudience(data.audience);
+			const audienceMismatch = result !== null ? !result : assignment.audienceMismatch;
+			if (audienceMismatch !== assignment.audienceMismatch) return false;
+		}
+
+		assignment.isRuleMissingUnit = rule?.isMissingUnit ?? false;
+		assignment.ruleKey = ruleKey;
+		assignment.attrsSeq = this._attrsSeq;
+		return true;
+	}
+
+	// The Collector's switchbackServing at `now`. A missing, empty or unreadable cluster map takes the
+	// legacy path: an ineligible control under a unit of the declared unitType, if one is set.
+	private _resolveSwitchbackServing(experiment: Experiment, now: number): SwitchbackServing {
+		const sources = (experiment.switchback as { sources: SwitchbackSources | null }).sources;
+		if (sources === null) return legacySwitchbackServing(experiment.data.unitType, this._units);
+
+		return resolveSwitchbackServing(
+			sources.types,
+			sources.paths,
+			experiment.data.switchbackClusterValues,
+			this._units,
+			(path) => {
+				// The attribute the Collector reads at `now`: among those named by the path's first segment
+				// and set at or before now, the latest setAt wins, and on a tie the one set last.
+				let selected: Attribute | null = null;
+				for (const attr of this._attrs) {
+					if (
+						attr.setAt <= now &&
+						typeof attr.name === "string" &&
+						attr.name.trim() === path.keys[0] &&
+						(selected === null || attr.setAt >= selected.setAt)
+					) {
+						selected = attr;
+					}
+				}
+				return selected !== null ? resolveSwitchbackPath(path, selected.value) : null;
+			}
+		);
+	}
+
+	// Drops every slot of an experiment's switchback epoch once the installed definition is gone, is not
+	// a switchback or carries another generation.
+	private _dropStaleSwitchbackEpoch(experimentName: string, experiment: Experiment | null) {
+		const epochs = this._switchbackEpochs as Record<string, SwitchbackEpoch>;
+		const epoch = epochs[experimentName];
+		if (epoch === undefined || experiment?.switchback?.generation === epoch.generation) return;
+
+		// A unit assignment cached before the experiment became a switchback must not outlive the stint.
+		delete this._assignments[experimentName];
+		delete epochs[experimentName];
+	}
+
+	// Installs a slot in the experiment's epoch. At most
+	// SWITCHBACK_RETAINED_PERIODS period slots are kept per experiment, evicting the lowest index other
+	// than the one just installed. Re-entering an evicted period (a clock moved back by two or more
+	// periods) resolves and exposes it once more.
+	private _retainSwitchbackSlot(
+		experimentName: string,
+		generation: number,
+		periodIndex: number | null,
+		assignment: Assignment
+	) {
+		// No prototype, so an experiment named like an Object member (`constructor`) has no epoch yet.
+		const epochs =
+			this._switchbackEpochs ?? (this._switchbackEpochs = Object.create(null) as Record<string, SwitchbackEpoch>);
+		const epoch =
+			epochs[experimentName] ?? (epochs[experimentName] = { generation, periods: [], slots: Object.create(null) });
+		if (periodIndex === null) {
+			epoch.periodless = assignment;
+			return;
+		}
+
+		epoch.slots[periodIndex] = assignment;
+		if (epoch.periods.indexOf(periodIndex) >= 0) return;
+		epoch.periods.push(periodIndex);
+		while (epoch.periods.length > SWITCHBACK_RETAINED_PERIODS) {
+			let evicted = -1;
+			for (let i = 0; i < epoch.periods.length; ++i) {
+				if (epoch.periods[i] !== periodIndex && (evicted < 0 || epoch.periods[i] < epoch.periods[evicted])) {
+					evicted = i;
+				}
+			}
+			delete epoch.slots[epoch.periods[evicted]];
+			epoch.periods.splice(evicted, 1);
+		}
+	}
+
 	private _treatment(experimentName: string) {
-		const assignment = this._assign(experimentName);
+		const now = this._switchbackClock(experimentName, undefined);
+		const assignment = this._assign(experimentName, now);
 
 		if (!assignment.exposed) {
 			assignment.exposed = true;
 
-			this._triggerExposures(experimentName, assignment);
+			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
+			// eventLogger that finalizes on the first one still sends the holdout's.
+			if (this._deferringLogs) {
+				this._triggerExposures(experimentName, assignment, now);
+			} else {
+				this._deferringLogs = true;
+				try {
+					this._triggerExposures(experimentName, assignment, now);
+				} finally {
+					this._endDeferral();
+				}
+			}
 		}
 
 		return assignment;
 	}
 
-	private _triggerExposures(experimentName: string, assignment: Assignment): void {
+	// One clock reading per call, taken only when the experiment is a switchback (or `now` is
+	// already set): unit experiments keep reading the clock when their exposure is queued.
+	private _switchbackClock(experimentName: string, now: number | undefined): number | undefined {
+		if (now !== undefined || this._switchbackGenerations === 0) return now;
+		const experiment = experimentName in this._index ? this._index[experimentName] : null;
+		return experiment != null && experiment.switchback !== undefined ? Date.now() : undefined;
+	}
+
+	// A switchback exposure is stamped with `now`, the reading that selected its period, since analysis
+	// derives the period from `exposedAt`; a later reading could fall in the next period. Holdouts
+	// never apply to a switchback, so its assignment has none to trigger.
+	private _triggerExposures(experimentName: string, assignment: Assignment, now?: number, withHoldouts = true): void {
+		if (assignment.switchbackGeneration !== undefined) {
+			if (!assignment.switchbackSilent) {
+				this._queueExposure(experimentName, assignment, now);
+			}
+			return;
+		}
+
 		if (!assignment.suppressed || assignment.overridden || assignment.ruleOverride) {
 			this._queueExposure(experimentName, assignment);
 		}
 
-		this._triggerApplicableHoldoutExposures(assignment);
+		if (withHoldouts) this._triggerApplicableHoldoutExposures(assignment);
 	}
 
 	// Uses the pinned snapshot, not a live re-resolution, so a refresh between the suppression
@@ -902,11 +1307,11 @@ export default class Context {
 		});
 	}
 
-	private _queueExposure(experimentName: string, assignment: Assignment) {
+	private _queueExposure(experimentName: string, assignment: Assignment, exposedAt?: number) {
 		const exposureEvent: Exposure = {
 			id: assignment.id,
 			name: experimentName,
-			exposedAt: Date.now(),
+			exposedAt: exposedAt ?? Date.now(),
 			unit: assignment.unitType,
 			variant: assignment.variant,
 			assigned: assignment.assigned,
@@ -922,6 +1327,11 @@ export default class Context {
 		// is scheduled in a finally so a throwing logger still flushes what's already queued.
 		this._exposures.push(exposureEvent);
 		this._pending++;
+
+		if (this._deferringLogs) {
+			(this._deferredLogs ??= []).push(["exposure", exposureEvent]);
+			return;
+		}
 
 		try {
 			this._logEvent("exposure", exposureEvent);
@@ -1020,45 +1430,123 @@ export default class Context {
 		return this._customFieldValueType(experimentName, key);
 	}
 
-	// A held-out unit reads the control value, not the caller's default, when nothing else wins.
-	// The first suppressed candidate is captured even if it lacks the key, so a later one can't win.
+	// Mirrors java-sdk Context.getVariableAssignment. Candidates define the key in any variant, in
+	// experiment-id order. The first one the unit is actually in (assigned, overridden or
+	// rule-assigned) wins regardless of its arm; otherwise the first held-out candidate supplies
+	// its control value. Only the winner gets an exposure, so a unit is never recorded in an
+	// experiment it only got checked against. Like Java, each visited candidate's applicable
+	// holdouts still fire on the non-peek path.
 	private _resolveVariableValue(key: string, defaultValue: string, shouldQueueExposure: boolean): string {
-		let suppressedFallback: Record<string, unknown> | undefined;
+		const candidates = this._indexVariables[key];
+		if (!Array.isArray(candidates)) return defaultValue;
 
-		for (const experiment of this._indexVariables[key] ?? []) {
-			const experimentName = experiment.data.name;
-			const assignment = this._assign(experimentName);
-			if (assignment.variables !== undefined) {
-				if (shouldQueueExposure && !assignment.exposed) {
-					assignment.exposed = true;
+		// Plain locals rather than tuples: this is a hot path and must not allocate per read.
+		let selectedName = "";
+		let selected: Assignment | undefined;
+		let now: number | undefined;
 
-					this._triggerExposures(experimentName, assignment);
-				}
+		// Indexed loop: a for...of here compiles to a larger body that slows every warmed read.
+		for (let i = 0; i < candidates.length; i++) {
+			const experimentName = candidates[i].data.name;
+			now = this._switchbackClock(experimentName, now);
+			const assignment = this._assign(experimentName, now);
+			if (shouldQueueExposure) this._triggerApplicableHoldoutExposures(assignment);
 
-				if (key in assignment.variables && (assignment.assigned || assignment.overridden || assignment.ruleOverride)) {
-					return assignment.variables[key] as string;
-				}
+			if (assignment.assigned || assignment.overridden || assignment.ruleOverride) {
+				selectedName = experimentName;
+				selected = assignment;
+				break;
+			}
 
-				if (
-					assignment.suppressed &&
-					!assignment.overridden &&
-					!assignment.ruleOverride &&
-					suppressedFallback === undefined
-				) {
-					suppressedFallback = assignment.variables;
-				}
+			if (assignment.suppressed && selected === undefined) {
+				selectedName = experimentName;
+				selected = assignment;
 			}
 		}
 
-		if (suppressedFallback !== undefined && key in suppressedFallback) {
-			return suppressedFallback[key] as string;
+		if (selected === undefined) return defaultValue;
+
+		if (shouldQueueExposure && !selected.exposed) {
+			selected.exposed = true;
+
+			this._triggerExposures(selectedName, selected, now, false);
 		}
 
-		return defaultValue;
+		// A missing key (or out-of-range arm) returns the caller's default, never a later
+		// experiment's value: falling through by arm would bias the winning experiment.
+		const variables = selected.variables;
+		return variables !== undefined && key in variables ? (variables[key] as string) : defaultValue;
 	}
 
+	// A user eventLogger may call finalize() or publish(). Exposure and error callbacks this read
+	// triggers run only after every exposure of the read (candidates' holdouts and the winner) is
+	// queued, so such a call sends all of them instead of sealing the context with one pending.
+	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
-		return this._resolveVariableValue(key, defaultValue, true);
+		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
+
+		this._deferringLogs = true;
+		try {
+			return this._resolveVariableValue(key, defaultValue, true);
+		} finally {
+			this._endDeferral();
+		}
+	}
+
+	// Ends a deferral scope, replaying held callbacks in queue order. Deferral stays on while
+	// replaying, so a nested read or treatment() made from a callback appends its own callbacks
+	// behind the ones already queued.
+	private _endDeferral() {
+		if (this._deferredLogs === undefined) this._deferringLogs = false;
+		else if (this._replayExhausted) this._deliverDeferredLogs();
+		else this._replayDeferredLogs();
+	}
+
+	// A callback that keeps feeding new events would drain forever (or grow the queue without
+	// bound), so once a replay has run DEFERRED_REPLAY_ROUNDS rounds or delivered
+	// DEFERRED_REPLAY_CALLBACKS callbacks, it stops queueing rounds: each later call still holds
+	// its own callbacks until all of its exposures are queued, then delivers that batch at once,
+	// bounded by the call stack as before deferral existed.
+	private _replayDeferredLogs() {
+		let exposed = false;
+		let rounds = 0;
+		let delivered = 0;
+		try {
+			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
+			while (deferred !== undefined) {
+				this._deferredLogs = undefined;
+				delivered += deferred.length;
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS || delivered >= DEFERRED_REPLAY_CALLBACKS) {
+					this._deferringLogs = false;
+					this._replayExhausted = true;
+				}
+				for (let i = 0; i < deferred.length; i++) {
+					if (deferred[i][0] === "exposure") exposed = true;
+					this._logEvent(deferred[i][0], deferred[i][1]);
+				}
+				deferred = this._deferredLogs;
+			}
+		} finally {
+			this._deferringLogs = false;
+			this._replayExhausted = false;
+			// Only exposures need publishing; an error alone must not arm the timer.
+			if (exposed) this._setTimeout();
+		}
+	}
+
+	private _deliverDeferredLogs() {
+		const deferred = this._deferredLogs as [EventName, Record<string, unknown> | Error][];
+		this._deferredLogs = undefined;
+		this._deferringLogs = false;
+		let exposed = false;
+		try {
+			for (let i = 0; i < deferred.length; i++) {
+				if (deferred[i][0] === "exposure") exposed = true;
+				this._logEvent(deferred[i][0], deferred[i][1]);
+			}
+		} finally {
+			if (exposed) this._setTimeout();
+		}
 	}
 
 	private _peekVariable(key: string, defaultValue: string): string {
@@ -1371,7 +1859,7 @@ export default class Context {
 		}
 	}
 
-	private _logEvent(eventName: EventName, data?: Record<string, unknown>) {
+	private _logEvent(eventName: EventName, data?: Record<string, unknown> | Error) {
 		if (this._eventLogger) {
 			// A throwing custom eventLogger must never propagate out of this method:
 			// every call site treats logging as a side effect, and letting an
@@ -1389,13 +1877,11 @@ export default class Context {
 	}
 
 	private _logError(error: Error) {
-		if (this._eventLogger) {
-			try {
-				this._eventLogger(this, "error", error);
-			} catch (observerError) {
-				console.error(observerError);
-			}
+		if (this._deferringLogs) {
+			(this._deferredLogs ??= []).push(["error", error]);
+			return;
 		}
+		this._logEvent("error", error);
 	}
 
 	private _unitHash(unitType: string) {
@@ -1517,12 +2003,30 @@ export default class Context {
 				holdouts,
 			};
 
+			if (experiment.randomizationType === "switchback") {
+				const sources = switchbackSources(experiment.switchbackClusters);
+				const previous = this._index?.[experiment.name]?.switchback;
+				const keepsGeneration =
+					previous !== undefined &&
+					sameSwitchbackIdentity(
+						this._index[experiment.name].data,
+						previous.sources !== null,
+						experiment,
+						sources !== null
+					);
+				entry.switchback = {
+					generation: keepsGeneration ? previous.generation : ++this._switchbackGenerations,
+					sources,
+				};
+			}
+
 			index[experiment.name] = entry;
 
+			let hasPrototypeVariable = false;
 			for (let i = 0; i < experiment.variants.length; i++) {
 				const variant = experiment.variants[i];
 				const config = variant.config;
-				let parsed = {};
+				let parsed: Record<string, unknown> = {};
 
 				if (config != null && config.length > 0) {
 					try {
@@ -1540,19 +2044,91 @@ export default class Context {
 				}
 
 				for (const key of Object.keys(parsed)) {
+					if (key in Object.prototype) hasPrototypeVariable = true;
 					const value = entry;
-					if (indexVariables[key]) {
+					if (Array.isArray(indexVariables[key])) {
 						insertUniqueSorted(
 							indexVariables[key],
 							value,
 							(a, b) => (a as Experiment).data.id < (b as Experiment).data.id
 						);
-					} else indexVariables[key] = [value];
+					} else {
+						Object.defineProperty(indexVariables, key, {
+							value: [value],
+							enumerable: true,
+							writable: true,
+							configurable: true,
+						});
+					}
 				}
 
 				variables[i] = parsed;
 			}
+
+			// Only experiments defining a prototype-named key need dictionary configs. Classify at
+			// indexing time so ordinary variable reads retain their existing fast membership check.
+			if (hasPrototypeVariable) {
+				for (let i = 0; i < variables.length; i++) {
+					variables[i] = Object.assign(Object.create(null), variables[i]);
+				}
+			}
 		});
+
+		// A reused assignment (or switchback slot) still points at the previous parse of its configs;
+		// if a refresh made the experiment prototype-keyed, cached variables must not resolve inherited
+		// members.
+		const prototypeKeyed = (experimentName: string) => {
+			// Own lookup: an experiment named like an Object.prototype member must not resolve one.
+			const experiment = Object.prototype.hasOwnProperty.call(index, experimentName)
+				? index[experimentName]
+				: undefined;
+			return experiment !== undefined && Object.getPrototypeOf(experiment.variables[0] ?? {}) === null;
+		};
+		const reclassify = (assignment: Assignment | undefined) => {
+			const variables = assignment?.variables;
+			if (assignment !== undefined && variables !== undefined && Object.getPrototypeOf(variables) !== null) {
+				assignment.variables = Object.assign(Object.create(null), variables);
+			}
+		};
+		for (const experimentName of Object.keys(assignments)) {
+			if (prototypeKeyed(experimentName)) reclassify(assignments[experimentName]);
+		}
+		const epochs = this._switchbackEpochs;
+		if (epochs !== undefined) {
+			for (const experimentName of Object.keys(epochs)) {
+				if (!prototypeKeyed(experimentName)) continue;
+				const epoch = epochs[experimentName];
+				reclassify(epoch.periodless);
+				for (const period of epoch.periods) reclassify(epoch.slots[period]);
+			}
+		}
+
+		// A reused assignment (or switchback slot) follows its arm across refreshes: no variables while
+		// a refresh has removed the arm, and the arm's current variables again once a later refresh
+		// restores it.
+		const followArm = (experiment: Experiment, assignment: Assignment | undefined) => {
+			if (assignment === undefined) return;
+			if (assignment.variant >= experiment.data.variants.length) {
+				assignment.variables = undefined;
+			} else if (assignment.variables === undefined && assignment.id === experiment.data.id) {
+				assignment.variables = experiment.variables[assignment.variant];
+			}
+		};
+		const indexed = (experimentName: string) =>
+			Object.prototype.hasOwnProperty.call(index, experimentName) ? index[experimentName] : undefined;
+		for (const experimentName of Object.keys(assignments)) {
+			const experiment = indexed(experimentName);
+			if (experiment !== undefined) followArm(experiment, assignments[experimentName]);
+		}
+		if (epochs !== undefined) {
+			for (const experimentName of Object.keys(epochs)) {
+				const experiment = indexed(experimentName);
+				if (experiment === undefined) continue;
+				const epoch = epochs[experimentName];
+				followArm(experiment, epoch.periodless);
+				for (const period of epoch.periods) followArm(experiment, epoch.slots[period]);
+			}
+		}
 
 		this._index = index;
 		this._indexVariables = indexVariables;

@@ -1,0 +1,16 @@
+{
+  "description": "Cluster attribute paths read by both the Collector (SwitchbackAttributePath) and analysis (ClickHouseSwitchbackExpr). An unquoted segment is an array index exactly when Guava Ints.tryParse parses it (no '+', ASCII digits only). supported: accepted by isSupported and by requireSupportedAttributePath; a negative index is unsupported because ClickHouse throws ZERO_ARRAY_OR_TUPLE_INDEX on the [0] subscript pathToArgs renders for it. value: what the path resolves to in attributes; null means missing (no cluster key).",
+  "attributes": {
+    "items": [{ "city": "Lisbon" }, { "city": "Faro" }],
+    "geo": { "city": "Porto", "-1": "minus-one-key", "+1": "plus-one-key" }
+  },
+  "cases": [
+    { "path": "items/0/city", "supported": true, "value": "Lisbon" },
+    { "path": "items/+0/city", "supported": true, "value": null },
+    { "path": "items/-1/city", "supported": false, "value": null },
+    { "path": "geo/-1", "supported": false, "value": null },
+    { "path": "geo/+1", "supported": true, "value": "plus-one-key" },
+    { "path": "items/\u0660/city", "supported": true, "value": null },
+    { "path": "geo/city", "supported": true, "value": "Porto" }
+  ]
+}

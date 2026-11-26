@@ -221,6 +221,23 @@ const defaultButtonColor = "red";
 const buttonColor = context.variableValue("button.color", defaultButtonColor);
 ```
 
+#### Shared variable keys
+
+When several experiments define the same variable key, the SDK checks them in
+ascending experiment id and uses the first one the user is in (assigned,
+overridden or assigned by a rule). Its variant's value is returned, or your
+default if that variant does not define the key; later experiments are never
+used instead. If the user is in none of them but one is held out by a holdout,
+the first held-out experiment's control value is returned, or your default if
+its control arm does not define the key (no other experiment is checked). Only
+the winning experiment gets an exposure (plus any holdouts covering the
+experiments checked); a held-out experiment that supplies its control value
+records only its holdout's exposure. An experiment the user is not in, such as a
+strict audience mismatch, gets none; call `treatment()` to record it. A
+switchback that wins but is silent (before its schedule starts, or with an
+ineligible cluster) returns its control value and records nothing, and later
+experiments are still not used. `peekVariableValue()` never queues an exposure.
+
 ### Peek at Treatment Variants
 
 Although generally not recommended, it is sometimes necessary to peek at a treatment without triggering an exposure. The A/B Smartly SDK provides a `peek()` method for that.
@@ -251,6 +268,29 @@ context.overrides({
     exp_another_experiment: 0,
 });
 ```
+
+### Switchback Experiments
+
+A switchback experiment randomizes *clusters* over time instead of units. A cluster is a value of a context attribute, for example a store's region. Every unit in the same cluster sees the same variant during a period, and the variant changes on a fixed time grid. There is nothing new to call: `treatment()`, `peek()`, `variableValue()` and `peekVariableValue()` serve switchback experiments, and the A/B Smartly collector sends their configuration with the context data.
+
+```javascript
+context.units({ store_id: "store-1234" });
+// The experiment links the store_id unit type to the attribute path "region".
+context.attribute("region", "lisbon");
+
+const variant = context.treatment("exp_delivery_fee"); // the "lisbon" cluster's variant for this period
+```
+
+How a switchback is served (the contract the A/B Smartly collector serves; java-sdk implements the same):
+
+- **Cluster.** The experiment lists linked unit types, each with an attribute path, in a significant order. For each linked type the context has a unit of, in that order, the SDK reads the attribute at the path. The first unit that gives a value serves, and its value is the cluster key. If a later unit gives a different value, the cluster is ineligible.
+- **Values.** A non-empty string is used as-is, and a whole number below `1e21` in magnitude as its decimal text (`17` and `"17"` are the same cluster). Numbers beyond `Number.MAX_SAFE_INTEGER` lose precision in JavaScript before the SDK sees them, so set large identifiers as strings. Fractions, booleans, objects, arrays, empty strings and `null` give no value. **JavaScript cannot tell `3.0` from `3`**, so a number written as `3.0` is the cluster `"3"`, like the integer; other SDKs give a float no value. Set cluster attributes as strings or integers. A cluster map whose unit type names look like array indexes (`"1"`, `"2"`) cannot keep its order in JavaScript, so with two or more linked types such an experiment is served as an ineligible control.
+- **Paths.** `/` separates segments (`profile/region`, `items/0/region`), a quoted segment is a literal key (`'a/b'`), and an unquoted number indexes an array. An index must be non-negative and sit between two key segments (`items/0` and `items/0/1/region` are unreadable). A `.` anywhere makes the path unreadable: nest with `/`. The first segment names an attribute set with `attribute()`; the value read is the latest one set at or before the call.
+- **No linked unit:** the experiment does not apply (variant 0, nothing recorded; a variable lookup returns its default), though an `override()` still applies and is recorded. **Ineligible cluster** (no value, units disagree, or a value outside the experiment's allowed values): variant 0 and no exposure, unless an `override()` is set, which still applies and is recorded under the first linked unit present. **Unreadable cluster map** (missing, empty or with an unreadable path): an ineligible control when the context has a unit of the experiment's `unitType`, otherwise the experiment does not apply.
+- **Precedence** for an eligible cluster: `override()`, then assignment rules (a `split` rule randomizes over the serving unit), a strict audience mismatch (variant 0, recorded), full-on, then the schedule. Before the schedule starts, or when it cannot be served, the result is variant 0 with no exposure. Then traffic (on the serving unit; a miss is recorded as not eligible), `customAssignment()`, and the schedule draw over the cluster key. **Holdouts never apply to switchback experiments.**
+- **Exposures.** One exposure per experiment and period while that period's assignment stays cached, under the serving unit's type, with the same fields as any other exposure. As for other experiments, an assignment that is resolved again within the period (after a refresh or an attribute change alters its outcome, or a clock moved back past the two retained periods) records another exposure. Its `exposedAt` is the time at which the call chose the period. While the period's assignment stays cached, the cluster is read once: a later `attribute()` in the same period does not move the unit to another cluster, and the next period reads the attributes afresh. A clock moved back past the two retained periods reads the cluster afresh too, and can select a different cluster. Attributes are published as usual; the collector reads the cluster from them. On a variable key shared with other experiments, a switchback follows the same rule as unit experiments (see [Shared variable keys](#shared-variable-keys)): only the winner is exposed, so a strict-mismatched switchback checked before the winner records nothing.
+
+The schedule follows the device clock (`Date.now()`), so a device whose clock is wrong is served another period's variant.
 
 ## Advanced
 
@@ -359,6 +399,15 @@ The data parameter depends on the type of event. Currently, the SDK logs the fol
 | `"exposure"` | `treatment()` method succeeds on first exposure   | Exposure data enqueued for publishing         |
 | `"goal"`     | `track()` method succeeds                         | Goal data enqueued for publishing             |
 | `"finalize"` | `finalize()` method succeeds the first time       | undefined                                     |
+
+`"exposure"` and `"error"` events raised by one `variableValue()` call (and the
+`"exposure"` events of one `treatment()` call) are delivered after all of that
+call's exposures are queued, in the order they were raised, so a logger that
+calls `publish()` or `finalize()` sends every one of them. `"exposure"` and
+`"error"` events a logger triggers itself are delivered after the ones already
+waiting (other events, such as a `"goal"` from `track()`, are delivered
+immediately); after a bounded number of rounds or callbacks, each later call delivers its own
+events together, once all of that call's exposures are queued.
 
 ### HTTP Request Timeout
 
@@ -553,6 +602,18 @@ An audience filter that throws while being evaluated is treated as a mismatch, s
 **After:** the SDK always evaluates audiences and assignment-rule conditions with `application` and `environment` set to the names configured in the SDK. An attribute you set with the same name, at any time, overrides them. Names that are not configured or empty are left out. They are not published. The SDK no longer adds `app_version` for audiences or rules (one you set yourself with `context.attribute("app_version", ...)` is still used and published like any other attribute), and `includeSystemAttributes` now only adds `sdk_name` and `sdk_version` to the publish payload; the option is still accepted.
 
 **This changes assignment for running experiments.** In an experiment with Audience enforced (`audienceStrict`) and an `environment` or `application` condition, a unit whose context does not set that attribute itself currently gets variant 0, even when the configured name matches the condition and even when the experiment is full-on. After upgrading, such a unit is randomised normally (or gets the full-on variant) when the configured name matches. Those units are misassigned today; this release fixes them, but their exposures will change. An attribute your context sets itself still overrides the configured name, so its matching does not change. This protection is per attribute: if an audience uses both `application` and `environment` and the context sets only one of them, the configured name for the other can still change the result. An audience or rule on `app_version` no longer matches unless you set `app_version` yourself.
+
+### Switchback experiments are served
+
+**Before:** this SDK ignored the switchback fields the collector sends. A switchback experiment was served as a sticky unit assignment on its `unitType` (or not at all without one), so its exposures did not follow the switchback schedule.
+
+**After:** switchback experiments are served by cluster and period, as described in [Switchback Experiments](#switchback-experiments). **This changes assignment for switchback experiments that are already running**: their units move from the sticky unit assignment to the cluster's schedule, and exposures are recorded once per period (while the period's assignment stays cached) under the serving unit. The switchback support itself does not change unit experiments or context data without switchbacks; see [Shared variable keys](#shared-variable-keys-pick-and-expose-one-experiment) below for the separate variable-read fix.
+
+### Shared variable keys pick and expose one experiment
+
+**Before:** when several experiments defined the same variable key, `variableValue()` exposed every experiment it checked, including ones the user was not in (for example a strict audience mismatch), and when the first experiment's variant lacked the key it served and exposed a later experiment's value instead.
+
+**After:** the first experiment by id that the user is in (assigned, overridden or rule-assigned) wins whatever its variant, as in the Java SDK; its variant's value is returned, or your default if that variant lacks the key. Only that experiment is exposed, unless it is a silent switchback (before its schedule starts, or with an ineligible cluster), which returns control and records nothing (see [Shared variable keys](#shared-variable-keys)). **This changes served values and exposures** for users whose winning experiment's variant lacks the key, and removes exposures that `variableValue()` used to record for experiments the user is not in; call `treatment()` if you need those recorded.
 
 ## About A/B Smartly
 
