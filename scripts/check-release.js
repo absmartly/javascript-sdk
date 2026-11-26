@@ -25,6 +25,30 @@ function compareCore(a, b) {
 	return 0;
 }
 
+// SemVer 2.0.0 section 11: the core decides first; a prerelease ranks below its release; prerelease
+// identifiers compare numerically when both are numeric, numeric below alphanumeric, else in ASCII order,
+// and a longer list wins when every shared identifier is equal. Build metadata is ignored.
+function compareVersions(a, b) {
+	const core = compareCore(a, b);
+	if (core !== 0) return core;
+	const prerelease = (v) => {
+		const text = v.split("+")[0].split("-").slice(1).join("-");
+		return text ? text.split(".") : [];
+	};
+	const x = prerelease(a);
+	const y = prerelease(b);
+	if (x.length === 0 || y.length === 0) return y.length - x.length === 0 ? 0 : x.length === 0 ? 1 : -1;
+	for (let i = 0; i < Math.min(x.length, y.length); i++) {
+		if (x[i] === y[i]) continue;
+		const xNumeric = /^\d+$/.test(x[i]);
+		const yNumeric = /^\d+$/.test(y[i]);
+		if (xNumeric && yNumeric) return BigInt(x[i]) > BigInt(y[i]) ? 1 : -1;
+		if (xNumeric !== yNumeric) return xNumeric ? -1 : 1;
+		return x[i] > y[i] ? 1 : -1;
+	}
+	return x.length === y.length ? 0 : x.length > y.length ? 1 : -1;
+}
+
 function releaseTag(packageVersion, latestVersion, gitTag) {
 	const major = majorOf(packageVersion);
 	const latestMajor = majorOf(latestVersion);
@@ -37,7 +61,7 @@ function releaseTag(packageVersion, latestVersion, gitTag) {
 		return ["alpha", "beta", "rc", "next"].includes(id) ? id : "next";
 	}
 	if (major < latestMajor) return `v${major}-lts`;
-	if (compareCore(packageVersion, latestVersion) <= 0) {
+	if (compareVersions(packageVersion, latestVersion) <= 0) {
 		throw new Error(`${packageVersion} is not newer than latest ${latestVersion}; choose a dist tag manually`);
 	}
 	return "latest";
@@ -96,4 +120,4 @@ if (require.main === module) {
 	}
 }
 
-module.exports = { majorOf, releaseTag, checkRepository };
+module.exports = { majorOf, releaseTag, checkRepository, compareVersions };

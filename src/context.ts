@@ -18,9 +18,12 @@ import {
 	SWITCHBACK_ABSENT,
 	SWITCHBACK_ELIGIBLE,
 	SWITCHBACK_INELIGIBLE,
-	type SwitchbackServing,
-	type SwitchbackSources,
 } from "./switchback";
+// A separate `import type`: inline `type` specifiers would need TypeScript 4.5 to read the published
+// declarations, and 1.13.4 consumers compile with 3.9.
+import type { SwitchbackServing, SwitchbackSources } from "./switchback";
+
+const hasOwn = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 
 type JSONPrimitive = string | number | boolean | null;
 type JSONObject = { [key: string]: JSONValue };
@@ -275,10 +278,13 @@ export default class Context {
 		this._attrs = [];
 		this._goals = [];
 		this._exposures = [];
-		this._overrides = {};
-		this._cassignments = {};
+		// No prototype, so a name such as `constructor` or `__proto__` is an ordinary key. `_units` stays a
+		// plain object because `getUnits()` returns it, as in 1.13.4; its keys are written and read as own
+		// properties instead.
+		this._overrides = Object.create(null);
+		this._cassignments = Object.create(null);
 		this._units = {};
-		this._assigners = {};
+		this._assigners = Object.create(null);
 		this._holdoutAssignments = {};
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
@@ -399,7 +405,7 @@ export default class Context {
 	}
 
 	getUnit(unitType: string) {
-		return this._units[unitType];
+		return hasOwn(this._units, unitType) ? this._units[unitType] : undefined;
 	}
 
 	unit(unitType: string, uid: string | number) {
@@ -416,12 +422,13 @@ export default class Context {
 				throw new Error(`Unit '${unitType}' must be a string or a number.`);
 		}
 
-		const previous = this._units[unitType];
+		const previous = this.getUnit(unitType);
 		if (previous !== undefined && previous !== uid) {
 			throw new Error(`Unit '${unitType}' UID already set.`);
 		}
 
-		this._units[unitType] = uid;
+		// Defined, not assigned: assigning `__proto__` would replace the map's prototype.
+		Object.defineProperty(this._units, unitType, { value: uid, enumerable: true, writable: true, configurable: true });
 
 		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
 	}
@@ -790,7 +797,7 @@ export default class Context {
 				!assignment.exposed &&
 				assignment.unitType != null &&
 				(assignment.isRuleMissingUnit || assignment.holdoutAssignments?.some((item) => item === null)) &&
-				assignment.unitType in this._units
+				hasOwn(this._units, assignment.unitType)
 			) {
 				delete this._assignments[experimentName];
 				return this._assign(experimentName);
@@ -911,7 +918,7 @@ export default class Context {
 						assignment.variant = 0;
 					} else if (experiment.data.fullOnVariant === 0) {
 						if (unitType !== null) {
-							if (unitType in this._units) {
+							if (hasOwn(this._units, unitType)) {
 								const unit = this._unitHash(unitType);
 								if (unit !== null) {
 									const assigner =
@@ -1907,12 +1914,12 @@ export default class Context {
 
 	private _unitHash(unitType: string) {
 		if (!this._hashes) {
-			this._hashes = {};
+			this._hashes = Object.create(null) as Record<string, string | null>;
 		}
 
 		if (!(unitType in this._hashes)) {
 			// Never cache `null`: the unit can still be set later (see `_getHoldoutAssignment`).
-			if (!(unitType in this._units)) {
+			if (!hasOwn(this._units, unitType)) {
 				return null;
 			}
 
@@ -1964,12 +1971,12 @@ export default class Context {
 		return assignment;
 	}
 
-	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
+	private _init(data: ContextData, assignments: Record<string, Assignment> = Object.create(null)) {
 		this._data = data;
 		const client = this._sdk.getClient();
 		this._environmentName = typeof client?.getEnvironment === "function" ? client.getEnvironment() ?? null : null;
 
-		const index: Record<string, Experiment> = {};
+		const index: Record<string, Experiment> = Object.create(null);
 		const indexVariables: Record<string, Experiment[]> = {};
 
 		const holdoutsById: Record<number, HoldoutData> = {};

@@ -4,7 +4,7 @@ const { readFileSync } = require("fs");
 const { execFileSync } = require("child_process");
 const path = require("path");
 const yaml = require("js-yaml");
-const { majorOf, releaseTag, checkRepository } = require("../check-release");
+const { majorOf, releaseTag, checkRepository, compareVersions } = require("../check-release");
 const pkg = require("../../package.json");
 
 test("uses a non-semver lts tag for older major releases", () => {
@@ -58,6 +58,52 @@ test.each(["1.15", "01.15.0", "1.15.0-01", "1.15.0-beta_1", "1.15.0\n"])(
 		expect(() => releaseTag(version, "1.14.0", `v${version}`)).toThrow(/Invalid package version/);
 	}
 );
+
+test("publishes a stable release over a prerelease of the same version as latest", () => {
+	for (const latest of ["1.14.0-rc.1", "1.14.0-beta.1", "1.14.0-alpha", "1.14.0-0", "1.14.0-rc.1+build.5"]) {
+		expect(releaseTag("1.14.0", latest, "v1.14.0")).toBe("latest");
+	}
+	expect(() => releaseTag("1.13.9", "1.14.0-rc.1", "v1.13.9")).toThrow(/not newer than latest/);
+});
+
+// The SemVer 2.0.0 section 11 example, ascending, plus build metadata and hyphenated identifiers.
+const SEMVER_ORDER = [
+	"1.0.0-alpha",
+	"1.0.0-alpha.1",
+	"1.0.0-alpha.beta",
+	"1.0.0-beta",
+	"1.0.0-beta.2",
+	"1.0.0-beta.11",
+	"1.0.0-rc.1",
+	"1.0.0-rc-1.2",
+	"1.0.0-rc-1.10",
+	"1.0.0",
+	"1.0.1-0",
+	"1.0.1",
+];
+
+test("orders versions by SemVer precedence", () => {
+	for (let i = 0; i < SEMVER_ORDER.length; i++) {
+		for (let j = 0; j < SEMVER_ORDER.length; j++) {
+			expect([SEMVER_ORDER[i], SEMVER_ORDER[j], compareVersions(SEMVER_ORDER[i], SEMVER_ORDER[j])]).toEqual([
+				SEMVER_ORDER[i],
+				SEMVER_ORDER[j],
+				Math.sign(i - j),
+			]);
+		}
+	}
+});
+
+test("ignores build metadata when comparing versions", () => {
+	expect(compareVersions("1.0.0+build.2", "1.0.0+build.1")).toBe(0);
+	expect(compareVersions("1.0.0-rc.1+build.9", "1.0.0-rc.1")).toBe(0);
+	expect(compareVersions("1.0.0+build-1", "1.0.0-rc.1")).toBe(1);
+});
+
+test("compares numeric prerelease identifiers by value, beyond Number precision", () => {
+	expect(compareVersions("1.0.0-9007199254740993", "1.0.0-9007199254740992")).toBe(1);
+	expect(compareVersions("1.0.0-10", "1.0.0-9")).toBe(1);
+});
 
 test("refuses an older same-major release instead of moving latest back", () => {
 	expect(() => releaseTag("1.13.5", "1.14.0", "v1.13.5")).toThrow(/not newer than latest/);

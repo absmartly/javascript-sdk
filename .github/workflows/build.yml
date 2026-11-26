@@ -44,3 +44,12 @@ jobs:
 
       - name: Run npm build
         run: npm run build
+
+      # Published declarations must still compile for 1.13.4 consumers on TypeScript 3.9, 4.4 and 4.9.
+      - name: Check compatibility with the published 1.13.4 package
+        run: |
+          mkdir -p "$RUNNER_TEMP/baseline"
+          npm pack @absmartly/javascript-sdk@1.13.4 --ignore-scripts --pack-destination "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP/absmartly-javascript-sdk-1.13.4.tgz" -C "$RUNNER_TEMP/baseline"
+          npm install --prefix "$RUNNER_TEMP/baseline/package" --omit=dev --ignore-scripts --no-audit --no-fund
+          node scripts/compatibility/run.js "$RUNNER_TEMP/baseline/package" . --report "$RUNNER_TEMP/compat.json"

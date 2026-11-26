@@ -7894,6 +7894,124 @@ describe("Context", () => {
 			});
 		});
 
+		describe("experiment names and unit types named like Object.prototype members", () => {
+			const memberNames = ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"];
+			const named = (experimentName, over = {}) => ({ ...shared(1, [0, 1], {}), name: experimentName, ...over });
+			const exposures = (context) => context._exposures.map((x) => [x.name, x.variant, x.custom, x.overridden]);
+
+			it.each(memberNames)("assigns and caches an experiment named %s like any other", async (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				expect(context.peek(member)).toBe(1);
+				expect(context.treatment(member)).toBe(1);
+				expect(context.treatment(member)).toBe(1);
+				expect(exposures(context)).toEqual([[member, 1, false, false]]);
+				expect(Object.getPrototypeOf(context._assignments)).toBe(null);
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [named(member)] }));
+				await context.refresh();
+				expect(context.treatment(member)).toBe(1);
+				expect(context.pending()).toBe(1);
+			});
+
+			it.each(memberNames)("applies and caches an override for an experiment named %s", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				context.override(member, 0);
+				expect(context.treatment(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(exposures(context)).toEqual([[member, 0, false, true]]);
+			});
+
+			it.each(memberNames)("applies and caches a custom assignment for an experiment named %s", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				context.customAssignment(member, 0);
+				expect(context.treatment(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(exposures(context)).toEqual([[member, 0, true, false]]);
+			});
+
+			it.each(memberNames)("does not apply an inherited %s as an override or custom assignment", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				expect(context.treatment(member)).toBe(1);
+				expect(exposures(context)).toEqual([[member, 1, false, false]]);
+			});
+
+			it.each(memberNames)("serves the base variant for an unknown experiment named %s", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [] });
+				expect(context.peek(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(exposures(context)).toEqual([[member, 0, false, false]]);
+			});
+
+			it.each(memberNames)("keeps a unit type named %s as an own unit and assigns from it", (unitType) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{ experiments: [named("e", { unitType })] }
+				);
+				expect(context.getUnit(unitType)).toBeUndefined();
+				context.unit(unitType, "u1");
+				expect(context.getUnit(unitType)).toBe("u1");
+				expect(Object.prototype.hasOwnProperty.call(context.getUnits(), unitType)).toBe(true);
+				expect(Object.getPrototypeOf(context.getUnits())).toBe(Object.prototype);
+				expect(Object.getPrototypeOf(context._assigners)).toBe(null);
+				expect(() => context.unit(unitType, "u1")).not.toThrow();
+				expect(() => context.unit(unitType, "u2")).toThrow(`Unit '${unitType}' UID already set.`);
+				const ordinary = new Context(
+					sdk,
+					contextOptions,
+					{ units: { other: "u1" } },
+					{
+						experiments: [named("e", { unitType: "other" })],
+					}
+				);
+				expect(context.treatment("e")).toBe(ordinary.treatment("e"));
+				expect(context.treatment("e")).toBe(ordinary.treatment("e"));
+				expect(context._exposures.map((x) => [x.name, x.unit])).toEqual([["e", unitType]]);
+			});
+
+			it.each(memberNames)("publishes a unit type named %s", async (unitType) => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{ experiments: [named("e", { unitType })] }
+				);
+				context.unit(unitType, "u1");
+				context.treatment("e");
+				await context.publish();
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].units;
+				expect(published).toEqual([{ type: unitType, uid: hashUnit("u1") }]);
+			});
+
+			it.each(memberNames)("holds out an experiment named %s like an ordinary one", (member) => {
+				// Split [1, 0] always holds the unit out, so the experiment serves control.
+				const holdout = { ...shared(9, [1, 0], {}), name: "h", holdoutType: "full" };
+				const served = (experimentName) => {
+					const context = new Context(sdk, contextOptions, contextParams, {
+						experiments: [named(experimentName, { holdoutIds: [9] })],
+						holdouts: [holdout],
+					});
+					const variants = [context.treatment(experimentName), context.treatment(experimentName)];
+					return [
+						variants,
+						context._exposures.map((x) => (x.name === experimentName ? "experiment" : x.name)),
+					];
+				};
+				expect(served(member)).toEqual(served("ordinary"));
+			});
+
+			it("keeps getUnits() an ordinary object, as in 1.13.4", () => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [] });
+				const unitMap = context.getUnits();
+				expect(Object.getPrototypeOf(unitMap)).toBe(Object.prototype);
+				// eslint-disable-next-line no-prototype-builtins
+				expect(unitMap.hasOwnProperty("session_id")).toBe(true);
+				expect(String(unitMap)).toBe("[object Object]");
+			});
+		});
+
 		it.each(["toString", "valueOf", "hasOwnProperty", "__proto__", "constructor"])(
 			"returns the caller default for the unindexed prototype-named key %s",
 			(key) => {
