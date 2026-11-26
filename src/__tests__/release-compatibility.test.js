@@ -246,23 +246,22 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		sdkFetch.mockReset();
 	});
 
-	it("keeps the live units map and released error strings", async () => {
+	it("returns a copy from getUnits() and brands error strings ABsmartly", async () => {
 		const sdk = new SDK(options);
 		const context = sdk.createContextWith({ units: { user: "one" } }, { experiments: [] });
 		const units = context.getUnits();
 		units.session = "two";
-		expect(context.getUnit("session")).toBe("two");
-		expect(context.getUnits()).toBe(units);
+		expect(context.getUnit("session")).toBeUndefined();
+		expect(context.getUnits()).not.toBe(units);
+		expect(context.getUnits()).toEqual({ user: "one" });
 		await context.finalize();
-		expect(() => context.treatment("e")).toThrow("ABSmartly Context is finalized.");
+		expect(() => context.treatment("e")).toThrow("ABsmartly Context is finalized.");
 	});
 
-	it("accepts a released duck-typed custom client without new getters", () => {
+	it("requires a custom client to provide getApplication(), getEnvironment() and getAgent()", () => {
 		const client = { getContext: () => Promise.resolve({ experiments: [] }), publish: () => Promise.resolve() };
 		const sdk = new SDK({ ...options, client });
-		const context = sdk.createContextWith({ units: { user: "one" } }, { experiments: [] });
-		expect(context.isReady()).toBe(true);
-		expect(context.treatment("e")).toBe(0);
+		expect(() => sdk.createContextWith({ units: { user: "one" } }, { experiments: [] })).toThrow(TypeError);
 	});
 
 	it.each([null, "", 1004, " 1004 ", "3.2.1", -1, "١٠٠٤", "1234567890123456789"])(
@@ -281,6 +280,133 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		}
 	);
 
+	it.each([
+		["omitted", undefined],
+		["false", false],
+	])("does not warn about the deprecated auth option when it is %s", async (_label, auth) => {
+		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		await new Client(options).request({ path: "/x", method: "GET", auth });
+		expect(warn).not.toHaveBeenCalled();
+		warn.mockRestore();
+	});
+
+	// With no deadline the first retry waits the full 50 ms backoff; a deadline clamp would cut it to
+	// `timeout - waited` (0 ms), so the retry would fire at once.
+	it("keeps the full retry backoff when timeout is 0", async () => {
+		jest.useFakeTimers();
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		const random = jest.spyOn(Math, "random").mockReturnValue(0);
+		try {
+			sdkFetch
+				.mockRejectedValueOnce(new Error("connection refused"))
+				.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+			const result = new Client({ ...options, timeout: 0, retries: 2 }).request({ path: "/x", method: "GET" });
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+			expect(sdkFetch).toHaveBeenCalledTimes(1);
+			jest.advanceTimersByTime(49);
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+			expect(sdkFetch).toHaveBeenCalledTimes(1);
+			jest.advanceTimersByTime(1);
+			await expect(result).resolves.toEqual({});
+			expect(sdkFetch).toHaveBeenCalledTimes(2);
+		} finally {
+			random.mockRestore();
+			warn.mockRestore();
+			jest.useRealTimers();
+		}
+	});
+
+	it("reports a custom client without getApplication() when an audience is evaluated", () => {
+		const eventLogger = jest.fn();
+		const client = {
+			getContext: () => Promise.resolve({ experiments: [] }),
+			publish: () => Promise.resolve(),
+			getEnvironment: () => "prod",
+			getAgent: () => "agent",
+		};
+		const context = new SDK({ ...options, client, eventLogger }).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [cacheProbeExperiment({ audience: '{"filter":[{"value":true}]}' })] }
+		);
+		context.treatment("cacheProbe");
+		const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+		expect(errors).toHaveLength(1);
+		expect(errors[0]).toBeInstanceOf(TypeError);
+	});
+
+	it("rejects publish() with includeSystemAttributes for a custom client without getAgent()", async () => {
+		const client = {
+			getContext: () => Promise.resolve({ experiments: [] }),
+			publish: () => Promise.resolve(),
+			getApplication: () => ({ name: "web", version: 0 }),
+			getEnvironment: () => "prod",
+		};
+		const context = new SDK({ ...options, client }).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [] },
+			{ publishDelay: -1, includeSystemAttributes: true }
+		);
+		context.track("g");
+		await expect(Promise.resolve().then(() => context.publish())).rejects.toThrow(TypeError);
+	});
+
+	it("uses the configured application, environment and agent getters of a custom client", async () => {
+		const publish = jest.fn(() => Promise.resolve());
+		const client = {
+			getContext: () => Promise.resolve({ experiments: [] }),
+			publish,
+			getApplication: () => ({ name: "custom-app", version: 0 }),
+			getEnvironment: () => "custom-env",
+			getAgent: () => "custom-agent/1",
+		};
+		const sdk = new SDK({ ...options, client });
+		const context = sdk.createContextWith(
+			{ units: { session_id: "u1" } },
+			{
+				experiments: [
+					{
+						...cacheProbeExperiment(),
+						name: "systemNames",
+						audienceStrict: true,
+						audience: JSON.stringify({
+							filter: [
+								{
+									and: [
+										{ eq: [{ var: "application" }, { value: "custom-app" }] },
+										{ eq: [{ var: "environment" }, { value: "custom-env" }] },
+									],
+								},
+							],
+						}),
+						trafficSplit: [0, 1],
+						fullOnVariant: 1,
+					},
+				],
+			},
+			{ publishDelay: -1, includeSystemAttributes: true }
+		);
+		expect(context.treatment("systemNames")).toBe(1);
+		await context.publish();
+		const attributes = publish.mock.calls[0][0].attributes;
+		expect(attributes.find((a) => a.name === "sdk_name").value).toBe("custom-agent/1");
+	});
+
+	it("reports the counts of the exposures and goals a failed context discards", async () => {
+		const eventLogger = jest.fn();
+		const provider = { getContextData: () => Promise.reject(new Error("load failed")) };
+		const context = new SDK({ ...options, provider, eventLogger }).createContext({ units: { session_id: "u1" } });
+		await context.ready();
+		context.treatment("a");
+		context.track("g1");
+		context.track("g2");
+		await context.publish();
+		const messages = eventLogger.mock.calls
+			.filter(([, eventName]) => eventName === "error")
+			.map(([, , error]) => error.message);
+		expect(messages).toContain("Discarding 1 exposures and 2 goals because context failed to initialize");
+	});
+
 	it("bounds retries by a per-request timeout that overrides the client timeout", async () => {
 		sdkFetch.mockRejectedValue(new Error("connection refused"));
 		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
@@ -294,7 +420,7 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(sdkFetch).toHaveBeenCalledTimes(4);
 	});
 
-	it("logs an unparsable audience to the console as 1.13.4 did, without a logger error event", () => {
+	it("reports an unparsable audience through the eventLogger, not the console", () => {
 		const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 		const eventLogger = jest.fn();
 		const sdk = new SDK({ ...options, eventLogger });
@@ -313,22 +439,25 @@ describe("1.13.4 source and behaviour compatibility", () => {
 						trafficSeedHi: 3,
 						trafficSeedLo: 4,
 						trafficSplit: [0, 1],
-						fullOnVariant: 0,
+						fullOnVariant: 1,
 						applications: [{ name: "web" }],
 						variants: [
 							{ name: "A", config: null },
 							{ name: "B", config: null },
 						],
 						audience: "{not json",
-						audienceStrict: false,
+						audienceStrict: true,
 						customFieldValues: null,
 					},
 				],
 			}
 		);
-		context.treatment("badaud");
-		expect(errorSpy).toHaveBeenCalledWith(expect.any(SyntaxError));
-		expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
+		// Indeterminate, as in 1.13.4, not a mismatch: the strict full-on audience still serves variant 1.
+		expect(context.treatment("badaud")).toBe(1);
+		expect(errorSpy).not.toHaveBeenCalled();
+		const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+		expect(errors).toHaveLength(1);
+		expect(errors[0].message).toMatch(/^Invalid audience JSON: /);
 		errorSpy.mockRestore();
 	});
 
@@ -419,19 +548,31 @@ describe("1.13.4 source and behaviour compatibility", () => {
 	});
 
 	it.each([
-		["request() without auth", (c) => c.request({ path: "/x", method: "GET" }), false],
+		["request() without auth", (c) => c.request({ path: "/x", method: "GET" }), true],
 		["request() with auth true", (c) => c.request({ path: "/x", method: "GET", auth: true }), true],
-		["post() with auth false", (c) => c.post({ path: "/x", auth: false }), true],
-		["put() with auth false", (c) => c.put({ path: "/x", auth: false }), true],
-		["getUnauthed()", (c) => c.getUnauthed({ path: "/x" }), false],
-		["getUnauthed() with auth true", (c) => c.getUnauthed({ path: "/x", auth: true }), true],
+		["request() with auth false", (c) => c.request({ path: "/x", method: "GET", auth: false }), false],
+		["post() with auth false", (c) => c.post({ path: "/x", auth: false }), false],
+		["put() with auth false", (c) => c.put({ path: "/x", auth: false }), false],
+		["getUnauthed()", (c) => c.getUnauthed({ path: "/x" }), true],
 		["get() with auth false", (c) => c.get({ path: "/x", auth: false }), false],
-	])("keeps the 1.13.4 auth header rule for %s", async (_label, call, sendsHeaders) => {
+	])("sends auth headers by default unless auth is false: %s", async (_label, call, sendsHeaders) => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
 		await call(new Client(options));
+		warn.mockRestore();
 		const request = sdkFetch.mock.calls[sdkFetch.mock.calls.length - 1][1];
 		if (sendsHeaders) expect(request.headers["X-API-Key"]).toBe("k");
 		else expect(request).not.toHaveProperty("headers");
+	});
+
+	it("warns once per request that auth: true is deprecated", async () => {
+		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		await new Client(options).request({ path: "/x", method: "GET", auth: true });
+		expect(warn).toHaveBeenCalledWith(
+			"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
+		);
+		warn.mockRestore();
 	});
 
 	it("does not re-evaluate assignment rules on cached reads after a same-outcome refresh", async () => {
@@ -656,22 +797,29 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(sdkFetch.mock.calls[0][1]).not.toHaveProperty("headers");
 	});
 
-	it("routes getContext() through a subclass's getUnauthed() override", async () => {
+	it("calls get() directly from getContext(), not a subclass's getUnauthed()", async () => {
 		sdkFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ experiments: [] }) });
-		const seen = [];
+		const unauthed = [];
+		const gets = [];
 		class LoggingClient extends Client {
 			getUnauthed(requestOptions) {
-				seen.push(requestOptions.path);
+				unauthed.push(requestOptions.path);
 				return super.getUnauthed(requestOptions);
+			}
+			get(requestOptions) {
+				gets.push(requestOptions.path);
+				return super.get(requestOptions);
 			}
 		}
 		await new LoggingClient(options).getContext();
-		expect(seen).toEqual(["/context"]);
+		expect(unauthed).toEqual([]);
+		expect(gets).toEqual(["/context"]);
 		expect(sdkFetch.mock.calls[0][1].headers["X-API-Key"]).toBe("k");
 	});
 
-	describe("live units map additions", () => {
-		const liveExp = (extra) => ({
+	it("does not change assignments when a caller edits the copy getUnits() returns", () => {
+		const sdk = new SDK(options);
+		const exp = {
 			id: 13,
 			name: "covered",
 			iteration: 1,
@@ -691,114 +839,16 @@ describe("1.13.4 source and behaviour compatibility", () => {
 			audience: null,
 			audienceStrict: false,
 			customFieldValues: null,
-			...extra,
-		});
-		const splitRules = JSON.stringify({
-			rules: [{ name: "s", type: "split", percentages: "0/100", conditions: null }],
-		});
-
-		it("re-resolves a peeked missing-unit split rule once the live map gains the unit", () => {
-			const context = new SDK(options).createContextWith(
-				{ units: {} },
-				{ experiments: [liveExp({ assignmentRules: splitRules })] }
-			);
-			expect(context.peek("covered")).toBe(0);
-			context.getUnits().user_id = "u1";
-			expect(context.peek("covered")).toBe(1);
-		});
-
-		it("matches unit() for a holdout-covered experiment peeked before the unit existed", () => {
-			const holdout = {
-				id: 99,
-				name: "h",
-				iteration: 1,
-				unitType: "user_id",
-				seedHi: 1,
-				seedLo: 2,
-				split: [0, 1],
-			};
-			const data = { experiments: [liveExp({ holdoutIds: [99] })], holdouts: [holdout] };
-			const viaUnit = new SDK(options).createContextWith({ units: {} }, data);
-			viaUnit.peek("covered");
-			viaUnit.unit("user_id", "u1");
-			viaUnit.treatment("covered");
-			const viaMap = new SDK(options).createContextWith({ units: {} }, data);
-			viaMap.peek("covered");
-			viaMap.getUnits().user_id = "u1";
-			viaMap.treatment("covered");
-			const shape = (c) => c._exposures.map((x) => [x.name, x.variant, x.assigned]);
-			expect(shape(viaMap)).toEqual(shape(viaUnit));
-		});
-
-		it("re-resolves via the live map after revalidation turns an assignment into a missing-unit pin", () => {
-			const rules = JSON.stringify({
-				rules: [
-					{
-						name: "us",
-						type: "assign",
-						variant: 0,
-						conditions: { eq: [{ var: "country" }, { value: "US" }] },
-					},
-					{
-						name: "gb",
-						type: "split",
-						percentages: "0/100",
-						conditions: { eq: [{ var: "country" }, { value: "GB" }] },
-					},
-				],
-			});
-			const sequence = (setUnit) => {
-				const context = new SDK(options).createContextWith(
-					{ units: {} },
-					{ experiments: [liveExp({ assignmentRules: rules })] }
-				);
-				context.attribute("country", "US");
-				expect(context.peek("covered")).toBe(0);
-				context.attribute("country", "GB");
-				expect(context.peek("covered")).toBe(0);
-				setUnit(context);
-				return context.peek("covered");
-			};
-			expect(sequence((context) => context.unit("user_id", "u1"))).toBe(1);
-			expect(
-				sequence((context) => {
-					context.getUnits().user_id = "u1";
-				})
-			).toBe(1);
-		});
-
-		it("keeps the cached assignment while the unit is still missing", () => {
-			const context = new SDK(options).createContextWith(
-				{ units: {} },
-				{ experiments: [liveExp({ assignmentRules: splitRules })] }
-			);
-			context.peek("covered");
-			const first = context._assignments.covered;
-			context.peek("covered");
-			expect(context._assignments.covered).toBe(first);
-		});
-
-		it("does no live-units work on cached reads when nothing was resolved without its unit", () => {
-			const context = new SDK(options).createContextWith(
-				{ units: { user_id: "u1" } },
-				{ experiments: [liveExp({})] }
-			);
-			context.treatment("covered");
-			const cached = context._assignments.covered;
-			let reads = 0;
-			let value = cached.isRuleMissingUnit;
-			Object.defineProperty(cached, "isRuleMissingUnit", {
-				get: () => {
-					reads++;
-					return value;
-				},
-				set: (v) => {
-					value = v;
-				},
-			});
-			for (let i = 0; i < 50; i++) context.peek("covered");
-			expect(reads).toBe(0);
-		});
+		};
+		const context = sdk.createContextWith({ units: {} }, { experiments: [exp] });
+		expect(context.peek("covered")).toBe(0);
+		context.getUnits().user_id = "u1";
+		expect(context.getUnit("user_id")).toBeUndefined();
+		expect(context.treatment("covered")).toBe(0);
+		expect(context._exposures.map((x) => [x.name, x.assigned])).toEqual([["covered", false]]);
+		context.unit("user_id", "u1");
+		const fresh = sdk.createContextWith({ units: { user_id: "u1" } }, { experiments: [exp] });
+		expect(context.peek("covered")).toBe(fresh.peek("covered"));
 	});
 
 	it("treats a nested audience path under a null attribute as missing, not a mismatch, as 1.13.4 did", () => {
@@ -1121,114 +1171,5 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		await context.publish();
 		const attributes = publisher.publish.mock.calls[0][0].attributes;
 		expect(attributes).toEqual([expect.objectContaining({ name: "app_version", value: "2.3.4" })]);
-	});
-
-	it("invalidates a cached missing-unit assignment when the live units map gains the unit", () => {
-		const sdk = new SDK(options);
-		const holdout = { id: 99, name: "h", iteration: 1, unitType: "user_id", seedHi: 1, seedLo: 2, split: [1, 0] };
-		const exp = {
-			id: 13,
-			name: "covered",
-			iteration: 1,
-			unitType: "user_id",
-			seedHi: 1,
-			seedLo: 2,
-			split: [0.5, 0.5],
-			trafficSeedHi: 3,
-			trafficSeedLo: 4,
-			trafficSplit: [0, 1],
-			fullOnVariant: 0,
-			applications: [{ name: "web" }],
-			variants: [
-				{ name: "A", config: null },
-				{ name: "B", config: null },
-			],
-			audience: null,
-			audienceStrict: false,
-			customFieldValues: null,
-			holdoutIds: [99],
-		};
-		const context = sdk.createContextWith({ units: {} }, { experiments: [exp], holdouts: [holdout] });
-		expect(context.peek("covered")).toBe(0);
-		context.getUnits().user_id = "u1";
-		context.treatment("covered");
-		expect(context._exposures.map((x) => x.name)).toEqual(["h"]);
-	});
-
-	describe("a released duck-typed custom client without the new getters", () => {
-		const legacyClient = () => ({
-			getContext: () => Promise.resolve({ experiments: [] }),
-			publish: jest.fn(() => Promise.resolve()),
-		});
-		const strictCountryExperiment = {
-			id: 1,
-			name: "exp",
-			iteration: 1,
-			unitType: "session_id",
-			seedHi: 3603515,
-			seedLo: 233373850,
-			split: [0, 1],
-			trafficSeedHi: 449867249,
-			trafficSeedLo: 455443629,
-			trafficSplit: [0, 1],
-			fullOnVariant: 0,
-			applications: [{ name: "web" }],
-			variants: [
-				{ name: "A", config: null },
-				{ name: "B", config: null },
-			],
-			audience: JSON.stringify({ filter: [{ eq: [{ var: "country" }, { value: "US" }] }] }),
-			audienceStrict: true,
-			customFieldValues: null,
-		};
-
-		it("still evaluates audiences when only getApplication exists", () => {
-			const client = { ...legacyClient(), getApplication: () => ({ name: "web", version: 0 }) };
-			const sdk = new SDK({ ...options, client });
-			const context = sdk.createContextWith(
-				{ units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" } },
-				{ experiments: [strictCountryExperiment] }
-			);
-			context.attribute("country", "US");
-			expect(context.treatment("exp")).toBe(1);
-		});
-
-		it.each(["application", "environment"])("uses %s when only its getter exists", (attributeName) => {
-			const client = legacyClient();
-			if (attributeName === "application") client.getApplication = () => ({ name: "web", version: 0 });
-			else client.getEnvironment = () => "prod";
-			const sdk = new SDK({ ...options, client });
-			const value = attributeName === "application" ? "web" : "prod";
-			const exp = {
-				...strictCountryExperiment,
-				audience: JSON.stringify({ filter: [{ eq: [{ var: attributeName }, { value }] }] }),
-			};
-			const context = sdk.createContextWith({ units: { session_id: "u1" } }, { experiments: [exp] });
-			expect(context.treatment("exp")).toBe(1);
-		});
-
-		it("still evaluates audiences", () => {
-			const sdk = new SDK({ ...options, client: legacyClient() });
-			const context = sdk.createContextWith(
-				{ units: { session_id: "e791e240fcd3df7d238cfc285f475e8152fcc0ec" } },
-				{ experiments: [strictCountryExperiment] }
-			);
-			context.attribute("country", "US");
-			expect(context.treatment("exp")).toBe(1);
-		});
-
-		it("publishes sdk_version but no empty sdk_name", async () => {
-			const client = legacyClient();
-			const sdk = new SDK({ ...options, client });
-			const context = sdk.createContextWith(
-				{ units: { session_id: "u" } },
-				{ experiments: [] },
-				{ includeSystemAttributes: true, publishDelay: -1 }
-			);
-			context.track("goal");
-			await context.publish();
-			const names = client.publish.mock.calls[0][0].attributes.map((a) => a.name);
-			expect(names).toEqual(["sdk_version"]);
-		});
 	});
 });

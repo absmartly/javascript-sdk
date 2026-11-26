@@ -1,22 +1,22 @@
 import SDK from "../sdk";
 import Client from "../client";
-
-// Included in tsc: ConstructorParameters uses the final overload, which must remain the released type.
-export function sdkApplicationVersion(options: ConstructorParameters<typeof SDK>[0]): number {
-	return typeof options.application === "string" ? 0 : options.application.version;
-}
-
-export function clientApplicationVersion(options: ConstructorParameters<typeof Client>[0]): number {
-	return typeof options.application === "string" ? 0 : options.application.version;
-}
-
 import { getApplicationVersion } from "../utils";
-export function releasedUtilityReturnType(value: ReturnType<typeof getApplicationVersion>): number {
-	return value + 1;
+
+// Compile-time pins for the 1.14.0 public types: application.version accepts a number or a string.
+export function sdkApplicationVersion(options: ConstructorParameters<typeof SDK>[0]): number | string {
+	return typeof options.application === "string" ? 0 : options.application.version;
 }
 
-export const releasedDirectUtilityTypes: [number, number, number | string] = [
+export function clientApplicationVersion(options: ConstructorParameters<typeof Client>[0]): number | string {
+	return typeof options.application === "string" ? 0 : options.application.version;
+}
+
+export const stringApplicationVersions = [
+	new SDK({ endpoint: "e", apiKey: "k", environment: "p", application: { name: "web", version: "1.2.3" } }),
+	new Client({ endpoint: "e", apiKey: "k", environment: "p", application: { name: "web", version: "1.2.3" } }),
+];
+
+export const directUtilityTypes: [number | string, number | string] = [
 	getApplicationVersion("web"),
-	getApplicationVersion({ name: "web", version: 3 }),
 	getApplicationVersion({ name: "web", version: "1.2.3" }),
 ];

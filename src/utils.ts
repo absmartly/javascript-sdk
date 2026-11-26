@@ -3,12 +3,8 @@ import { md5 } from "./md5";
 export const getApplicationName = (app: string | { name: string; version: number | string }): string =>
 	typeof app !== "string" ? app.name : app;
 
-export function getApplicationVersion(app: string | { name: string; version: number }): number;
-export function getApplicationVersion(app: string | { name: string; version: number | string }): number | string;
-export function getApplicationVersion(app: string | { name: string; version: number }): number;
-export function getApplicationVersion(app: string | { name: string; version: number | string }): number | string {
-	return typeof app !== "string" ? app.version : 0;
-}
+export const getApplicationVersion = (app: string | { name: string; version: number | string }): number | string =>
+	typeof app !== "string" ? app.version : 0;
 
 function isBrowser() {
 	return typeof window !== "undefined" && typeof window.document !== "undefined";
@@ -179,32 +175,45 @@ export function toWellFormedString(value: string, replacement = "\ufffd"): strin
 	return result;
 }
 
-// Encodes each UTF-16 code unit on its own, exactly as 1.13 did, so unit hashes (and so variant
-// assignment) don't move in a 1.x release. A character outside the BMP is therefore encoded as two
-// 3-byte surrogate sequences, not 4-byte UTF-8; the canonical encoding is planned for 2.0.
+// UTF-8, as the collector and the other SDKs hash units: a surrogate pair (a character outside the
+// BMP, such as an emoji) is one 4-byte sequence. An unpaired surrogate keeps its 3-byte encoding from
+// 1.13.4, as the cross-SDK contract requires, so only IDs with characters outside the BMP hash
+// differently from 1.13.4.
 export function stringToUint8Array(value: string) {
 	const n = value.length;
 	const array = new Array(value.length);
 
 	let k = 0;
 	for (let i = 0; i < n; ++i) {
-		const c = value.charCodeAt(i);
+		let c = value.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff && i + 1 < n) {
+			const next = value.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
+				++i;
+			}
+		}
 		if (c < 0x80) {
 			array[k++] = c;
 		} else if (c < 0x800) {
 			array[k++] = (c >> 6) | 192;
 			array[k++] = (c & 63) | 128;
-		} else {
+		} else if (c < 0x10000) {
 			array[k++] = (c >> 12) | 224;
+			array[k++] = ((c >> 6) & 63) | 128;
+			array[k++] = (c & 63) | 128;
+		} else {
+			array[k++] = (c >> 18) | 240;
+			array[k++] = ((c >> 12) & 63) | 128;
 			array[k++] = ((c >> 6) & 63) | 128;
 			array[k++] = (c & 63) | 128;
 		}
 	}
-	return Uint8Array.from(array);
+	return new Uint8Array(array);
 }
 
 // Standard UTF-8, for keys that must match the platform's String.getBytes(UTF_8) byte for byte
-// (switchback cluster keys). Unit hashing keeps stringToUint8Array above; pass a well-formed string.
+// (switchback cluster keys, made well-formed first). Unit hashing uses stringToUint8Array above.
 export function stringToUtf8Array(value: string) {
 	if (typeof TextEncoder !== "undefined") {
 		return new TextEncoder().encode(value);

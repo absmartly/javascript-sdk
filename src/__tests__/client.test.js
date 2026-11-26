@@ -846,7 +846,7 @@ describe("Client", () => {
 			});
 	});
 
-	it("request() should send headers without a warning when auth is explicitly true", (done) => {
+	it("request() should still send headers when auth is explicitly true (deprecated)", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 		const warnSpy = jest.spyOn(console, "warn").mockImplementation();
 
@@ -875,7 +875,9 @@ describe("Client", () => {
 					signal: expect.any(Object),
 				});
 
-				expect(warnSpy).not.toHaveBeenCalled();
+				expect(warnSpy).toHaveBeenCalledWith(
+					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
+				);
 
 				expect(response).toEqual(defaultMockResponse);
 
@@ -941,7 +943,7 @@ describe("Client", () => {
 			});
 	});
 
-	it("getUnauthed() should retain its unauthenticated 1.13 behaviour", (done) => {
+	it("getUnauthed() should forward to get()", (done) => {
 		fetch.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
 
 		const client = new Client(clientOptions);
@@ -955,6 +957,14 @@ describe("Client", () => {
 				expect(fetch).toHaveBeenCalledTimes(1);
 				expect(fetch).toHaveBeenLastCalledWith(`${endpoint}/context?application=test_app&environment=test`, {
 					method: "GET",
+					headers: {
+						"Content-Type": "application/json",
+						"X-API-Key": apiKey,
+						"X-Agent": "javascript-client",
+						"X-Environment": "test",
+						"X-Application": "test_app",
+						"X-Application-Version": 1000000,
+					},
 					body: undefined,
 					keepalive: true,
 					signal: expect.any(Object),
@@ -1217,39 +1227,61 @@ describe("Client", () => {
 			expect(client).toBeInstanceOf(Client);
 		});
 
-		it("should not retry when the client timeout is 0, as in 1.13.4", (done) => {
-			fetch.mockRejectedValue(new Error("connection refused"));
+		it("should still retry a failing-then-succeeding request when timeout is 0 (no deadline)", (done) => {
+			fetch
+				.mockResolvedValueOnce(responseMock(500, "server error", "server error text"))
+				.mockResolvedValueOnce(responseMock(200, "OK", defaultMockResponse));
+
 			const client = new Client(Object.assign({}, clientOptions, { timeout: 0, retries: 5 }));
 
-			client.request({ method: "PUT", path: "/context" }).catch(() => {
-				expect(fetch).toHaveBeenCalledTimes(1);
-				done();
-			});
+			client
+				.request({
+					method: "GET",
+					path: "/context",
+				})
+				.then((response) => {
+					expect(fetch).toHaveBeenCalledTimes(2);
+					expect(response).toEqual(defaultMockResponse);
+
+					done();
+				});
+
+			advanceFakeTimers();
 		});
 
-		it("should fall back to the client timeout when a request timeout is 0", (done) => {
-			// Like a real fetch, reject once the request's signal aborts.
+		// A request timeout of 0 means no deadline for that request, not "use the client timeout".
+		it("should not abort a request whose own timeout is 0, even with a client timeout", (done) => {
+			let aborted = false;
 			fetch.mockImplementation(
 				(_url, opts) =>
-					new Promise((_resolve, reject) => {
+					new Promise((resolve) => {
 						opts.signal.addEventListener("abort", () => {
-							const error = new Error("aborted");
-							error.name = "AbortError";
-							reject(error);
+							aborted = true;
 						});
+						setTimeout(() => resolve(responseMock(200, "OK", defaultMockResponse)), 500);
 					})
 			);
 			const client = new Client(Object.assign({}, clientOptions, { timeout: 200, retries: 0 }));
 
-			client.request({ method: "GET", path: "/context", timeout: 0 }).then(
-				() => done(new Error("expected the request to be aborted")),
-				(error) => {
-					expect(error.message).toBe("aborted");
-					done();
-				}
-			);
+			client.request({ method: "GET", path: "/context", timeout: 0 }).then((response) => {
+				expect(aborted).toBe(false);
+				expect(response).toEqual(defaultMockResponse);
+				done();
+			}, done);
 
-			jest.advanceTimersByTime(200);
+			jest.advanceTimersByTime(500);
+		});
+
+		it("should retry without a deadline until the retries run out when timeout is 0", (done) => {
+			fetch.mockRejectedValue(new Error("connection refused"));
+			const client = new Client(Object.assign({}, clientOptions, { timeout: 0, retries: 4 }));
+
+			client.request({ method: "PUT", path: "/context" }).catch(() => {
+				expect(fetch).toHaveBeenCalledTimes(5);
+				done();
+			});
+
+			advanceFakeTimers();
 		});
 	});
 });

@@ -1,4 +1,4 @@
-import Client, { ClientInputOptions, ClientOptions, ClientRequestOptions } from "./client";
+import Client, { ClientOptions, ClientRequestOptions } from "./client";
 import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
 import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
@@ -33,11 +33,7 @@ export default class SDK {
 	private _provider: ContextDataProvider;
 	private readonly _client: Client;
 
-	// The released signature is declared last, so ConstructorParameters<typeof SDK> keeps its 1.13.4 type;
-	// the first overload additionally accepts a string application version.
-	constructor(options: ClientInputOptions & SDKOptions);
-	constructor(options: ClientOptions & SDKOptions);
-	constructor(options: ClientInputOptions & SDKOptions) {
+	constructor(options: ClientOptions & SDKOptions) {
 		const clientOptions = SDK._extractClientOptions(options);
 		options = Object.assign({}, options);
 
@@ -47,8 +43,8 @@ export default class SDK {
 		this._provider = options.provider || new ContextDataProvider();
 	}
 
-	private static _extractClientOptions(options: ClientInputOptions & SDKOptions): ClientInputOptions {
-		const clientOptionKeys: (keyof ClientInputOptions)[] = [
+	private static _extractClientOptions(options: ClientOptions & SDKOptions): ClientOptions {
+		const clientOptionKeys: (keyof ClientOptions)[] = [
 			"application",
 			"agent",
 			"apiKey",
@@ -58,19 +54,17 @@ export default class SDK {
 			"retries",
 			"timeout",
 		];
-		const extracted: Partial<ClientInputOptions> = {
+		const extracted: Partial<ClientOptions> = {
 			agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 		};
 
-		// Every own enumerable key is passed through, even when its value is undefined: the same key set
-		// 1.13.4 read with Object.entries (so `agent: undefined` still overrides the default and is rejected).
 		for (const key of clientOptionKeys) {
-			if (options != null && Object.prototype.propertyIsEnumerable.call(options, key)) {
+			if (options?.[key] !== undefined) {
 				extracted[key] = options[key] as never;
 			}
 		}
 
-		return extracted as ClientInputOptions;
+		return extracted as ClientOptions;
 	}
 
 	getContextData(requestOptions: ClientRequestOptions) {

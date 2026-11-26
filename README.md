@@ -580,8 +580,13 @@ document.getElementById("checkout-btn").addEventListener("click", () => {
 
 ## Upgrading from 1.13.4
 
-1.14.0 retains the 1.x API, error strings and unit hashing (including legacy surrogate
-encoding), Node 6 / npm 3 runtime floor and IE 10 browser target. The build and publish
+1.14.0 retains the 1.x API, Node 6 / npm 3 runtime floor and IE 10 browser target.
+Check the CHANGELOG's Changed section before upgrading: error strings now use the
+`ABsmartly` brand, `getUnits()` returns a copy, low-level `Client` requests
+authenticate by default, `timeout: 0` means no deadline, and some console
+diagnostics are now logger `error` events. Unit IDs are now hashed as canonical UTF-8: an ID with a character
+outside the Basic Multilingual Plane (such as an emoji) can get a different variant,
+and every other ID keeps its 1.13.4 variant. The build and publish
 toolchain uses modern Node; that does not raise the consumer runtime floor.
 
 See [CHANGELOG.md](CHANGELOG.md) for the agreed targeting and wire changes and who is

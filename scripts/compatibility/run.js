@@ -25,6 +25,41 @@ and pass --typescript-dir /tmp/compat-ts/node_modules. No root configuration cha
 The JSON report contains all changed declaration text and all runtime export names;
 it includes failures even when the command exits nonzero. Temporary files are removed.`);
 }
+// Breaks from 1.13.4 the owner accepted for 1.14.0 (2026-11-26), each listed under CHANGELOG Changed.
+// Only these exact differences pass; any other type error or runtime difference still fails the run.
+const ACCEPTED_TYPE_ERRORS = [
+	// `Exposure.ruleOverride` is required.
+	{
+		pattern: /error TS2741: Property 'ruleOverride' is missing in type '[^']*' but required in type 'Exposure'\.$/,
+		count: 1,
+	},
+	// `ClientOptions.application.version` is `number | string`; the three released numeric readers must narrow it.
+	{ pattern: /error TS2322: Type 'string \| number' is not assignable to type 'number'\.$/, count: 3 },
+];
+const ACCEPTED_TYPE_DETAIL = /^\s+Type 'string' is not assignable to type 'number'\.$/;
+const ACCEPTED_RUNTIME_DIFFERENCES = [
+	// Error strings use the `ABsmartly` brand.
+	'runtime.errors.notReady.message: "ABSmartly Context is not yet ready." -> "ABsmartly Context is not yet ready."',
+	'runtime.errors.finalized.message: "ABSmartly Context is finalized." -> "ABsmartly Context is finalized."',
+	// Canonical UTF-8 unit hashing: sweep entry 256 is the emoji UID "😀", outside the BMP.
+	"runtime.sweep.256.peek: 0 -> 1",
+	"runtime.sweep.256.treatment: 0 -> 1",
+];
+function unacceptedTypeErrors(output) {
+	const counts = ACCEPTED_TYPE_ERRORS.map(() => 0);
+	const rest = [];
+	for (const line of output.split("\n")) {
+		if (!line.trim() || ACCEPTED_TYPE_DETAIL.test(line)) continue;
+		const index = ACCEPTED_TYPE_ERRORS.findIndex(({ pattern }) => pattern.test(line));
+		if (index < 0) rest.push(line);
+		else counts[index]++;
+	}
+	ACCEPTED_TYPE_ERRORS.forEach(({ pattern, count }, i) => {
+		if (counts[i] !== count)
+			rest.push(`expected ${count} accepted error(s) matching ${pattern}, found ${counts[i]}`);
+	});
+	return rest;
+}
 function exec(command, args, options) {
 	const result = child.spawnSync(command, args, { encoding: "utf8", ...options });
 	if (result.error) throw result.error;
@@ -153,18 +188,38 @@ async function main() {
 			]) {
 				const outcome = compile(tmp, path.join(compilerDir, "bin", "tsc"), pkg, `${alias}-${label}`);
 				result.types[expected][label] = outcome;
-				console.log(`TypeScript ${expected} ${label}: ${outcome.passed ? "PASS" : "FAIL"}`);
-				if (!outcome.passed) {
-					console.error(outcome.output);
+				if (label === "candidate" && !outcome.passed) {
+					outcome.unaccepted = unacceptedTypeErrors(outcome.output);
+					outcome.accepted = outcome.unaccepted.length === 0;
+				}
+				const status = outcome.passed
+					? "PASS"
+					: outcome.accepted
+					? "PASS (accepted 1.14.0 breaks only)"
+					: "FAIL";
+				console.log(`TypeScript ${expected} ${label}: ${status}`);
+				if (!outcome.passed) console.error(outcome.output);
+				if (!outcome.passed && !outcome.accepted) {
+					if (outcome.unaccepted) console.error(outcome.unaccepted.join("\n"));
 					result.errors.push(`TypeScript ${expected} ${label} failed`);
 				}
 			}
 		}
 		try {
 			result.runtime = await runtime(baseline, candidate);
-			if (result.runtime.errors && result.runtime.errors.length) {
-				result.errors.push(...result.runtime.errors.map((error) => `Runtime: ${error}`));
-				for (const error of result.runtime.errors) console.error(`Runtime: ${error}`);
+			const differences = result.runtime.errors || [];
+			for (const error of differences) {
+				if (ACCEPTED_RUNTIME_DIFFERENCES.includes(error)) console.log(`Runtime (accepted): ${error}`);
+				else {
+					result.errors.push(`Runtime: ${error}`);
+					console.error(`Runtime: ${error}`);
+				}
+			}
+			for (const accepted of ACCEPTED_RUNTIME_DIFFERENCES) {
+				if (!differences.includes(accepted)) {
+					result.errors.push(`Runtime: accepted difference no longer observed: ${accepted}`);
+					console.error(result.errors[result.errors.length - 1]);
+				}
 			}
 		} catch (err) {
 			result.errors.push(`Runtime: ${err.stack || err}`);

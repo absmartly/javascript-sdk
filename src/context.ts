@@ -179,7 +179,7 @@ export type Exposure = {
 	fullOn: boolean;
 	custom: boolean;
 	audienceMismatch: boolean;
-	ruleOverride?: boolean;
+	ruleOverride: boolean;
 };
 
 export type Attribute = {
@@ -346,7 +346,7 @@ export default class Context {
 		return this._failedError;
 	}
 
-	ready(): Promise<unknown> {
+	ready(): Promise<boolean> {
 		if (this.isReady()) {
 			return Promise.resolve(true);
 		}
@@ -474,8 +474,19 @@ export default class Context {
 		);
 	}
 
+	// A copy, so callers cannot change the context's units. Defined key by key: a spread would turn a
+	// unit type named `__proto__` into the copy's prototype.
 	getUnits(): Units {
-		return this._units;
+		const units: Units = {};
+		for (const unitType of Object.keys(this._units)) {
+			Object.defineProperty(units, unitType, {
+				value: this._units[unitType],
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
+		}
+		return units;
 	}
 
 	units(units: Record<string, number | string>) {
@@ -609,9 +620,9 @@ export default class Context {
 
 	private _checkNotFinalized() {
 		if (this.isFinalized()) {
-			throw new Error("ABSmartly Context is finalized.");
+			throw new Error("ABsmartly Context is finalized.");
 		} else if (this.isFinalizing()) {
-			throw new Error("ABSmartly Context is finalizing.");
+			throw new Error("ABsmartly Context is finalizing.");
 		}
 	}
 
@@ -648,7 +659,7 @@ export default class Context {
 
 	private _checkReady(expectNotFinalized?: boolean) {
 		if (!this.isReady()) {
-			throw new Error("ABSmartly Context is not yet ready.");
+			throw new Error("ABsmartly Context is not yet ready.");
 		}
 
 		if (expectNotFinalized) {
@@ -661,12 +672,11 @@ export default class Context {
 	private _getSystemAttributes(): Record<string, string> {
 		const client = this._sdk.getClient();
 		const systemAttrs: Record<string, string> = {};
-		// A custom `client` passed to the SDK may predate either getter.
-		const applicationName = typeof client?.getApplication === "function" ? client.getApplication()?.name : undefined;
+		const applicationName = client.getApplication()?.name;
 		if (typeof applicationName === "string" && applicationName.length > 0) {
 			systemAttrs["application"] = applicationName;
 		}
-		const environmentName = typeof client?.getEnvironment === "function" ? client.getEnvironment() : undefined;
+		const environmentName = client.getEnvironment();
 		if (typeof environmentName === "string" && environmentName.length > 0) {
 			systemAttrs["environment"] = environmentName;
 		}
@@ -690,6 +700,13 @@ export default class Context {
 	}
 
 	private _evaluateAudience(audience: string): boolean | null {
+		try {
+			JSON.parse(audience);
+		} catch (error) {
+			// Invalid audience JSON is indeterminate (null), as in 1.13.4, and reported to the eventLogger.
+			this._logError(new Error(`Invalid audience JSON: ${(error as Error).message}`));
+			return null;
+		}
 		try {
 			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
 		} catch (error) {
@@ -793,15 +810,6 @@ export default class Context {
 
 		if (experimentName in this._assignments) {
 			const assignment = this._assignments[experimentName];
-			if (
-				!assignment.exposed &&
-				assignment.unitType != null &&
-				(assignment.isRuleMissingUnit || assignment.holdoutAssignments?.some((item) => item === null)) &&
-				hasOwn(this._units, assignment.unitType)
-			) {
-				delete this._assignments[experimentName];
-				return this._assign(experimentName);
-			}
 			if (hasOverride) {
 				if (
 					assignment.overridden &&
@@ -1398,14 +1406,22 @@ export default class Context {
 							if (field.value === "") return "";
 							return JSON.parse(field.value);
 						} catch (e) {
-							console.error(`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}'`);
+							this._logError(
+								new Error(
+									`Failed to parse JSON custom field value '${key}' for experiment '${experimentName}': ${
+										(e as Error).message
+									}`
+								)
+							);
 							return null;
 						}
 					case "boolean":
 						return field.value === "true";
 					default:
-						console.error(
-							`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+						this._logError(
+							new Error(
+								`Unknown custom field type '${field.type}' for experiment '${experimentName}' and key '${key}' - you may need to upgrade to the latest SDK version`
+							)
 						);
 						return null;
 				}
@@ -1633,7 +1649,7 @@ export default class Context {
 
 		const client = this._sdk.getClient();
 		const systemAttributes: Attribute[] = [];
-		const agent = typeof client?.getAgent === "function" ? client.getAgent() : undefined;
+		const agent = client.getAgent();
 		if (!userSetSdkName && typeof agent === "string" && agent.length > 0) {
 			systemAttributes.push({ name: "sdk_name", value: agent, setAt: systemSetAt });
 		}
@@ -1678,6 +1694,12 @@ export default class Context {
 		}
 
 		if (this._failed) {
+			this._logError(
+				new Error(
+					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
+				)
+			);
+
 			this._pending = 0;
 			this._exposures = [];
 			this._goals = [];
@@ -1959,7 +1981,7 @@ export default class Context {
 	private _init(data: ContextData, assignments: Record<string, Assignment> = Object.create(null)) {
 		this._data = data;
 		const client = this._sdk.getClient();
-		this._environmentName = typeof client?.getEnvironment === "function" ? client.getEnvironment() ?? null : null;
+		this._environmentName = client.getEnvironment() ?? null;
 
 		const index: Record<string, Experiment> = Object.create(null);
 		const indexVariables: Record<string, Experiment[]> = {};

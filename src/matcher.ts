@@ -35,8 +35,7 @@ export class AudienceMatcher {
 		let audience;
 		try {
 			audience = JSON.parse(audienceString);
-		} catch (error) {
-			console.error(error);
+		} catch (_error) {
 			return null;
 		}
 

@@ -612,12 +612,12 @@ describe("Context", () => {
 			expect(context.isFinalized()).toEqual(false);
 
 			expect(() => context.data()).toThrow();
-			expect(() => context.treatment("test")).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.peek("test")).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.experiments()).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.variableKeys()).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.variableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
-			expect(() => context.peekVariableValue("a", 17)).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.treatment("test")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peek("test")).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.experiments()).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.variableKeys()).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.variableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
+			expect(() => context.peekVariableValue("a", 17)).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1529,7 +1529,7 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -1541,12 +1541,12 @@ describe("Context", () => {
 			context.treatment("exp_test_ab");
 
 			context.finalize().then(() => {
-				expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
+				expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.peek("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
+			expect(() => context.peek("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
 		});
 	});
 
@@ -1991,13 +1991,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalized.");
+				expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is finalizing.");
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is finalizing.");
 		});
 
 		it("should re-evaluate audience expression when attributes change in strict mode", (done) => {
@@ -2233,7 +2233,7 @@ describe("Context", () => {
 			const context = new Context(sdk, contextOptions, contextParams, Promise.resolve(getContextResponse));
 			expect(context.isReady()).toEqual(false);
 
-			expect(() => context.treatment("exp_test_ab")).toThrow("ABSmartly Context is not yet ready.");
+			expect(() => context.treatment("exp_test_ab")).toThrow("ABsmartly Context is not yet ready.");
 
 			done();
 		});
@@ -8630,13 +8630,13 @@ describe("Context", () => {
 			expect(context.pending()).toEqual(1);
 
 			context.finalize().then(() => {
-				expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalized.");
+				expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalized.");
 
 				done();
 			});
 
 			expect(context.isFinalizing()).toEqual(true);
-			expect(() => context.variableValue("button.color", 17)).toThrow("ABSmartly Context is finalizing.");
+			expect(() => context.variableValue("button.color", 17)).toThrow("ABsmartly Context is finalizing.");
 		});
 	});
 
@@ -9803,7 +9803,7 @@ describe("Context", () => {
 					expect(context.pending()).toEqual(0);
 					expect(context.isFinalizing()).toEqual(false);
 					expect(context.isFinalized()).toEqual(true);
-					expect(consoleErrorSpy).not.toHaveBeenCalled();
+					expect(consoleErrorSpy).toHaveBeenCalled();
 
 					consoleErrorSpy.mockRestore();
 					done();
@@ -10622,30 +10622,33 @@ describe("Context", () => {
 			expect(context.customFieldValue("exp_test_custom_fields", "false_boolean_field")).toEqual(false);
 		});
 
-		it("should console an error when JSON cannot be parsed", () => {
+		it("should log an error through eventLogger when JSON cannot be parsed", () => {
+			const eventLogger = jest.fn();
 			const errorSpy = jest.spyOn(console, "error");
-			const context = new Context(sdk, contextOptions, contextParams, getContextResponse);
+			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc'"
+			const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+			expect(errors).toHaveLength(1);
+			expect(errors[0].message).toMatch(
+				/^Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc': /
 			);
+			expect(errorSpy).not.toHaveBeenCalled();
 		});
 
-		it("should console an error when a field type is invalid", () => {
-			const errorSpy = jest.spyOn(console, "error");
+		it("should log an error through eventLogger when a field type is invalid", () => {
 			const eventLogger = jest.fn();
+			const errorSpy = jest.spyOn(console, "error");
 			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
-			expect(errorSpy).toHaveBeenCalledTimes(1);
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version"
-			);
-			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
+			const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+			expect(errors.map((e) => e.message)).toEqual([
+				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
+			]);
+			expect(errorSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -11278,7 +11281,7 @@ describe("Context input handling and lifecycle regressions", () => {
 	});
 
 	describe("error logging routed through eventLogger", () => {
-		it("should preserve custom field console diagnostics without new error events", () => {
+		it("should route custom field parse errors through eventLogger, not the console", () => {
 			const eventLogger = jest.fn();
 			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
@@ -11312,10 +11315,12 @@ describe("Context input handling and lifecycle regressions", () => {
 			);
 
 			context.customFieldValue("exp", "bad_json");
-			expect(errorSpy).toHaveBeenCalledWith(
-				"Failed to parse JSON custom field value 'bad_json' for experiment 'exp'"
+			expect(errorSpy).not.toHaveBeenCalled();
+			const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+			expect(errors).toHaveLength(1);
+			expect(errors[0].message).toMatch(
+				/^Failed to parse JSON custom field value 'bad_json' for experiment 'exp': /
 			);
-			expect(eventLogger.mock.calls.filter(([, eventName]) => eventName === "error")).toHaveLength(0);
 			errorSpy.mockRestore();
 		});
 
