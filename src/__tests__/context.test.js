@@ -7107,25 +7107,29 @@ describe("Context", () => {
 				expect(context.pending()).toBe(width + 1);
 			});
 
-			// 2,000 callbacks wait in one round, so the 1,024-callback budget is spent mid-round. The ones
-			// still waiting at the cutoff, and the read the cutoff callback makes, are each delivered once,
-			// in queue order, without another replay round.
 			// 2,000 callbacks wait in one round, so the 1,024-callback budget is spent mid-round. A read made
 			// from a callback before the cutoff, from the cutoff callback itself, or after it is delivered once
 			// with everything else: the cutoff callback's own callbacks first, then the round's remaining ones,
 			// then those earlier callbacks queued for the next round. After the cutoff, delivery is inline as in
 			// 1.13.4, so a read made from a later callback runs right after it.
 			it.each([
-				["exp_w5", 2000],
-				["exp_w1022", 2000],
-				["exp_w1023", 1024],
-				["exp_w1500", 1501],
+				[["exp_w5"], [2000]],
+				[["exp_w1022"], [2000]],
+				[["exp_w1023"], [1024]],
+				[["exp_w1500"], [1501]],
+				// Two extra reads, one queued before the cutoff and one from the cutoff callback: each is
+				// delivered once, so the cutoff empties the next-round queue it has taken over.
+				[
+					["exp_w5", "exp_w1023"],
+					[2001, 1024],
+				],
 			])(
-				"delivers every callback when the budget runs out mid-round (extra read from %s)",
-				(trigger, position) => {
+				"delivers every callback when the budget runs out mid-round (extra reads from %j)",
+				(triggers, positions) => {
 					const width = 2000;
+					const extra = triggers.map((_, k) => width + k);
 					const experiments = [];
-					for (let i = 0; i <= width; i++) {
+					for (let i = 0; i < width + extra.length; i++) {
 						experiments.push({
 							...holdoutVarExperiment({}),
 							id: 100 + i,
@@ -7141,16 +7145,17 @@ describe("Context", () => {
 					}
 					const names = [];
 					let fanned = false;
-					let nested = false;
+					const pendingTriggers = new Map(triggers.map((trigger, k) => [trigger, extra[k]]));
 					const eventLogger = jest.fn((ctx, eventName, data) => {
 						if (eventName !== "exposure") return;
 						names.push(data.name);
 						if (!fanned) {
 							fanned = true;
 							for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
-						} else if (!nested && data.name === trigger) {
-							nested = true;
-							ctx.variableValue(`w${width}`, "D");
+						} else if (pendingTriggers.has(data.name)) {
+							const read = pendingTriggers.get(data.name);
+							pendingTriggers.delete(data.name);
+							ctx.variableValue(`w${read}`, "D");
 						}
 					});
 					const context = new Context(
@@ -7160,13 +7165,14 @@ describe("Context", () => {
 						buildHoldoutResponse(experiments, [])
 					);
 					expect(context.variableValue("w0", "D")).toBe(0);
-					expect(names).toHaveLength(width + 1);
-					expect(new Set(names).size).toBe(width + 1);
-					expect(names.indexOf(`exp_w${width}`)).toBe(position);
-					expect(names.filter((n) => n !== `exp_w${width}`)).toEqual(
+					const total = width + extra.length;
+					expect(names).toHaveLength(total);
+					expect(new Set(names).size).toBe(total);
+					expect(extra.map((read) => names.indexOf(`exp_w${read}`))).toEqual(positions);
+					expect(names.filter((n) => !extra.some((read) => n === `exp_w${read}`))).toEqual(
 						Array.from({ length: width }, (_, i) => `exp_w${i}`)
 					);
-					expect(context.pending()).toBe(width + 1);
+					expect(context.pending()).toBe(total);
 					expect(context._deferredLogs).toBeUndefined();
 				}
 			);
