@@ -701,6 +701,22 @@ describe("switchback serving through Context", () => {
 
 	// A strict audience read below a parent that is now null is indeterminate, which counts as a
 	// match on a fresh assignment; a slot cached while the audience failed must agree with it.
+	// A rule win does not consult the audience, so an unrelated attribute change must not rebuild the
+	// slot and queue a second exposure for a unit the strict audience rejects.
+	it("keeps one exposure for a rule-won slot whose strict audience fails across an attribute change", async () => {
+		const experiment = sb(2, HOUR);
+		experiment.assignmentRules = ASSIGN_VARIANT_1;
+		experiment.audience = STRICT_GOLD_AUDIENCE;
+		experiment.audienceStrict = true;
+		const context = createContext(dataOf(experiment));
+		clock = ANCHOR + HOUR;
+		expect(context.treatment("exp_sb")).toEqual(1);
+		context.attribute("unrelated", "x");
+		expect(context.treatment("exp_sb")).toEqual(1);
+		const exposures = await publishExposures(context);
+		expect(exposures.map((x) => [x.name, x.variant, x.ruleOverride])).toEqual([["exp_sb", 1, true]]);
+	});
+
 	it("serves a cached strict-mismatch slot like a fresh context once its audience is indeterminate", () => {
 		const PLAN_AUDIENCE = '{"filter":[{"eq":[{"var":"user/plan"},{"value":"pro"}]}]}';
 		const make = () => {

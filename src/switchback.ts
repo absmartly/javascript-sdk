@@ -18,9 +18,9 @@ export function requireValidArmCount(armCount: number) {
 // surrogate encodes as '?', as the platform's String.getBytes(UTF_8) does.
 export function baseHash(clusterUnit: string, cycleIndex: string, seedHi: number, seedLo: number): number {
 	const key = toWellFormedString(`${clusterUnit}\u001f${cycleIndex}`, "?");
-	// Copy to an exact-length buffer: an encoder may return a view over a larger one.
-	const bytes = stringToUtf8Array(key);
-	const keyHash = murmur3_32(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+	// Copied into an exact-length array: an encoder may return a view over a larger buffer. The
+	// Uint8Array copy, unlike ArrayBuffer.prototype.slice, also exists in IE 10.
+	const keyHash = murmur3_32(new Uint8Array(stringToUtf8Array(key)).buffer);
 
 	const buffer = new ArrayBuffer(12);
 	const view = new DataView(buffer);

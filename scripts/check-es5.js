@@ -4,6 +4,9 @@ const path = require("path");
 const acorn = require("acorn");
 const vm = require("vm");
 
+// The arms Node (native TextEncoder) serves for this probe; IE 10 must serve the same ones.
+const EXPECTED_IE10_SWITCHBACK_ARMS = [0, 2, 1, 0, 1, 2, 1, 0, 2, 1, 2, 0];
+
 let failed = false;
 for (const file of ["absmartly.js", "absmartly.min.js"]) {
 	const target = path.resolve(__dirname, "../dist", file);
@@ -42,6 +45,13 @@ for (const file of ["absmartly.js", "absmartly.min.js"]) {
 		console.log(`IE 10 null-parent audience OK: dist/${file}`);
 	} catch (error) {
 		console.error(`dist/${file} breaks a null-parent audience on IE 10: ${error.message}`);
+		failed = true;
+	}
+	try {
+		checkIe10Switchback(target);
+		console.log(`IE 10 switchback OK: dist/${file}`);
+	} catch (error) {
+		console.error(`dist/${file} breaks a switchback on IE 10: ${error.message}`);
 		failed = true;
 	}
 }
@@ -84,4 +94,52 @@ function checkIe10NullParentAudience(target) {
 		throw new Error(`expected variant 1 and 0 error events, got ${JSON.stringify(result)}`);
 	}
 }
+// IE 10 has no TextEncoder and no ArrayBuffer.prototype.slice. A switchback must still resolve its
+// cluster's scheduled arm there, the same arm Node gives (12 hourly periods of a 3-arm schedule).
+function checkIe10Switchback(target) {
+	const sandbox = {
+		setTimeout,
+		clearTimeout,
+		setInterval,
+		clearInterval,
+		Promise,
+		console: { ...console, error() {} },
+	};
+	sandbox.self = sandbox;
+	const context = vm.createContext(sandbox);
+	vm.runInContext("delete this.TextEncoder; delete ArrayBuffer.prototype.slice;", context);
+	vm.runInContext(fs.readFileSync(target, "utf8"), context, { timeout: 10000 });
+	const probe = `(function () {
+		var errors = 0;
+		var sdk = new absmartly.SDK({ endpoint: "http://x/v1", apiKey: "k", application: "web", environment: "prod",
+			eventLogger: function (c, name) { if (name === "error") errors++; } });
+		var exp = { id: 1, name: "sb", iteration: 1, unitType: "store_id", seedHi: -5, seedLo: -7,
+			split: [1 / 3, 1 / 3, 1 / 3], trafficSeedHi: 1, trafficSeedLo: 2, trafficSplit: [0, 1], fullOnVariant: 0,
+			applications: [{ name: "web" }], variants: [{ name: "A", config: null }, { name: "B", config: null },
+			{ name: "C", config: null }], audience: null, audienceStrict: false, customFieldValues: null,
+			randomizationType: "switchback", switchbackClusters: { store_id: "store_key" },
+			switchbackStartAt: 1767225600000, switchbackPeriodMs: 3600000, switchbackCarryoverDurationMs: 0,
+			switchbackBurnInDurationMs: 0, switchbackBurnOutDurationMs: 0, switchbackDesignType: "balanced_block",
+			switchbackEstimand: "global_average_treatment_effect" };
+		var arms = [];
+		var now = Date.now;
+		try {
+			for (var period = 0; period < 12; period++) {
+				Date.now = function () { return 1767225600000 + period * 3600000 + 1; };
+				var ctx = sdk.createContextWith({ units: { store_id: "u" } }, { experiments: [exp] });
+				ctx.attribute("store_key", "store-😀-42");
+				arms.push(ctx.treatment("sb"));
+			}
+		} finally {
+			Date.now = now;
+		}
+		return { arms: arms, errors: errors };
+	})()`;
+	const result = vm.runInContext(probe, context);
+	const expected = JSON.stringify(EXPECTED_IE10_SWITCHBACK_ARMS);
+	if (JSON.stringify(result.arms) !== expected || result.errors !== 0) {
+		throw new Error(`expected arms ${expected} and 0 error events, got ${JSON.stringify(result)}`);
+	}
+}
+
 process.exitCode = failed ? 1 : 0;
