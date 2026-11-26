@@ -200,8 +200,7 @@ describe("publish workflow", () => {
 		120000
 	);
 
-	// Every publish step must contain exactly one `npm publish` (on its own line), so the effective dry-run
-	// check above covers all of them: a second command in a manual step could otherwise publish for real.
+	// The dry-run probe above inspects one command per step, so a second command would go unchecked.
 	test("each publish step runs exactly one npm publish command", () => {
 		for (const step of job.steps.filter((s) => /\bnpm\s+publish\b/.test(s.run || ""))) {
 			const commands = step.run.split("\n").filter((l) => /\bnpm\s+publish\b/.test(l));

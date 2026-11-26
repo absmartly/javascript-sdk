@@ -7099,7 +7099,6 @@ describe("Context", () => {
 					buildHoldoutResponse(experiments, [])
 				);
 				expect(context.variableValue("w0", "D")).toBe(0);
-				// Every waiting callback was delivered, in the order its read was made, before the nested one.
 				expect(names.slice(0, width)).toEqual(Array.from({ length: width }, (_, i) => `exp_w${i}`));
 				expect(names[width]).toBe(`exp_w${width}`);
 				expect(nestedAt).toBe(nestedDepth);

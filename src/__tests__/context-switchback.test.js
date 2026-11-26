@@ -699,6 +699,57 @@ describe("switchback serving through Context", () => {
 		expect(await publishExposures(context)).toEqual([strictMismatchExposure(ANCHOR + HOUR)]);
 	});
 
+	// A strict audience read below a parent that is now null is indeterminate, which counts as a
+	// match on a fresh assignment; a slot cached while the audience failed must agree with it.
+	it("serves a cached strict-mismatch slot like a fresh context once its audience is indeterminate", () => {
+		const PLAN_AUDIENCE = '{"filter":[{"eq":[{"var":"user/plan"},{"value":"pro"}]}]}';
+		const make = () => {
+			const experiment = sb(2, HOUR);
+			experiment.audience = PLAN_AUDIENCE;
+			experiment.audienceStrict = true;
+			experiment.fullOnVariant = 1;
+			return createContext(dataOf(experiment));
+		};
+		const error = jest.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			clock = ANCHOR + HOUR;
+			const cached = make();
+			cached.attribute("user", { plan: "free" });
+			expect(cached.peek("exp_sb")).toEqual(0);
+			cached.attribute("user", null);
+			const fresh = make();
+			fresh.attribute("user", null);
+			expect(fresh.treatment("exp_sb")).toEqual(1);
+			expect(cached.treatment("exp_sb")).toEqual(1);
+			cached.attribute("user", { plan: "free" });
+			expect(cached.treatment("exp_sb")).toEqual(0);
+		} finally {
+			error.mockRestore();
+		}
+	});
+
+	it("keeps a cached strict-mismatch slot on control when an unrelated getter throws", () => {
+		const PLAN_AUDIENCE = '{"filter":[{"eq":[{"var":"user/plan"},{"value":"pro"}]}]}';
+		const experiment = sb(2, HOUR);
+		experiment.audience = PLAN_AUDIENCE;
+		experiment.audienceStrict = true;
+		experiment.fullOnVariant = 1;
+		const eventLogger = jest.fn();
+		const context = createContext(dataOf(experiment), undefined, eventLogger);
+		clock = ANCHOR + HOUR;
+		context.attribute("user", { plan: "free" });
+		expect(context.peek("exp_sb")).toEqual(0);
+		const user = {};
+		Object.defineProperty(user, "plan", {
+			get() {
+				throw new TypeError("getter boom");
+			},
+		});
+		context.attribute("user", user);
+		expect(context.treatment("exp_sb")).toEqual(0);
+		expect(eventLogger.mock.calls.some(([, eventName]) => eventName === "error")).toBe(true);
+	});
+
 	// Runs in period 1, whose draw is 1, so the variant 0 is the strict mismatch's control.
 	it("publishes a strict audience mismatch exactly", async () => {
 		const experiment = sb(2, HOUR);

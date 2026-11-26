@@ -193,6 +193,34 @@ describe("switchback assigner", () => {
 	});
 });
 
+describe("switchback cluster-key encoding", () => {
+	// A TextEncoder polyfill can return a view over a larger backing buffer; only the view's bytes are
+	// the encoded key, so the arm must not change.
+	it("hashes only the encoded bytes when the encoder returns a view over a larger buffer", () => {
+		const native = global.TextEncoder;
+		const keys = ["region-😀", "store-42", "cafe\u0301", "x\ud800y"];
+		const expected = keys.map((key) => assignSwitchbackPeriod(key, 0, 0, 0, 3));
+		const expected10 = keys.map((key) => assignSwitchbackPeriod(key, 7, -5, -7, 10));
+		try {
+			global.TextEncoder = class {
+				encode(value) {
+					const bytes = new native().encode(value);
+					const padded = new Uint8Array(bytes.length + 19);
+					padded.fill(0xa5);
+					padded.set(bytes, 7);
+					return padded.subarray(7, 7 + bytes.length);
+				}
+			};
+			expect(keys.map((key) => assignSwitchbackPeriod(key, 0, 0, 0, 3))).toEqual(expected);
+			expect(keys.map((key) => assignSwitchbackPeriod(key, 7, -5, -7, 10))).toEqual(expected10);
+			global.TextEncoder = undefined;
+			expect(keys.map((key) => assignSwitchbackPeriod(key, 0, 0, 0, 3))).toEqual(expected);
+		} finally {
+			global.TextEncoder = native;
+		}
+	});
+});
+
 describe("switchback attribute paths", () => {
 	it("matches every platform path case", () => {
 		const cases = pathCases.cases;

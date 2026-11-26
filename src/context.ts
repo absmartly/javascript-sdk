@@ -1167,8 +1167,10 @@ export default class Context {
 		if ((rule?.variant ?? null) !== (assignment.ruleVariant ?? null)) return false;
 
 		if (!assignment.ruleOverride && data.audience && data.audience.length > 0) {
+			// An indeterminate result counts as a match, as on a fresh assignment, so a cached slot and a
+			// fresh context with the same attributes serve the same arm.
 			const result = this._evaluateAudience(data.audience);
-			const audienceMismatch = result !== null ? !result : assignment.audienceMismatch;
+			const audienceMismatch = typeof result === "boolean" ? !result : false;
 			if (audienceMismatch !== assignment.audienceMismatch) return false;
 		}
 
@@ -1621,7 +1623,6 @@ export default class Context {
 			return this._attrs.map((x) => ({ name: x.name, value: x.value, setAt: x.setAt }));
 		}
 
-		// Opt-in path: detect user-set sdk_name/sdk_version in the same pass instead of a separate name set.
 		let userSetSdkName = false;
 		let userSetSdkVersion = false;
 		const userAttributes = this._attrs.map((x) => {
@@ -2014,7 +2015,6 @@ export default class Context {
 				data: experiment,
 				variables,
 				holdouts,
-				// Only a non-empty string carries rules; anything else (a malformed payload) has none.
 				ruleKey:
 					typeof experiment.assignmentRules === "string" && experiment.assignmentRules
 						? `${experiment.assignmentRules}:${this._environmentName}`
