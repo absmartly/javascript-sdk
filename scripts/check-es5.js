@@ -7,63 +7,36 @@ const vm = require("vm");
 // The arms Node (native TextEncoder) serves for this probe; IE 10 must serve the same ones.
 const EXPECTED_IE10_SWITCHBACK_ARMS = [0, 2, 1, 0, 1, 2, 1, 0, 2, 1, 2, 0];
 
-let failed = false;
-for (const file of ["absmartly.js", "absmartly.min.js"]) {
-	const target = path.resolve(__dirname, "../dist", file);
-	try {
-		acorn.parse(fs.readFileSync(target, "utf8"), { ecmaVersion: 5 });
-	} catch (error) {
-		console.error(`dist/${file} is not ES5: ${error.message}`);
-		failed = true;
-		continue;
-	}
-	try {
-		const sandbox = {
-			console,
-			setTimeout,
-			clearTimeout,
-			setInterval,
-			clearInterval,
-			Promise,
-			Map: undefined,
-			Set: undefined,
-			WeakMap: undefined,
-			WeakSet: undefined,
-		};
-		sandbox.self = sandbox;
-		vm.runInNewContext(fs.readFileSync(target, "utf8"), sandbox, { timeout: 10000 });
-		if (typeof sandbox.absmartly?.SDK !== "function")
-			throw new Error("SDK did not load without native collections");
-		console.log(`ES5 and legacy startup OK: dist/${file}`);
-	} catch (error) {
-		console.error(`dist/${file} does not start without native Map/Set: ${error.message}`);
-		failed = true;
-		continue;
-	}
-	try {
-		checkIe10NullParentAudience(target);
-		console.log(`IE 10 null-parent audience OK: dist/${file}`);
-	} catch (error) {
-		console.error(`dist/${file} breaks a null-parent audience on IE 10: ${error.message}`);
-		failed = true;
-	}
-	try {
-		checkIe10Switchback(target);
-		console.log(`IE 10 switchback OK: dist/${file}`);
-	} catch (error) {
-		console.error(`dist/${file} breaks a switchback on IE 10: ${error.message}`);
-		failed = true;
-	}
-}
+// IE 10 lacks native Map/Set, Reflect, Object.setPrototypeOf, __proto__, TextEncoder,
+// ArrayBuffer.prototype.slice, ArrayBuffer.isView and every ES2015 typed-array method; its typed
+// arrays have only buffer, byteLength, byteOffset, length, set and subarray. Each probe runs the bundle
+// in a fresh realm with all of these removed.
+const IE10_PRELUDE = `
+	delete this.Map;
+	delete this.Set;
+	delete this.WeakMap;
+	delete this.WeakSet;
+	delete this.Reflect;
+	delete this.TextEncoder;
+	delete Object.setPrototypeOf;
+	delete Object.prototype.__proto__;
+	delete ArrayBuffer.prototype.slice;
+	delete ArrayBuffer.isView;
+	(function () {
+		var TypedArray = Object.getPrototypeOf(Uint8Array);
+		var keep = ["constructor", "buffer", "byteLength", "byteOffset", "length", "set", "subarray"];
+		Object.getOwnPropertyNames(TypedArray.prototype).forEach(function (name) {
+			if (keep.indexOf(name) < 0) delete TypedArray.prototype[name];
+		});
+		Object.getOwnPropertySymbols(TypedArray.prototype).forEach(function (symbol) {
+			delete TypedArray.prototype[symbol];
+		});
+		delete TypedArray.from;
+		delete TypedArray.of;
+	})();
+`;
 
-// IE 10 has no Reflect, Object.setPrototypeOf or __proto__. A null-parent audience path must stay
-// indeterminate there (as in 1.13.4), not fail closed. Runs the bundle in a fresh realm with those removed.
-function checkIe10NullParentAudience(target) {
-	const prelude = `
-		delete this.Reflect;
-		delete Object.setPrototypeOf;
-		delete Object.prototype.__proto__;
-	`;
+function ie10Realm(target) {
 	const sandbox = {
 		setTimeout,
 		clearTimeout,
@@ -74,8 +47,43 @@ function checkIe10NullParentAudience(target) {
 	};
 	sandbox.self = sandbox;
 	const context = vm.createContext(sandbox);
-	vm.runInContext(prelude, context);
+	vm.runInContext(IE10_PRELUDE, context);
 	vm.runInContext(fs.readFileSync(target, "utf8"), context, { timeout: 10000 });
+	return context;
+}
+
+let failed = false;
+for (const file of ["absmartly.js", "absmartly.min.js"]) {
+	const target = path.resolve(__dirname, "../dist", file);
+	try {
+		acorn.parse(fs.readFileSync(target, "utf8"), { ecmaVersion: 5 });
+	} catch (error) {
+		console.error(`dist/${file} is not ES5: ${error.message}`);
+		failed = true;
+		continue;
+	}
+	for (const [label, check] of [
+		["legacy startup", checkIe10Startup],
+		["null-parent audience", checkIe10NullParentAudience],
+		["switchback", checkIe10Switchback],
+	]) {
+		try {
+			check(ie10Realm(target));
+			console.log(`IE 10 ${label} OK: dist/${file}`);
+		} catch (error) {
+			console.error(`dist/${file} breaks ${label} on IE 10: ${error.message}`);
+			failed = true;
+		}
+	}
+}
+
+function checkIe10Startup(context) {
+	if (vm.runInContext("typeof absmartly !== 'undefined' && typeof absmartly.SDK", context) !== "function")
+		throw new Error("SDK did not load");
+}
+
+// A null-parent audience path must stay indeterminate on IE 10 (as in 1.13.4), not fail closed.
+function checkIe10NullParentAudience(context) {
 	const probe = `(function () {
 		var errors = 0;
 		var sdk = new absmartly.SDK({ endpoint: "http://x/v1", apiKey: "k", application: "web", environment: "prod",
@@ -94,21 +102,10 @@ function checkIe10NullParentAudience(target) {
 		throw new Error(`expected variant 1 and 0 error events, got ${JSON.stringify(result)}`);
 	}
 }
-// IE 10 has no TextEncoder and no ArrayBuffer.prototype.slice. A switchback must still resolve its
-// cluster's scheduled arm there, the same arm Node gives (12 hourly periods of a 3-arm schedule).
-function checkIe10Switchback(target) {
-	const sandbox = {
-		setTimeout,
-		clearTimeout,
-		setInterval,
-		clearInterval,
-		Promise,
-		console: { ...console, error() {} },
-	};
-	sandbox.self = sandbox;
-	const context = vm.createContext(sandbox);
-	vm.runInContext("delete this.TextEncoder; delete ArrayBuffer.prototype.slice;", context);
-	vm.runInContext(fs.readFileSync(target, "utf8"), context, { timeout: 10000 });
+
+// A switchback must resolve its cluster's scheduled arm on IE 10, the same arm Node gives (12 hourly
+// periods of a 3-arm schedule).
+function checkIe10Switchback(context) {
 	const probe = `(function () {
 		var errors = 0;
 		var sdk = new absmartly.SDK({ endpoint: "http://x/v1", apiKey: "k", application: "web", environment: "prod",

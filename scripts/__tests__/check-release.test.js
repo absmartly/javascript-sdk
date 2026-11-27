@@ -200,12 +200,14 @@ describe("publish workflow", () => {
 		120000
 	);
 
-	// The dry-run probe above inspects one command per step, so a second command would go unchecked.
+	// The dry-run probe above inspects one command per step, so each publish step must be exactly one
+	// single-line `npm publish` command with plain flags: no second command, separator or substitution.
 	test("each publish step runs exactly one npm publish command", () => {
 		for (const step of job.steps.filter((s) => /\bnpm\s+publish\b/.test(s.run || ""))) {
-			const commands = step.run.split("\n").filter((l) => /\bnpm\s+publish\b/.test(l));
-			expect({ step: step.name, commands: commands.length }).toEqual({ step: step.name, commands: 1 });
-			expect(commands[0]).toMatch(/^\s*npm publish\b/);
+			expect({ step: step.name, run: step.run.trim() }).toEqual({
+				step: step.name,
+				run: expect.stringMatching(/^npm publish(?: --[a-z-]+(?: [a-z]+)?)+ --tag "\$DIST_TAG"$/),
+			});
 		}
 	});
 

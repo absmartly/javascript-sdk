@@ -18,6 +18,13 @@ group `npm-publish-absmartly-javascript-sdk`, with `cancel-in-progress: false`.
 Registry/tag validation and publishing run inside that same locked job, so concurrent
 release tags cannot both validate against a stale `latest` and then move it backwards.
 
+If a tag run is cancelled or fails before the publish step, nothing reached npm:
+re-run the failed job from the Actions page (same tag, same commit). If it failed
+after npm accepted the version, do not re-tag; `npm view @absmartly/javascript-sdk@<version>`
+confirms the upload, and `npm dist-tag add @absmartly/javascript-sdk@<version> <tag>`
+fixes a missing or wrong distribution tag. Never delete and re-push a tag to retry: a
+moved tag no longer matches the published provenance.
+
 `workflow_dispatch` is **always a dry run** and is a package preflight only: it checks
 the version, tag selection, build and package contents. npm's dry run skips the
 authenticated publish request, so it does not prove OIDC (or any token) works; the

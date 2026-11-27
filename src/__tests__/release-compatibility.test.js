@@ -150,7 +150,6 @@ describe("1.13.4 source and behaviour compatibility", () => {
 				context.attribute("age", 1);
 				experiments.forEach((experiment) => expect(context.treatment(experiment.name)).toBe(1));
 				expect(context.treatment("ordinary")).toBe(1);
-				// Nothing tried to parse a rule set that is not a non-empty string.
 				expect(errorSpy).not.toHaveBeenCalled();
 			} finally {
 				errorSpy.mockRestore();
