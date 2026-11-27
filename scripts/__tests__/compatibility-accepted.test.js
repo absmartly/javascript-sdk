@@ -38,3 +38,23 @@ test("the runtime sweep records each UID's unit hash, and UID 256 is the emoji",
 	expect(source).toMatch(/sweep\.push\(\{ uid, hash: hashUnit\(uid\),/);
 	expect(source).toMatch(/Array\.from\(\{ length: 256 \}, \(_, i\) => `user-\$\{i\}`\)\.concat\(\[\s*"😀",/);
 });
+
+test("does not accept the same errors for a different type", () => {
+	const otherType = ruleOverride.replace("type 'Exposure'", "type 'Goal'");
+	expect(unacceptedTypeErrors(accepted.replace(ruleOverride, otherType))).toContain(otherType);
+	const otherAssign = "consumer.ts(9,1): error TS2322: Type 'string | number' is not assignable to type 'boolean'.";
+	expect(unacceptedTypeErrors(`${accepted}\n${otherAssign}`)).toEqual([otherAssign]);
+});
+
+test("reports an unaccepted error's own detail lines", () => {
+	const other = "consumer.ts(9,1): error TS2322: Type 'Foo' is not assignable to type 'Bar'.";
+	const otherDetail = "  Property 'x' is missing in type 'Foo'.";
+	expect(unacceptedTypeErrors(`${accepted}\n${other}\n${otherDetail}`)).toEqual([other, otherDetail]);
+});
+
+test("reports a compiler message line that is not an error", () => {
+	const message = "error: TS5083: Cannot read file 'tsconfig.json'.";
+	const note = "consumer.ts(1,1): message TS6000: something unexpected";
+	expect(unacceptedTypeErrors(`${accepted}\n${note}`)).toEqual([note]);
+	expect(unacceptedTypeErrors(`${accepted}\n${message}`)).toEqual([message]);
+});
