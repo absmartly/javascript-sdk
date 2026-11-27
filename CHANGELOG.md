@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.1
+
+1.14.0 was tagged but never published to npm, so 1.14.1 is the first npm release
+with the 1.14.0 changes below. Upgrading from 1.13.4, read the 1.14.0 notes.
+
+### Fixed
+
+- The npm publish workflow builds on the `.nvmrc` Node version, as CI does, and
+  times out a stalled build. On Node 22, a test that drives an event logger past the
+  call stack aborted the Jest worker and hung the 1.14.0 publish (#72). No SDK code
+  changed.
+
 ## 1.14.0
 
 ### Added
