@@ -16,7 +16,7 @@ The A/B Smartly JavaScript SDK is an isomorphic library for Node.js (CommonJS an
 ### npm
 
 ```shell
-npm install @absmartly/javascript-sdk@1.14.0 --save
+npm install @absmartly/javascript-sdk@1.14.1 --save
 ```
 
 ### Import in your JavaScript application
@@ -32,10 +32,10 @@ import absmartly from "@absmartly/javascript-sdk";
 
 You can include an optimized and pre-built package directly in your HTML code through [unpkg.com](https://www.unpkg.com).
 
-Simply add the following code to your `head` section to include version 1.14.0.
+Simply add the following code to your `head` section to include version 1.14.1.
 
 ```html
-<script src="https://unpkg.com/@absmartly/javascript-sdk@1.14.0/dist/absmartly.min.js"></script>
+<script src="https://unpkg.com/@absmartly/javascript-sdk@1.14.1/dist/absmartly.min.js"></script>
 ```
 
 ## Getting Started
@@ -200,8 +200,8 @@ When enabled, the following attributes are prepended to the publish request payl
 
 | Attribute     | Description                                                   |
 | :------------ | ------------------------------------------------------------- |
-| `sdk_name`    | The SDK agent name (e.g. `"absmartly-javascript-sdk/1.14.0"`) |
-| `sdk_version` | The SDK version (e.g. `"1.14.0"`)                             |
+| `sdk_name`    | The SDK agent name (e.g. `"absmartly-javascript-sdk/1.14.1"`) |
+| `sdk_version` | The SDK version (e.g. `"1.14.1"`)                             |
 
 Their `setAt` is the time of the earliest exposure or goal in the publish, so they apply to every event in it. A system attribute is not sent when you set an attribute with the same name yourself, so your value is kept.
 
