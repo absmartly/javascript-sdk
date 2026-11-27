@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
           cache: npm
 
@@ -38,7 +38,9 @@ jobs:
         id: release
         run: node scripts/check-release.js
 
+      # The build normally takes about a minute; a stalled test fails the run instead of blocking it.
       - name: Build and test
+        timeout-minutes: 10
         run: npm run build
 
       - name: Inspect package
