@@ -58,3 +58,13 @@ test("reports a compiler message line that is not an error", () => {
 	expect(unacceptedTypeErrors(`${accepted}\n${note}`)).toEqual([note]);
 	expect(unacceptedTypeErrors(`${accepted}\n${message}`)).toEqual([message]);
 });
+
+test("reports a top-level error that matches the accepted detail text", () => {
+	const topLevel = "consumer.ts(9,1): error TS2322: Type 'string' is not assignable to type 'number'.";
+	expect(unacceptedTypeErrors(`${accepted}\n${topLevel}`)).toEqual([topLevel]);
+});
+
+test("does not accept another missing Exposure property", () => {
+	const otherProperty = ruleOverride.replace("'ruleOverride'", "'foo'");
+	expect(unacceptedTypeErrors(accepted.replace(ruleOverride, otherProperty))).toContain(otherProperty);
+});
