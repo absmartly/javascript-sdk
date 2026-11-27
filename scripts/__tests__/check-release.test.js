@@ -128,6 +128,20 @@ describe("publish workflow", () => {
 		}
 	});
 
+	// Node 22 aborted context.test.js and left Jest waiting for 30+ minutes (v1.14.0, run 45978491550).
+	test("builds on the .nvmrc Node version, as CI does, and fails a stalled build in minutes", () => {
+		const setup = job.steps.find((step) => /actions\/setup-node@/.test(step.uses || ""));
+		expect(setup.with["node-version-file"]).toBe(".nvmrc");
+		expect(setup.with["node-version"]).toBeUndefined();
+		expect(setup.with["registry-url"]).toBe("https://registry.npmjs.org");
+		const build = job.steps.find((step) => step.run === "npm run build");
+		expect(build["timeout-minutes"]).toBeGreaterThan(0);
+		expect(build["timeout-minutes"]).toBeLessThanOrEqual(15);
+		const ci = yaml.load(readFileSync(path.join(__dirname, "../../.github/workflows/build.yml"), "utf8"));
+		const ciSetup = ci.jobs.build.steps.find((step) => /actions\/setup-node@/.test(step.uses || ""));
+		expect(ciSetup.with["node-version-file"]).toBe(setup.with["node-version-file"]);
+	});
+
 	test("serializes all releases with one fixed package-wide lock without cancelling a running publish", () => {
 		expect(Object.keys(workflow.jobs)).toEqual(["publish"]);
 		expect(job.concurrency).toEqual({

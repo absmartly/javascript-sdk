@@ -6919,7 +6919,15 @@ describe("Context", () => {
 					},
 				});
 				context.attribute("user", user);
-				expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+				// The feedback recurses past the stack, and the SDK logs the caught RangeError there. A real
+				// console would format it with almost no stack left, which aborts the process on Node 22.23.
+				const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+				try {
+					expect(context.variableValue("button.color", "D")).toBe("WINNER_AFTER_HOLDOUT");
+					expect(consoleError.mock.calls.every(([e]) => e instanceof RangeError)).toBe(true);
+				} finally {
+					consoleError.mockRestore();
+				}
 				// Without the callback budget each round doubles the held list until round 32.
 				expect(errors).toBeGreaterThan(2048);
 				expect(maxRetained).toBeLessThanOrEqual(1024);
