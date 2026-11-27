@@ -21,8 +21,10 @@ release tags cannot both validate against a stale `latest` and then move it back
 If a tag run is cancelled or fails before the publish step, nothing reached npm:
 re-run the failed job from the Actions page (same tag, same commit). If it failed
 after npm accepted the version, do not re-tag; `npm view @absmartly/javascript-sdk@<version>`
-confirms the upload, and `npm dist-tag add @absmartly/javascript-sdk@<version> <tag>`
-fixes a missing or wrong distribution tag. Never delete and re-push a tag to retry: a
+confirms the upload, and an owner with publish rights on the package runs
+`npm dist-tag add @absmartly/javascript-sdk@<version> <tag>` locally to fix a missing
+or wrong distribution tag (the workflow publishes through OIDC with no token, so it
+cannot run this). Never delete and re-push a tag to retry: a
 moved tag no longer matches the published provenance.
 
 `workflow_dispatch` is **always a dry run** and is a package preflight only: it checks
