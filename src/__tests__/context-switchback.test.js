@@ -6,7 +6,6 @@ import { VariantAssigner } from "../assigner";
 import { assignSwitchbackPeriod } from "../switchback";
 import { ContextPublisher } from "../publisher";
 import { ContextDataProvider } from "../provider";
-import { SDK_VERSION } from "../version";
 
 jest.mock("../client");
 jest.mock("../sdk");
@@ -700,6 +699,73 @@ describe("switchback serving through Context", () => {
 		expect(await publishExposures(context)).toEqual([strictMismatchExposure(ANCHOR + HOUR)]);
 	});
 
+	// A strict audience read below a parent that is now null is indeterminate, which counts as a
+	// match on a fresh assignment; a slot cached while the audience failed must agree with it.
+	// A rule win does not consult the audience, so an unrelated attribute change must not rebuild the
+	// slot and queue a second exposure for a unit the strict audience rejects.
+	it("keeps one exposure for a rule-won slot whose strict audience fails across an attribute change", async () => {
+		const experiment = sb(2, HOUR);
+		experiment.assignmentRules = ASSIGN_VARIANT_1;
+		experiment.audience = STRICT_GOLD_AUDIENCE;
+		experiment.audienceStrict = true;
+		const context = createContext(dataOf(experiment));
+		clock = ANCHOR + HOUR;
+		expect(context.treatment("exp_sb")).toEqual(1);
+		context.attribute("unrelated", "x");
+		expect(context.treatment("exp_sb")).toEqual(1);
+		const exposures = await publishExposures(context);
+		expect(exposures.map((x) => [x.name, x.variant, x.ruleOverride])).toEqual([["exp_sb", 1, true]]);
+	});
+
+	it("serves a cached strict-mismatch slot like a fresh context once its audience is indeterminate", () => {
+		const PLAN_AUDIENCE = '{"filter":[{"eq":[{"var":"user/plan"},{"value":"pro"}]}]}';
+		const make = () => {
+			const experiment = sb(2, HOUR);
+			experiment.audience = PLAN_AUDIENCE;
+			experiment.audienceStrict = true;
+			experiment.fullOnVariant = 1;
+			return createContext(dataOf(experiment));
+		};
+		const error = jest.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			clock = ANCHOR + HOUR;
+			const cached = make();
+			cached.attribute("user", { plan: "free" });
+			expect(cached.peek("exp_sb")).toEqual(0);
+			cached.attribute("user", null);
+			const fresh = make();
+			fresh.attribute("user", null);
+			expect(fresh.treatment("exp_sb")).toEqual(1);
+			expect(cached.treatment("exp_sb")).toEqual(1);
+			cached.attribute("user", { plan: "free" });
+			expect(cached.treatment("exp_sb")).toEqual(0);
+		} finally {
+			error.mockRestore();
+		}
+	});
+
+	it("keeps a cached strict-mismatch slot on control when an unrelated getter throws", () => {
+		const PLAN_AUDIENCE = '{"filter":[{"eq":[{"var":"user/plan"},{"value":"pro"}]}]}';
+		const experiment = sb(2, HOUR);
+		experiment.audience = PLAN_AUDIENCE;
+		experiment.audienceStrict = true;
+		experiment.fullOnVariant = 1;
+		const eventLogger = jest.fn();
+		const context = createContext(dataOf(experiment), undefined, eventLogger);
+		clock = ANCHOR + HOUR;
+		context.attribute("user", { plan: "free" });
+		expect(context.peek("exp_sb")).toEqual(0);
+		const user = {};
+		Object.defineProperty(user, "plan", {
+			get() {
+				throw new TypeError("getter boom");
+			},
+		});
+		context.attribute("user", user);
+		expect(context.treatment("exp_sb")).toEqual(0);
+		expect(eventLogger.mock.calls.some(([, eventName]) => eventName === "error")).toBe(true);
+	});
+
 	// Runs in period 1, whose draw is 1, so the variant 0 is the strict mismatch's control.
 	it("publishes a strict audience mismatch exactly", async () => {
 		const experiment = sb(2, HOUR);
@@ -717,7 +783,6 @@ describe("switchback serving through Context", () => {
 				publishedAt: ANCHOR + HOUR + 9,
 				units: [{ type: UNIT_TYPE, uid: UID_HASH }],
 				hashed: true,
-				sdkVersion: SDK_VERSION,
 				exposures: [strictMismatchExposure(ANCHOR + HOUR + 5)],
 				attributes: [{ name: CLUSTER_PATH, value: CLUSTER_KEY, setAt: ANCHOR }],
 			})
@@ -1059,7 +1124,6 @@ describe("switchback serving through Context", () => {
 				publishedAt: ANCHOR + HOUR + 9,
 				units: [{ type: UNIT_TYPE, uid: UID_HASH }],
 				hashed: true,
-				sdkVersion: SDK_VERSION,
 				exposures: [
 					exposure(1, "exp_sb", EXPECTED_2_ARMS[0], ANCHOR + 5, true, true),
 					exposure(1, "exp_sb", EXPECTED_2_ARMS[1], ANCHOR + HOUR + 7, true, true),
@@ -1788,7 +1852,6 @@ describe("switchback serving through Context", () => {
 				publishedAt: ANCHOR + 9,
 				units: [{ type: UNIT_TYPE, uid: UID_HASH }],
 				hashed: true,
-				sdkVersion: SDK_VERSION,
 				exposures: [
 					ruleExposure("exp_rule", 1, ANCHOR + 5),
 					exposure(2, "exp_miss", 0, ANCHOR + 5, true, false),

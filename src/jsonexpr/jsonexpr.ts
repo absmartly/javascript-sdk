@@ -40,9 +40,33 @@ const operators = {
 };
 
 export class JsonExpr {
+	/** @internal */
+	private _nullParentError: unknown;
+
 	evaluateBooleanExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
 		const evaluator = new Evaluator(operators, vars);
-		return evaluator.booleanConvert(evaluator.evaluate(expr));
+		try {
+			return evaluator.booleanConvert(evaluator.evaluate(expr));
+		} catch (error) {
+			this._nullParentError = evaluator.nullParentError;
+			throw error;
+		}
+	}
+
+	/**
+	 * @internal Like evaluateBooleanExpr, but returns null (and logs) when this evaluation read below a
+	 * null/undefined attribute, as 1.13.4 audiences did. Any other error, including one thrown by an attribute
+	 * getter, propagates. The match is by identity with the error the evaluator caught, not by a property on it.
+	 */
+	evaluateAudienceExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {
+		this._nullParentError = undefined;
+		try {
+			return this.evaluateBooleanExpr(expr, vars);
+		} catch (error) {
+			if (this._nullParentError === undefined || error !== this._nullParentError) throw error;
+			console.error(error);
+			return null;
+		}
 	}
 
 	evaluateExpr<TData>(expr: TData[] | Record<string, TData>, vars: Record<string, TData>) {

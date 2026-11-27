@@ -2,10 +2,10 @@ import { arrayEqualsShallow, hashUnit, isObject, isPromise } from "./utils";
 import { VariantAssigner } from "./assigner";
 import { AudienceMatcher } from "./matcher";
 import { insertUniqueSorted } from "./algorithm";
-import SDK, { type EventLogger, type EventName } from "./sdk";
-import { ContextPublisher, type PublishParams } from "./publisher";
+import SDK, { EventLogger, EventName } from "./sdk";
+import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
-import { type ClientRequestOptions } from "./client";
+import { ClientRequestOptions } from "./client";
 import { SDK_VERSION } from "./version";
 import {
 	assignSwitchbackPeriod,
@@ -18,9 +18,12 @@ import {
 	SWITCHBACK_ABSENT,
 	SWITCHBACK_ELIGIBLE,
 	SWITCHBACK_INELIGIBLE,
-	type SwitchbackServing,
-	type SwitchbackSources,
 } from "./switchback";
+// A separate `import type`: inline `type` specifiers would need TypeScript 4.5 to read the published
+// declarations, and 1.13.4 consumers compile with 3.9.
+import type { SwitchbackServing, SwitchbackSources } from "./switchback";
+
+const hasOwn = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 
 type JSONPrimitive = string | number | boolean | null;
 type JSONObject = { [key: string]: JSONValue };
@@ -149,6 +152,11 @@ export type Experiment = {
 	// Parsed `data.assignmentRules`, filled on first use; `undefined` until then. The entry is rebuilt
 	// whenever context data is installed, so the cache never outlives the rules it was parsed from.
 	rules?: unknown[] | null;
+	/**
+	 * @internal Identity of the rules and configured environment, built once when context data is installed
+	 * so a cached read compares one string instead of re-concatenating the full rules JSON.
+	 */
+	ruleKey?: string;
 	// Set only for a switchback experiment: its generation, carried over a refresh while its
 	// switchback identity is unchanged, and its cluster sources (null on the legacy path).
 	switchback?: { generation: number; sources: SwitchbackSources | null };
@@ -270,10 +278,13 @@ export default class Context {
 		this._attrs = [];
 		this._goals = [];
 		this._exposures = [];
-		this._overrides = {};
-		this._cassignments = {};
+		// No prototype, so a name such as `constructor` or `__proto__` is an ordinary key. `_units` stays a
+		// plain object because `getUnits()` returns it, as in 1.13.4; its keys are written and read as own
+		// properties instead.
+		this._overrides = Object.create(null);
+		this._cassignments = Object.create(null);
 		this._units = {};
-		this._assigners = {};
+		this._assigners = Object.create(null);
 		this._holdoutAssignments = {};
 		this._audienceMatcher = new AudienceMatcher();
 		this._environmentName = null;
@@ -335,7 +346,7 @@ export default class Context {
 		return this._failedError;
 	}
 
-	ready() {
+	ready(): Promise<boolean> {
 		if (this.isReady()) {
 			return Promise.resolve(true);
 		}
@@ -394,7 +405,7 @@ export default class Context {
 	}
 
 	getUnit(unitType: string) {
-		return this._units[unitType];
+		return hasOwn(this._units, unitType) ? this._units[unitType] : undefined;
 	}
 
 	unit(unitType: string, uid: string | number) {
@@ -411,12 +422,13 @@ export default class Context {
 				throw new Error(`Unit '${unitType}' must be a string or a number.`);
 		}
 
-		const previous = this._units[unitType];
+		const previous = this.getUnit(unitType);
 		if (previous !== undefined && previous !== uid) {
 			throw new Error(`Unit '${unitType}' UID already set.`);
 		}
 
-		this._units[unitType] = uid;
+		// Defined, not assigned: assigning `__proto__` would replace the map's prototype.
+		Object.defineProperty(this._units, unitType, { value: uid, enumerable: true, writable: true, configurable: true });
 
 		this._invalidateAssignmentsPinnedWithMissingUnit(unitType);
 	}
@@ -462,8 +474,19 @@ export default class Context {
 		);
 	}
 
-	getUnits() {
-		return { ...this._units };
+	// A copy, so callers cannot change the context's units. Defined key by key: a spread would turn a
+	// unit type named `__proto__` into the copy's prototype.
+	getUnits(): Units {
+		const units: Units = {};
+		for (const unitType of Object.keys(this._units)) {
+			Object.defineProperty(units, unitType, {
+				value: this._units[unitType],
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
+		}
+		return units;
 	}
 
 	units(units: Record<string, number | string>) {
@@ -472,7 +495,8 @@ export default class Context {
 		}
 	}
 
-	getAttribute(attrName: string) {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	getAttribute(attrName: string): any {
 		for (let i = this._attrs.length - 1; i >= 0; i--) {
 			if (this._attrs[i].name === attrName) return this._attrs[i].value;
 		}
@@ -488,9 +512,10 @@ export default class Context {
 
 	getAttributes() {
 		const attributes: Record<string, unknown> = {};
-		for (const attr of this._attrs) {
+		// forEach, as in 1.13.4: measurably faster on long attribute histories than for...of or an index loop.
+		this._attrs.forEach((attr) => {
 			attributes[attr.name] = attr.value;
-		}
+		});
 		return attributes;
 	}
 
@@ -518,7 +543,8 @@ export default class Context {
 		return this._track(goalName, properties);
 	}
 
-	finalize(requestOptions?: ClientRequestOptions) {
+	// Declared as in 1.13.4 so existing `=== true` checks still compile; it only ever returns a promise.
+	finalize(requestOptions?: ClientRequestOptions): true | Promise<void> {
 		return this._finalize(requestOptions);
 	}
 
@@ -664,25 +690,37 @@ export default class Context {
 			return this._attrsMapCache;
 		}
 		const attrs: Record<string, unknown> = this._getSystemAttributes();
-		for (const attr of this._attrs) {
+		// forEach, as in 1.13.4: measurably faster here than the compiled for...of or an index loop.
+		this._attrs.forEach((attr) => {
 			attrs[attr.name] = attr.value;
-		}
+		});
 		this._attrsMapCache = attrs;
 		this._attrsMapCacheSeq = this._attrsSeq;
 		return attrs;
 	}
 
 	private _evaluateAudience(audience: string): boolean | null {
+		let result: boolean | null;
 		try {
-			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
+			result = this._audienceMatcher.evaluate(audience, this._getAttributesMap());
 		} catch (error) {
 			this._logError(error as Error);
 			return false;
 		}
+		// Invalid audience JSON is indeterminate (null), as in 1.13.4, and reported to the eventLogger. It is
+		// only parsed again when the result is already null, so a valid audience is parsed once.
+		if (result === null) {
+			try {
+				JSON.parse(audience);
+			} catch (error) {
+				this._logError(new Error(`Invalid audience JSON: ${(error as Error).message}`));
+			}
+		}
+		return result;
 	}
 
 	// `now` is the clock reading a switchback resolves its period at; read here when not given.
-	private _assign(experimentName: string, now?: number) {
+	private _assign(experimentName: string, now?: number): Assignment {
 		const experimentMatches = (experiment: ExperimentData, assignment: Assignment) => {
 			return (
 				experiment.id === assignment.id &&
@@ -695,7 +733,7 @@ export default class Context {
 
 		const audienceMatches = (entry: Experiment, assignment: Assignment) => {
 			const experiment = entry.data;
-			const ruleKey = experiment.assignmentRules ? `${experiment.assignmentRules}:${this._environmentName}` : "";
+			const ruleKey = entry.ruleKey ?? "";
 			const ruleKeyChanged = ruleKey !== (assignment.ruleKey ?? "");
 
 			if (ruleKeyChanged) {
@@ -708,9 +746,10 @@ export default class Context {
 			}
 
 			if (this._attrsSeq > (assignment.attrsSeq ?? 0) || ruleKeyChanged) {
-				const attrs = this._getAttributesMap();
-
-				if (experiment.assignmentRules && experiment.assignmentRules.length > 0) {
+				if (entry.ruleKey) {
+					// Built only when there are rules: the no-rule path must not rebuild the attribute map
+					// after every setAttribute (1.13.4 never built it there).
+					const attrs = this._getAttributesMap();
 					// An exposed split resolved without its unit keeps resolving as if the unit were still
 					// missing, so a unit set afterwards cannot switch the variant the user already saw.
 					const isUnitPinnedMissing = assignment.exposed && assignment.isRuleMissingUnit === true;
@@ -726,12 +765,9 @@ export default class Context {
 
 				if (!assignment.ruleOverride && experiment.audience && experiment.audience.length > 0) {
 					const result = this._evaluateAudience(experiment.audience);
-					// An indeterminate (null) audience result leaves the cached
-					// `audienceMismatch` flag as-is rather than forcing it to `false`,
-					// so a cached mismatch=true assignment isn't wrongly treated as
-					// stale — this only affects the cache-validity check below, not
-					// the flag's value.
-					const newAudienceMismatch = result !== null ? !result : assignment.audienceMismatch;
+					// As in 1.13.4, an indeterminate (null) result counts as a match, so a cached mismatch is
+					// rebuilt and the unit gets what a fresh context with the same attributes would.
+					const newAudienceMismatch = typeof result === "boolean" ? !result : false;
 
 					if (newAudienceMismatch !== assignment.audienceMismatch) {
 						return false;
@@ -861,17 +897,11 @@ export default class Context {
 		} else {
 			if (experiment != null) {
 				const unitType = experiment.data.unitType;
-				const attrs = this._getAttributesMap();
 
 				// Set even when suppressed, or `audienceMatches` rebuilds (losing `exposed`) on every call.
-				assignment.ruleKey = experiment.data.assignmentRules
-					? `${experiment.data.assignmentRules}:${this._environmentName}`
-					: "";
+				assignment.ruleKey = experiment.ruleKey ?? "";
 
-				const rule =
-					experiment.data.assignmentRules && experiment.data.assignmentRules.length > 0
-						? this._resolveRule(experiment, attrs, false)
-						: null;
+				const rule = experiment.ruleKey ? this._resolveRule(experiment, this._getAttributesMap(), false) : null;
 				const ruleVariant = rule?.variant ?? null;
 
 				assignment.ruleVariant = ruleVariant;
@@ -900,37 +930,35 @@ export default class Context {
 						assignment.variant = 0;
 					} else if (experiment.data.fullOnVariant === 0) {
 						if (unitType !== null) {
-							if (unitType in this._units) {
-								const unit = this._unitHash(unitType);
-								if (unit !== null) {
-									const assigner =
-										unitType in this._assigners
-											? this._assigners[unitType]
-											: (this._assigners[unitType] = new VariantAssigner(unit));
-									const eligible =
-										assigner.assign(
-											experiment.data.trafficSplit,
-											experiment.data.trafficSeedHi,
-											experiment.data.trafficSeedLo
-										) === 1;
+							const unit = this._unitHash(unitType);
+							if (unit !== null) {
+								const assigner =
+									unitType in this._assigners
+										? this._assigners[unitType]
+										: (this._assigners[unitType] = new VariantAssigner(unit));
+								const eligible =
+									assigner.assign(
+										experiment.data.trafficSplit,
+										experiment.data.trafficSeedHi,
+										experiment.data.trafficSeedLo
+									) === 1;
 
-									assignment.assigned = true;
-									assignment.eligible = eligible;
+								assignment.assigned = true;
+								assignment.eligible = eligible;
 
-									if (eligible) {
-										if (hasCustom) {
-											assignment.variant = this._cassignments[experimentName];
-											assignment.custom = true;
-										} else {
-											assignment.variant = assigner.assign(
-												experiment.data.split,
-												experiment.data.seedHi,
-												experiment.data.seedLo
-											);
-										}
+								if (eligible) {
+									if (hasCustom) {
+										assignment.variant = this._cassignments[experimentName];
+										assignment.custom = true;
 									} else {
-										assignment.variant = 0;
+										assignment.variant = assigner.assign(
+											experiment.data.split,
+											experiment.data.seedHi,
+											experiment.data.seedLo
+										);
 									}
+								} else {
+									assignment.variant = 0;
 								}
 							}
 						}
@@ -1151,8 +1179,10 @@ export default class Context {
 		if ((rule?.variant ?? null) !== (assignment.ruleVariant ?? null)) return false;
 
 		if (!assignment.ruleOverride && data.audience && data.audience.length > 0) {
+			// An indeterminate result counts as a match, as on a fresh assignment, so a cached slot and a
+			// fresh context with the same attributes serve the same arm.
 			const result = this._evaluateAudience(data.audience);
-			const audienceMismatch = result !== null ? !result : assignment.audienceMismatch;
+			const audienceMismatch = typeof result === "boolean" ? !result : false;
 			if (audienceMismatch !== assignment.audienceMismatch) return false;
 		}
 
@@ -1239,25 +1269,25 @@ export default class Context {
 		}
 	}
 
+	// The whole call is one deferral scope, so an error logged while assigning (a throwing audience)
+	// reaches the eventLogger only after the call's exposures are queued.
 	private _treatment(experimentName: string) {
+		if (this._deferringLogs) return this._treatmentInScope(experimentName);
+		this._deferringLogs = true;
+		try {
+			return this._treatmentInScope(experimentName);
+		} finally {
+			this._endDeferral();
+		}
+	}
+
+	private _treatmentInScope(experimentName: string) {
 		const now = this._switchbackClock(experimentName, undefined);
 		const assignment = this._assign(experimentName, now);
 
 		if (!assignment.exposed) {
 			assignment.exposed = true;
-
-			// Queue the experiment's and its holdouts' exposures before any callback runs, so an
-			// eventLogger that finalizes on the first one still sends the holdout's.
-			if (this._deferringLogs) {
-				this._triggerExposures(experimentName, assignment, now);
-			} else {
-				this._deferringLogs = true;
-				try {
-					this._triggerExposures(experimentName, assignment, now);
-				} finally {
-					this._endDeferral();
-				}
-			}
+			this._triggerExposures(experimentName, assignment, now);
 		}
 
 		return assignment;
@@ -1484,7 +1514,6 @@ export default class Context {
 	// The replay lives in its own method so a warmed read, which defers nothing, stays small.
 	private _variableValue(key: string, defaultValue: string): string {
 		if (this._deferringLogs) return this._resolveVariableValue(key, defaultValue, true);
-
 		this._deferringLogs = true;
 		try {
 			return this._resolveVariableValue(key, defaultValue, true);
@@ -1515,14 +1544,32 @@ export default class Context {
 			let deferred: [EventName, Record<string, unknown> | Error][] | undefined = this._deferredLogs;
 			while (deferred !== undefined) {
 				this._deferredLogs = undefined;
-				delivered += deferred.length;
-				if (++rounds >= DEFERRED_REPLAY_ROUNDS || delivered >= DEFERRED_REPLAY_CALLBACKS) {
+				if (++rounds >= DEFERRED_REPLAY_ROUNDS) {
 					this._deferringLogs = false;
 					this._replayExhausted = true;
 				}
 				for (let i = 0; i < deferred.length; i++) {
+					// Counted as delivered, so callbacks already waiting keep queue order up to the limit.
+					const cutoff = ++delivered >= DEFERRED_REPLAY_CALLBACKS;
+					let remainder: [EventName, Record<string, unknown> | Error][] | undefined;
+					if (cutoff) {
+						// Deferral ends with this callback, so a read it makes is delivered inline before it
+						// returns, as in 1.13.4. The rest of the batch follows: this round's waiting callbacks,
+						// then those its earlier callbacks queued for the next round.
+						this._deferringLogs = false;
+						this._replayExhausted = true;
+						remainder = deferred.slice(i + 1).concat(this._deferredLogs ?? []);
+						this._deferredLogs = undefined;
+					}
 					if (deferred[i][0] === "exposure") exposed = true;
 					this._logEvent(deferred[i][0], deferred[i][1]);
+					if (remainder !== undefined) {
+						if (remainder.length > 0) {
+							this._deferredLogs = remainder;
+							this._deliverDeferredLogs();
+						}
+						break;
+					}
 				}
 				deferred = this._deferredLogs;
 			}
@@ -1530,7 +1577,7 @@ export default class Context {
 			this._deferringLogs = false;
 			this._replayExhausted = false;
 			// Only exposures need publishing; an error alone must not arm the timer.
-			if (exposed) this._setTimeout();
+			if (exposed && this._pending > 0) this._setTimeout();
 		}
 	}
 
@@ -1545,7 +1592,7 @@ export default class Context {
 				this._logEvent(deferred[i][0], deferred[i][1]);
 			}
 		} finally {
-			if (exposed) this._setTimeout();
+			if (exposed && this._pending > 0) this._setTimeout();
 		}
 	}
 
@@ -1591,28 +1638,27 @@ export default class Context {
 	// among duplicates, so system attributes are stamped with the earliest event in the batch and left
 	// out when the user set the same name.
 	private _buildAttributes(systemSetAt: number): Attribute[] {
-		const allAttributes: Attribute[] = [];
-
-		if (this._opts.includeSystemAttributes === true) {
-			const client = this._sdk.getClient();
-			// A plain object, not a Set: the browser bundle still supports IE 10, which has no Set.
-			const userNames: Record<string, true> = {};
-			for (const x of this._attrs) userNames[x.name] = true;
-			const addSystemAttribute = (attrName: string, value: unknown) => {
-				if (!Object.prototype.hasOwnProperty.call(userNames, attrName)) {
-					allAttributes.push({ name: attrName, value, setAt: systemSetAt });
-				}
-			};
-
-			addSystemAttribute("sdk_name", client.getAgent());
-			addSystemAttribute("sdk_version", SDK_VERSION);
+		// Built with map(), as 1.13.4 did; pushing one element at a time is measurably slower here.
+		if (this._opts.includeSystemAttributes !== true) {
+			return this._attrs.map((x) => ({ name: x.name, value: x.value, setAt: x.setAt }));
 		}
 
-		for (const x of this._attrs) {
-			allAttributes.push({ name: x.name, value: x.value, setAt: x.setAt });
-		}
+		let userSetSdkName = false;
+		let userSetSdkVersion = false;
+		const userAttributes = this._attrs.map((x) => {
+			if (x.name === "sdk_name") userSetSdkName = true;
+			else if (x.name === "sdk_version") userSetSdkVersion = true;
+			return { name: x.name, value: x.value, setAt: x.setAt };
+		});
 
-		return allAttributes;
+		const client = this._sdk.getClient();
+		const systemAttributes: Attribute[] = [];
+		const agent = client.getAgent();
+		if (!userSetSdkName && typeof agent === "string" && agent.length > 0) {
+			systemAttributes.push({ name: "sdk_name", value: agent, setAt: systemSetAt });
+		}
+		if (!userSetSdkVersion) systemAttributes.push({ name: "sdk_version", value: SDK_VERSION, setAt: systemSetAt });
+		return systemAttributes.length === 0 ? userAttributes : systemAttributes.concat(userAttributes);
 	}
 
 	// A caught exception or a rejected promise's reason can be any value. Only
@@ -1652,12 +1698,6 @@ export default class Context {
 		}
 
 		if (this._failed) {
-			// _logError() isolates a throwing custom eventLogger internally, so it
-			// (and the internal `callback` below, which only calls resolve/reject
-			// and _logEvent()/_logError()) can't propagate an observer exception
-			// out of _flush() — that would skip clearing
-			// `_pending`/`_exposures`/`_goals` and, via `_finalize`'s callback never
-			// running, permanently strand `_finalizing` with no settlement.
 			this._logError(
 				new Error(
 					`Discarding ${this._exposures.length} exposures and ${this._goals.length} goals because context failed to initialize`
@@ -1683,7 +1723,6 @@ export default class Context {
 					uid: this._unitHash(entry[0]),
 				})),
 				hashed: true,
-				sdkVersion: SDK_VERSION,
 			};
 
 			if (this._goals.length > 0) {
@@ -1886,12 +1925,12 @@ export default class Context {
 
 	private _unitHash(unitType: string) {
 		if (!this._hashes) {
-			this._hashes = {};
+			this._hashes = Object.create(null) as Record<string, string | null>;
 		}
 
 		if (!(unitType in this._hashes)) {
 			// Never cache `null`: the unit can still be set later (see `_getHoldoutAssignment`).
-			if (!(unitType in this._units)) {
+			if (!hasOwn(this._units, unitType)) {
 				return null;
 			}
 
@@ -1943,11 +1982,12 @@ export default class Context {
 		return assignment;
 	}
 
-	private _init(data: ContextData, assignments: Record<string, Assignment> = {}) {
+	private _init(data: ContextData, assignments: Record<string, Assignment> = Object.create(null)) {
 		this._data = data;
-		this._environmentName = this._sdk.getClient().getEnvironment() ?? null;
+		const client = this._sdk.getClient();
+		this._environmentName = client.getEnvironment() ?? null;
 
-		const index: Record<string, Experiment> = {};
+		const index: Record<string, Experiment> = Object.create(null);
 		const indexVariables: Record<string, Experiment[]> = {};
 
 		const holdoutsById: Record<number, HoldoutData> = {};
@@ -2001,6 +2041,10 @@ export default class Context {
 				data: experiment,
 				variables,
 				holdouts,
+				ruleKey:
+					typeof experiment.assignmentRules === "string" && experiment.assignmentRules
+						? `${experiment.assignmentRules}:${this._environmentName}`
+						: "",
 			};
 
 			if (experiment.randomizationType === "switchback") {

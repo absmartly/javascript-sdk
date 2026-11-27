@@ -175,26 +175,59 @@ export function toWellFormedString(value: string, replacement = "\ufffd"): strin
 	return result;
 }
 
+// UTF-8, as the collector and the other SDKs hash units: a surrogate pair (a character outside the
+// BMP, such as an emoji) is one 4-byte sequence. An unpaired surrogate keeps its 3-byte encoding from
+// 1.13.4, as the cross-SDK contract requires, so only IDs with characters outside the BMP hash
+// differently from 1.13.4.
 export function stringToUint8Array(value: string) {
+	const n = value.length;
+	const array = new Array(value.length);
+
+	let k = 0;
+	for (let i = 0; i < n; ++i) {
+		let c = value.charCodeAt(i);
+		if (c >= 0xd800 && c <= 0xdbff && i + 1 < n) {
+			const next = value.charCodeAt(i + 1);
+			if (next >= 0xdc00 && next <= 0xdfff) {
+				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
+				++i;
+			}
+		}
+		if (c < 0x80) {
+			array[k++] = c;
+		} else if (c < 0x800) {
+			array[k++] = (c >> 6) | 192;
+			array[k++] = (c & 63) | 128;
+		} else if (c < 0x10000) {
+			array[k++] = (c >> 12) | 224;
+			array[k++] = ((c >> 6) & 63) | 128;
+			array[k++] = (c & 63) | 128;
+		} else {
+			array[k++] = (c >> 18) | 240;
+			array[k++] = ((c >> 12) & 63) | 128;
+			array[k++] = ((c >> 6) & 63) | 128;
+			array[k++] = (c & 63) | 128;
+		}
+	}
+	return new Uint8Array(array);
+}
+
+// Standard UTF-8, for keys that must match the platform's String.getBytes(UTF_8) byte for byte
+// (switchback cluster keys, made well-formed first). Unit hashing uses stringToUint8Array above.
+export function stringToUtf8Array(value: string) {
 	if (typeof TextEncoder !== "undefined") {
-		return new Uint8Array(new TextEncoder().encode(value));
+		return new TextEncoder().encode(value);
 	}
 
 	const utf8: number[] = [];
 	for (let i = 0; i < value.length; i++) {
 		let c = value.charCodeAt(i);
-		if (c >= 0xd800 && c <= 0xdbff) {
-			const next = i + 1 < value.length ? value.charCodeAt(i + 1) : 0;
+		if (c >= 0xd800 && c <= 0xdbff && i + 1 < value.length) {
+			const next = value.charCodeAt(i + 1);
 			if (next >= 0xdc00 && next <= 0xdfff) {
 				c = ((c - 0xd800) << 10) + (next - 0xdc00) + 0x10000;
 				i++;
-			} else {
-				// Unmatched high surrogate: not a valid UTF-8 code point, encode as U+FFFD.
-				c = 0xfffd;
 			}
-		} else if (c >= 0xdc00 && c <= 0xdfff) {
-			// Unmatched low surrogate: not a valid UTF-8 code point, encode as U+FFFD.
-			c = 0xfffd;
 		}
 		if (c < 0x80) {
 			utf8.push(c);

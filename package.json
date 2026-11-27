@@ -4,6 +4,10 @@
 	"description": "A/B Smartly Javascript SDK",
 	"homepage": "https://github.com/absmartly/javascript-sdk#README.md",
 	"bugs": "https://github.com/absmartly/javascript-sdk/issues",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/absmartly/javascript-sdk.git"
+	},
 	"keywords": [
 		"absmartly",
 		"ab-smartly",
@@ -25,7 +29,7 @@
 		"node": ">=6"
 	},
 	"scripts": {
-		"build-browser": "TARGET=browser webpack --progress --config webpack.config.js && TARGET=browser NODE_ENV=production webpack --progress --config webpack.config.js",
+		"build-browser": "TARGET=browser webpack --progress --config webpack.config.js && TARGET=browser NODE_ENV=production webpack --progress --config webpack.config.js && node scripts/check-es5.js",
 		"build-cjs": "TARGET=cjs babel js --delete-dir-on-start --ignore 'browser.js' -d lib",
 		"build-es": "TARGET=es babel js --delete-dir-on-start --ignore 'browser.js' -d es",
 		"build": "npm run -s format:check && npm run -s lint && npm run -s compile && npm run -s test && npm run -s build-es && npm run -s build-cjs && npm run -s build-browser",
@@ -36,7 +40,7 @@
 		"pretest": "npm run -s generate-version",
 		"test": "jest --coverage",
 		"prepack": "npm run -s build",
-		"compile": "tsc",
+		"compile": "tsc && tsc -p tsconfig.typecheck.json",
 		"generate-version": "node scripts/generate-version.js",
 		"prepare": "husky && npm run -s compile && npm run -s build-es && npm run -s build-cjs && npm run -s build-browser"
 	},
@@ -69,12 +73,14 @@
 		"@types/node-fetch": "^2.6.2",
 		"@typescript-eslint/eslint-plugin": "^5.48.2",
 		"@typescript-eslint/parser": "^5.48.2",
+		"acorn": "^8.19.0",
 		"babel-jest": "^29",
 		"babel-loader": "^8.2.3",
 		"eslint": "^7.32.0",
 		"eslint-config-prettier": "^7.1.0",
 		"husky": "^9.1.7",
 		"jest": "^29.3.1",
+		"js-yaml": "^4.3.2",
 		"lint-staged": "^16.4.0",
 		"prettier": "^2.4.1",
 		"terser-webpack-plugin": "^5.3.1",

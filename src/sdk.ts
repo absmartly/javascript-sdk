@@ -1,14 +1,9 @@
-import Client, { type ClientOptions, type ClientRequestOptions } from "./client";
-import Context, {
-	type ContextData,
-	type ContextOptions,
-	type ContextParams,
-	type Exposure,
-	type Goal,
-} from "./context";
-import { ContextPublisher, type PublishParams } from "./publisher";
+import Client, { ClientOptions, ClientRequestOptions } from "./client";
+import Context, { ContextData, ContextOptions, ContextParams, Exposure, Goal } from "./context";
+import { ContextPublisher, PublishParams } from "./publisher";
 import { ContextDataProvider } from "./provider";
 import { isLongLivedApp } from "./utils";
+import { SDK_VERSION } from "./version";
 
 export type EventLoggerData = Error | Exposure | Goal | ContextData | PublishParams;
 
@@ -60,7 +55,7 @@ export default class SDK {
 			"timeout",
 		];
 		const extracted: Partial<ClientOptions> = {
-			agent: "absmartly-javascript-sdk",
+			agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 		};
 
 		for (const key of clientOptionKeys) {

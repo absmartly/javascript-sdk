@@ -2,6 +2,8 @@ import {
 	arrayEqualsShallow,
 	base64UrlNoPadding,
 	chooseVariant,
+	getApplicationName,
+	getApplicationVersion,
 	hashUnit,
 	isEqualsDeep,
 	isNumeric,
@@ -10,8 +12,22 @@ import {
 	stringToUint8Array,
 	toWellFormedString,
 } from "../utils";
+import releasedHashes from "./fixtures/unit-hash-1.13.4.json";
 
 class SomeClass {}
+
+describe("getApplicationName() and getApplicationVersion()", () => {
+	it("reads a string application as a name with version 0", () => {
+		expect(getApplicationName("web")).toBe("web");
+		expect(getApplicationVersion("web")).toBe(0);
+	});
+
+	it("returns an application object's numeric or string version unchanged", () => {
+		expect(getApplicationName({ name: "web", version: 7 })).toBe("web");
+		expect(getApplicationVersion({ name: "web", version: 7 })).toBe(7);
+		expect(getApplicationVersion({ name: "web", version: "1.2.3" })).toBe("1.2.3");
+	});
+});
 
 describe("isObject()", () => {
 	it("should return true with objects", (done) => {
@@ -237,16 +253,56 @@ describe("hashUnit()", () => {
 		done();
 	});
 
-	it("should hash astral/multibyte characters correctly", (done) => {
-		// Characters outside the BMP are stored as UTF-16 surrogate pairs and must
-		// encode to 4-byte UTF-8; these canonical hashes are shared across all SDKs.
-		expect(hashUnit("😀")).toBe("KgLqw51xanDs83V5GFkntg");
-		expect(hashUnit("😀😁")).toBe("ZJuDalvUWRJnVtkspj-2bQ");
-		expect(hashUnit("世界你好")).toBe("v2CJG7YcjjWncKOSCzF2GA");
-		expect(hashUnit("user_世界_123")).toBe("SCgk4OzXlFMvo1UMsP88fA");
-
-		done();
+	// Cross-SDK golden vectors (cross-sdk-tests scenarios 75-80 and 112): UTF-8 MD5, base64url.
+	it.each([
+		["", "1B2M2Y8AsgTpgAmY7PhCfg"],
+		["special characters açb↓c", "4PIrO7lKtTxOcj2eMYlG7A"],
+		["test", "CY9rzUYh03PK3k6DJie09g"],
+		["testy", "K5I_V6RgP8c6sYKz-TVn8g"],
+		["bleh@absmartly.com", "IuqYkNRfEx5yClel4j3NbA"],
+		["test_user_123", "Inw3HDh_rVCfpy0NhDsq1A"],
+		["ABC-123_xyz", "78Q1utpZbpcxZ9B_9VZbgw"],
+	])("matches the cross-SDK golden hash for %j", (unit, hash) => {
+		expect(hashUnit(unit)).toBe(hash);
 	});
+
+	// A character outside the BMP (such as an emoji) is one 4-byte UTF-8 sequence, so these units hash
+	// as the collector and the other SDKs hash them. 1.13.4 hashed them from two 3-byte surrogate halves.
+	it.each([
+		["😀", "KgLqw51xanDs83V5GFkntg", "-Z9RwqljCn9rjBPBgYvAwg"],
+		["😀😁", "ZJuDalvUWRJnVtkspj-2bQ", "OkTK8v8Dc9YXARX-1b6CmA"],
+	])("hashes %j with canonical UTF-8 (1.13.4 gave a different hash)", (unit, hash, released) => {
+		expect(hashUnit(unit)).toBe(hash);
+		expect(hash).not.toBe(released);
+	});
+
+	// Every other ID keeps its 1.13.4 hash: ASCII, accented and CJK text, and unpaired surrogates. These
+	// are the hashes the published 1.13.4 package returns.
+	it.each([
+		["世界你好", "v2CJG7YcjjWncKOSCzF2GA"],
+		["user_世界_123", "SCgk4OzXlFMvo1UMsP88fA"],
+		["açb↓c", "LxcqH5VC15rXfWfA_smreg"],
+	])("keeps the 1.13.4 hash for %j", (unit, hash) => {
+		expect(hashUnit(unit)).toBe(hash);
+	});
+});
+
+// The published 1.13.4 package's hashes of "u<character>x", one character per 256-code-point block of
+// the Basic Multilingual Plane plus the surrogate and encoding-width edges, and of characters outside it.
+// Only characters outside the BMP hash differently in 1.14.0; those now hash as canonical UTF-8.
+describe("hashUnit() against 1.13.4", () => {
+	it.each(Object.entries(releasedHashes.bmp))("keeps the 1.13.4 hash for BMP code point U+%s", (codePoint, hash) => {
+		expect(hashUnit(`u${String.fromCharCode(parseInt(codePoint, 16))}x`)).toBe(hash);
+	});
+
+	it.each(Object.entries(releasedHashes.astral))(
+		"hashes code point U+%s as canonical UTF-8, not as 1.13.4 did",
+		(codePoint, { released: before, utf8 }) => {
+			const unit = `u${String.fromCodePoint(parseInt(codePoint, 16))}x`;
+			expect(hashUnit(unit)).toBe(utf8);
+			expect(utf8).not.toBe(before);
+		}
+	);
 });
 
 describe("chooseVariant()", () => {
@@ -316,101 +372,43 @@ describe("stringToUint8Array()", () => {
 		done();
 	});
 
-	describe("unmatched surrogates", () => {
-		// Unmatched surrogate code units are not valid UTF-8 code points; both TextEncoder
-		// and the manual fallback must emit U+FFFD (ef bf bd) for each one, matching the
-		// canonical UTF-8 replacement-character behavior.
-		const testCases = [
-			["lone high surrogate at end of string", "\uD800", Uint8Array.from([0xef, 0xbf, 0xbd])],
-			["lone low surrogate", "\uDC00", Uint8Array.from([0xef, 0xbf, 0xbd])],
-			["high surrogate followed by non-surrogate", "\uD800X", Uint8Array.from([0xef, 0xbf, 0xbd, 0x58])],
-			[
-				"two consecutive lone high surrogates",
-				"\uD800\uD800",
-				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
-			],
-			[
-				"two consecutive lone low surrogates",
-				"\uDC00\uDC00",
-				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
-			],
-			[
-				"low surrogate followed by high surrogate (wrong order)",
-				"\uDC00\uD800",
-				Uint8Array.from([0xef, 0xbf, 0xbd, 0xef, 0xbf, 0xbd]),
-			],
-			["lone high surrogate after ascii", "a\uD800", Uint8Array.from([0x61, 0xef, 0xbf, 0xbd])],
-			["lone low surrogate before ascii", "\uDC00b", Uint8Array.from([0xef, 0xbf, 0xbd, 0x62])],
-		];
+	// A surrogate pair is one 4-byte sequence; an unpaired surrogate keeps 1.13.4's 3-byte encoding,
+	// as the cross-SDK contract requires (an unpaired surrogate stays byte-identical to the release).
+	it.each([
+		["😀", [0xf0, 0x9f, 0x98, 0x80]],
+		["a😀b", [97, 0xf0, 0x9f, 0x98, 0x80, 98]],
+		["🧪", [0xf0, 0x9f, 0xa7, 0xaa]],
+		["\uD800", [0xed, 0xa0, 0x80]],
+		["\uDC00", [0xed, 0xb0, 0x80]],
+		["a\uD800b", [97, 0xed, 0xa0, 0x80, 98]],
+		["\uD800\uD800", [0xed, 0xa0, 0x80, 0xed, 0xa0, 0x80]],
+		["\uDC00\uD800", [0xed, 0xb0, 0x80, 0xed, 0xa0, 0x80]],
+		["\uDC00\uDC00", [0xed, 0xb0, 0x80, 0xed, 0xb0, 0x80]],
+		["\uD83D", [0xed, 0xa0, 0xbd]],
+		["\uD83D\uD83D\uDE00", [0xed, 0xa0, 0xbd, 0xf0, 0x9f, 0x98, 0x80]],
+	])("encodes %j", (input, bytes) => {
+		const encoded = stringToUint8Array(input);
+		expect(Array.from(encoded)).toEqual(bytes);
+		expect(encoded.byteLength).toBe(encoded.buffer.byteLength);
+	});
 
-		it("should emit U+FFFD for unmatched surrogates via the built-in TextEncoder", (done) => {
-			for (const [, input, expected] of testCases) {
-				const array = stringToUint8Array(input);
-				expect(Array.from(array)).toEqual(Array.from(expected));
-			}
-			done();
-		});
-
-		it("should emit U+FFFD for unmatched surrogates via the manual fallback", (done) => {
-			const OriginalTextEncoder = global.TextEncoder;
-			// eslint-disable-next-line no-global-assign
-			delete global.TextEncoder;
-
-			try {
-				for (const [, input, expected] of testCases) {
-					const array = stringToUint8Array(input);
-					expect(Array.from(array)).toEqual(Array.from(expected));
-				}
-			} finally {
-				global.TextEncoder = OriginalTextEncoder;
-			}
-			done();
-		});
-
-		it("should copy bytes from a TextEncoder view with an oversized backing buffer", (done) => {
-			const OriginalTextEncoder = global.TextEncoder;
-			const expected = hashUnit("session_abc123");
-
-			// eslint-disable-next-line no-global-assign
-			global.TextEncoder = class {
-				encode(value) {
-					const bytes = OriginalTextEncoder
-						? new OriginalTextEncoder().encode(value)
-						: Uint8Array.from([115, 101, 115, 115, 105, 111, 110, 95, 97, 98, 99, 49, 50, 51]);
-					const buffer = new ArrayBuffer(bytes.byteLength + 16);
-					const view = new Uint8Array(buffer, 8, bytes.byteLength);
-					view.set(bytes);
-					return view;
-				}
-			};
-
-			try {
-				const bytes = stringToUint8Array("session_abc123");
-				expect(bytes.byteOffset).toBe(0);
-				expect(bytes.byteLength).toBe(bytes.buffer.byteLength);
-				expect(hashUnit("session_abc123")).toBe(expected);
-			} finally {
-				global.TextEncoder = OriginalTextEncoder;
-			}
-
-			done();
-		});
-
-		it("should produce identical hashUnit results for both code paths", (done) => {
-			const OriginalTextEncoder = global.TextEncoder;
-
-			for (const [, input] of testCases) {
-				const nativeHash = hashUnit(input);
-
-				// eslint-disable-next-line no-global-assign
-				delete global.TextEncoder;
-				const fallbackHash = hashUnit(input);
-				global.TextEncoder = OriginalTextEncoder;
-
-				expect(fallbackHash).toBe(nativeHash);
-			}
-			done();
-		});
+	it("matches TextEncoder for every well-formed string", () => {
+		const encoder = new TextEncoder();
+		for (const value of [
+			"",
+			"test",
+			"açb↓c",
+			"世界你好",
+			"😀",
+			"a😀b😁c",
+			"\uFFFF",
+			"\u0800",
+			"\u07FF",
+			"𐀀",
+			"\uDBFF\uDFFF",
+		]) {
+			expect([value, Array.from(stringToUint8Array(value))]).toEqual([value, Array.from(encoder.encode(value))]);
+		}
 	});
 });
 

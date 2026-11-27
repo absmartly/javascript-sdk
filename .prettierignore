@@ -6,5 +6,7 @@ js
 lib
 types
 package-lock.json
+
+.claude
 # Vendored byte-for-byte from absmartly/abs; never reformat.
 src/__tests__/fixtures/switchback

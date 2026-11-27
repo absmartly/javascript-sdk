@@ -1,3 +1,4 @@
+import { SDK_VERSION } from "../version";
 import Client from "../client";
 import SDK from "../sdk";
 import Context from "../context";
@@ -40,7 +41,7 @@ describe("SDK", () => {
 			expect(sdk.getEventLogger()).toBe(SDK.defaultEventLogger);
 			expect(Client).toHaveBeenCalledTimes(1);
 			expect(Client).toHaveBeenCalledWith({
-				agent: "absmartly-javascript-sdk",
+				agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 			});
 
 			expect(ContextDataProvider).toHaveBeenCalledTimes(1);
@@ -100,6 +101,48 @@ describe("SDK", () => {
 			done();
 		});
 
+		// Options are read by key, so a key that is undefined (own or inherited) is left out and the
+		// default applies, as on main; an inherited defined value is read like an own one.
+		it("should read inherited option keys and skip undefined ones", (done) => {
+			const base = {
+				application: "application",
+				apiKey: "apikey",
+				endpoint: "localhost:8080",
+				environment: "test",
+			};
+			const options = Object.assign(Object.create({ timeout: 777, agent: undefined }), base);
+
+			new SDK(options); // eslint-disable-line no-new
+
+			const passed = Client.mock.calls[Client.mock.calls.length - 1][0];
+			expect(passed.timeout).toBe(777);
+			expect(passed.agent).toBe(`absmartly-javascript-sdk/${SDK_VERSION}`);
+
+			done();
+		});
+
+		it("should drop explicitly undefined client options so the defaults apply", (done) => {
+			const options = {
+				application: "application",
+				apiKey: "apikey",
+				endpoint: "localhost:8080",
+				environment: "test",
+				agent: undefined,
+				timeout: undefined,
+				keepalive: undefined,
+			};
+
+			new SDK(options); // eslint-disable-line no-new
+
+			const passed = Client.mock.calls[Client.mock.calls.length - 1][0];
+			expect(passed.agent).toBe(`absmartly-javascript-sdk/${SDK_VERSION}`);
+			expect(Object.prototype.hasOwnProperty.call(passed, "timeout")).toBe(false);
+			expect(Object.prototype.hasOwnProperty.call(passed, "keepalive")).toBe(false);
+			expect(Object.prototype.hasOwnProperty.call(passed, "retries")).toBe(false);
+
+			done();
+		});
+
 		it("should set default values for unspecified client options", (done) => {
 			const options = {
 				application: "application",
@@ -117,7 +160,7 @@ describe("SDK", () => {
 				Object.assign(
 					{},
 					{
-						agent: "absmartly-javascript-sdk",
+						agent: `absmartly-javascript-sdk/${SDK_VERSION}`,
 					},
 					options
 				)

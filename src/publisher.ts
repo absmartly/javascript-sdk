@@ -1,12 +1,11 @@
-import Context, { type Attribute, type Exposure, type Goal, type Unit } from "./context";
+import Context, { Attribute, Exposure, Goal, Unit } from "./context";
 import SDK from "./sdk";
-import { type ClientRequestOptions } from "./client";
+import { ClientRequestOptions } from "./client";
 
 export type PublishParams = {
 	units: Unit[];
 	publishedAt: number;
 	hashed: boolean;
-	sdkVersion: string;
 	attributes?: Attribute[];
 	goals?: Goal[];
 	exposures?: Exposure[];

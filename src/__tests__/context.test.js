@@ -750,7 +750,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -865,7 +865,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -1575,7 +1575,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1744,7 +1744,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 0,
@@ -1787,7 +1787,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						attributes: [
 							{
 								name: "age",
@@ -1836,7 +1836,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1878,7 +1878,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -1941,7 +1941,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -2392,6 +2392,124 @@ describe("Context", () => {
 				done();
 			});
 		});
+
+		it("revalidates a same-outcome refresh with changed rules once, then reuses the assignment", async () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			const changed = clone(rulesContextResponse);
+			const rules = JSON.parse(changed.experiments.find((x) => x.name === "exp_test_abc").assignmentRules);
+			rules.rules.push({
+				name: "Never",
+				type: "assign",
+				conditions: { value: false },
+				environments: [],
+				variant: 0,
+			});
+			changed.experiments.find((x) => x.name === "exp_test_abc").assignmentRules = JSON.stringify(rules);
+			provider.getContextData.mockReturnValue(Promise.resolve(changed));
+			await context.refresh();
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluateParsedRules");
+			for (let i = 0; i < 3; i++) expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(context.pending()).toEqual(1);
+		});
+
+		it("revalidates once after an unrelated attribute change, then reuses the assignment", () => {
+			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+			context.attribute("country", "US");
+			expect(context.treatment("exp_test_abc")).toEqual(1);
+			const evaluate = jest.spyOn(context._audienceMatcher, "evaluateParsedRules");
+			context.attribute("age", 30);
+			for (let i = 0; i < 3; i++) expect(context.treatment("exp_test_abc")).toEqual(1);
+			expect(evaluate).toHaveBeenCalledTimes(1);
+			expect(context.pending()).toEqual(1);
+		});
+
+		// contracts numeric edge table: the variant is taken as written in the payload JSON. A later rule assigns
+		// `next`, and normal assignment gives 2, so selected, skipped and out-of-bounds outcomes all differ.
+		it.each([
+			["1.0", 0, 1],
+			["1e0", 0, 1],
+			["1.0000000000000001", 0, 1],
+			["0.0", 1, 0],
+			["-0", 1, 0],
+			["1e-400", 1, 0],
+			["1.5", 1, 1],
+			["1e-9", 0, 0],
+			["1e400", 1, 1],
+			["-1e400", 1, 1],
+			["1e999999999", 1, 1],
+			["3", 1, 2],
+			["-1", 1, 2],
+			["2147483648", 1, 2],
+			["-2147483649", 1, 2],
+			["4294967297", 1, 2],
+			["1e20", 1, 2],
+			["99999999999999999999", 1, 2],
+			[`1${"0".repeat(400)}`, 1, 1],
+		])("resolves an assign rule with variant %s (next rule %i) to %i", (variant, next, expected) => {
+			const cond = '{"and":[{"eq":[{"var":"country"},{"value":"US"}]}]}';
+			const response = buildRulesResponse({
+				audience: null,
+				assignmentRules: `{"rules":[{"name":"edge","type":"assign","conditions":${cond},"environments":[],"variant":${variant}},{"name":"next","type":"assign","conditions":${cond},"environments":[],"variant":${next}}]}`,
+			});
+			const context = new Context(sdk, contextOptions, contextParams, response);
+			context.attribute("country", "US");
+			expect(context.peek("exp_test_abc") + 0).toBe(expected);
+			expect(context.treatment("exp_test_abc") + 0).toBe(expected);
+		});
+
+		it.each([
+			["variants[0].config", (x) => delete x.variants[0].config],
+			["variants[0].config", (x) => (x.variants[0].config = null)],
+			["variants[0].name", (x) => delete x.variants[0].name],
+			["variants[0].name", (x) => (x.variants[0].name = null)],
+			["customFieldValues[0].type", (x) => delete x.customFieldValues[0].type],
+			["customFieldValues[0].type", (x) => (x.customFieldValues[0].type = null)],
+			["customFieldValues[0].value", (x) => delete x.customFieldValues[0].value],
+			["customFieldValues[0].value", (x) => (x.customFieldValues[0].value = null)],
+			["customFieldValues[0].name", (x) => delete x.customFieldValues[0].name],
+			["customFieldValues[0].name", (x) => (x.customFieldValues[0].name = null)],
+			["customFieldValues", (x) => delete x.customFieldValues],
+			["customFieldValues", (x) => (x.customFieldValues = null)],
+			["audience", (x) => delete x.audience],
+			["audience", (x) => (x.audience = null)],
+			["audienceStrict", (x) => delete x.audienceStrict],
+			["audienceStrict", (x) => (x.audienceStrict = null)],
+			["assignmentRules", (x) => delete x.assignmentRules],
+			["assignmentRules", (x) => (x.assignmentRules = null)],
+			["applications", (x) => delete x.applications],
+			["applications", (x) => (x.applications = null)],
+			["iteration", (x) => delete x.iteration],
+			["iteration", (x) => (x.iteration = null)],
+			[
+				"(reordered keys)",
+				(x) => {
+					const entries = Object.entries(x).reverse();
+					for (const key of Object.keys(x)) delete x[key];
+					for (const [key, value] of entries) x[key] = value;
+					x.variants = x.variants.map((v) => Object.fromEntries(Object.entries(v).reverse()));
+				},
+			],
+		])(
+			"keeps the context and other experiments working when %s is absent, null or reordered",
+			async (field, edit) => {
+				const damaged = clone(rulesContextResponse);
+				edit(damaged.experiments.find((x) => x.name === "exp_test_abc"));
+				const context = new Context(sdk, contextOptions, contextParams, damaged);
+				expect(context.isReady()).toBe(true);
+				expect(context.isFailed()).toBe(false);
+				expect(context.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+				expect(() => context.treatment("exp_test_abc")).not.toThrow();
+				const refreshed = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
+				expect(refreshed.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+				provider.getContextData.mockReturnValue(Promise.resolve(damaged));
+				await expect(refreshed.refresh()).resolves.toBeUndefined();
+				expect(refreshed.treatment("exp_test_ab")).toEqual(expectedVariants["exp_test_ab"]);
+				expect(() => refreshed.treatment("exp_test_abc")).not.toThrow();
+			}
+		);
 
 		it("should return normal assignment when no rules match", () => {
 			const context = new Context(sdk, contextOptions, contextParams, rulesContextResponse);
@@ -6928,12 +7046,15 @@ describe("Context", () => {
 				expect(context._publishTimeout).toBeUndefined();
 			});
 
+			// A 1024-wide round: one callback fans out to 1,023 more reads. Every callback already waiting
+			// is delivered in queue order before a read a callback makes; the read made from the last
+			// waiting callback (the 1,024th delivered) runs once the callback budget is spent.
 			it.each([
-				[1023, false],
-				[1024, true],
-			])("stops queueing rounds once a replay has delivered %i callbacks: %p", (width, exhausted) => {
+				[1023, 1],
+				[1024, 2],
+			])("keeps queue order up to the callback budget (%i callbacks)", (width, nestedDepth) => {
 				const experiments = [];
-				for (let i = 0; i < width; i++) {
+				for (let i = 0; i <= width; i++) {
 					experiments.push({
 						...holdoutVarExperiment({}),
 						id: 100 + i,
@@ -6947,15 +7068,28 @@ describe("Context", () => {
 						],
 					});
 				}
+				const names = [];
+				let depth = 0;
+				let nestedAt;
+				let exhaustedAt;
 				let fanned = false;
-				let after;
-				const eventLogger = jest.fn((ctx, eventName) => {
+				let nested = false;
+				const eventLogger = jest.fn((ctx, eventName, data) => {
 					if (eventName !== "exposure") return;
-					if (!fanned) {
-						fanned = true;
-						for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
-					} else if (after === undefined && ctx._deferringLogs !== undefined) {
-						after = ctx._replayExhausted;
+					depth++;
+					try {
+						names.push(data.name);
+						if (data.name === `exp_w${width}`) nestedAt = depth;
+						if (!fanned) {
+							fanned = true;
+							for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+						} else if (!nested && data.name === `exp_w${width - 1}`) {
+							nested = true;
+							exhaustedAt = ctx._replayExhausted;
+							ctx.variableValue(`w${width}`, "D");
+						}
+					} finally {
+						depth--;
 					}
 				});
 				const context = new Context(
@@ -6965,9 +7099,82 @@ describe("Context", () => {
 					buildHoldoutResponse(experiments, [])
 				);
 				expect(context.variableValue("w0", "D")).toBe(0);
-				expect(after).toBe(exhausted);
-				expect(context.pending()).toBe(width);
+				expect(names.slice(0, width)).toEqual(Array.from({ length: width }, (_, i) => `exp_w${i}`));
+				expect(names[width]).toBe(`exp_w${width}`);
+				expect(nestedAt).toBe(nestedDepth);
+				expect(exhaustedAt).toBe(width === 1024);
+				expect(context.pending()).toBe(width + 1);
 			});
+
+			// 2,000 callbacks wait in one round, so the 1,024-callback budget is spent mid-round. A read made
+			// from a callback before the cutoff, from the cutoff callback itself, or after it is delivered once
+			// with everything else: the cutoff callback's own callbacks first, then the round's remaining ones,
+			// then those earlier callbacks queued for the next round. After the cutoff, delivery is inline as in
+			// 1.13.4, so a read made from a later callback runs right after it.
+			it.each([
+				[["exp_w5"], [2000]],
+				[["exp_w1022"], [2000]],
+				[["exp_w1023"], [1024]],
+				[["exp_w1500"], [1501]],
+				// Two extra reads, one queued before the cutoff and one from the cutoff callback: each is
+				// delivered once, so the cutoff empties the next-round queue it has taken over.
+				[
+					["exp_w5", "exp_w1023"],
+					[2001, 1024],
+				],
+			])(
+				"delivers every callback when the budget runs out mid-round (extra reads from %j)",
+				(triggers, positions) => {
+					const width = 2000;
+					const extra = triggers.map((_, k) => width + k);
+					const experiments = [];
+					for (let i = 0; i < width + extra.length; i++) {
+						experiments.push({
+							...holdoutVarExperiment({}),
+							id: 100 + i,
+							name: `exp_w${i}`,
+							holdoutIds: null,
+							split: [0, 1],
+							fullOnVariant: 1,
+							variants: [
+								{ name: "A", config: null },
+								{ name: "B", config: JSON.stringify({ [`w${i}`]: i }) },
+							],
+						});
+					}
+					const names = [];
+					let fanned = false;
+					const pendingTriggers = new Map(triggers.map((trigger, k) => [trigger, extra[k]]));
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName !== "exposure") return;
+						names.push(data.name);
+						if (!fanned) {
+							fanned = true;
+							for (let i = 1; i < width; i++) ctx.variableValue(`w${i}`, "D");
+						} else if (pendingTriggers.has(data.name)) {
+							const read = pendingTriggers.get(data.name);
+							pendingTriggers.delete(data.name);
+							ctx.variableValue(`w${read}`, "D");
+						}
+					});
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse(experiments, [])
+					);
+					expect(context.variableValue("w0", "D")).toBe(0);
+					const total = width + extra.length;
+					expect(names).toHaveLength(total);
+					expect(new Set(names).size).toBe(total);
+					expect(extra.map((read) => names.indexOf(`exp_w${read}`))).toEqual(positions);
+					expect(names.filter((n) => !extra.some((read) => n === `exp_w${read}`))).toEqual(
+						Array.from({ length: width }, (_, i) => `exp_w${i}`)
+					);
+					expect(context.pending()).toBe(total);
+					expect(context._deferredLogs).toBeUndefined();
+				}
+			);
 
 			it("delivers a post-limit batch's error and exposure and arms the publish timer", () => {
 				const strict = {
@@ -7032,6 +7239,182 @@ describe("Context", () => {
 
 			it("runs feedback callbacks inline once the replay rounds are spent", () => {
 				expect(feedbackDepths(40)).toEqual([...Array(32).fill(1), 2, 3, 4, 5, 6, 7, 8, 9]);
+			});
+
+			const throwingPlan = (context) => {
+				const user = {};
+				Object.defineProperty(user, "plan", {
+					get() {
+						throw new Error("getter boom");
+					},
+				});
+				context.attribute("user", user);
+			};
+			const planAudience = JSON.stringify({ filter: [{ eq: [{ var: "user/plan" }, { value: "pro" }] }] });
+
+			it("sends a treatment()'s exposure when its own audience error callback finalizes", async () => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				let finalizing;
+				const eventLogger = jest.fn((ctx, eventName) => {
+					if (eventName === "error" && finalizing === undefined) finalizing = ctx.finalize();
+				});
+				const audienced = { ...winnerAfterHoldout({}), audience: planAudience };
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse([audienced], [])
+				);
+				throwingPlan(context);
+				expect(context.treatment("exp_holdout_var_later_winner")).toBe(1);
+				await finalizing;
+				expect(context.isFinalized()).toBe(true);
+				expect(context.pending()).toBe(0);
+				const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures;
+				expect(sent.map((e) => e.name)).toEqual(["exp_holdout_var_later_winner"]);
+			});
+
+			it.each(["direct", "post-limit"])(
+				"sends a shared key's winner when a strict candidate's error callback finalizes (%s)",
+				async (mode) => {
+					publisher.publish.mockReturnValue(Promise.resolve());
+					let count = 0;
+					let finalizing;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName === "exposure" && data.name === "exp_loop") {
+							if (++count < 40) ctx.variableValue("loop.key", "D");
+							else ctx.variableValue("button.color", "APP_FALLBACK");
+							return;
+						}
+						if (eventName === "error" && finalizing === undefined) finalizing = ctx.finalize();
+					});
+					const strict = {
+						...holdoutVarExperiment({}),
+						name: "exp_strict",
+						holdoutIds: null,
+						audienceStrict: true,
+						audience: planAudience,
+					};
+					const loop = {
+						...winnerAfterHoldout({}),
+						id: 3,
+						name: "exp_loop",
+						variants: [
+							{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+							{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+						],
+					};
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, eventLogger },
+						contextParams,
+						buildHoldoutResponse([strict, winnerAfterHoldout({}), loop], [])
+					);
+					throwingPlan(context);
+					if (mode === "direct") {
+						expect(context.variableValue("button.color", "APP_FALLBACK")).toBe("WINNER_AFTER_HOLDOUT");
+					} else {
+						context.customAssignment("exp_loop", 0);
+						expect(context.variableValue("loop.key", "D")).toBe("B");
+					}
+					await finalizing;
+					expect(context.isFinalized()).toBe(true);
+					expect(context.pending()).toBe(0);
+					const sent = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].exposures;
+					expect(sent.map((e) => e.name)).toContain("exp_holdout_var_later_winner");
+				}
+			);
+
+			it.each(["replay", "post-limit"])(
+				"does not rearm the publish timer after a callback finalizes (%s)",
+				async (mode) => {
+					publisher.publish.mockReturnValue(Promise.resolve());
+					let count = 0;
+					let finalizing;
+					const eventLogger = jest.fn((ctx, eventName, data) => {
+						if (eventName !== "exposure") return;
+						if (data.name === "exp_loop") {
+							if (++count < 40) ctx.variableValue("loop.key", "D");
+							else ctx.variableValue("button.color", "APP_FALLBACK");
+							return;
+						}
+						if (finalizing === undefined) finalizing = ctx.finalize();
+					});
+					const loop = {
+						...winnerAfterHoldout({}),
+						id: 3,
+						name: "exp_loop",
+						variants: [
+							{ name: "A", config: JSON.stringify({ "loop.key": "A" }) },
+							{ name: "B", config: JSON.stringify({ "loop.key": "B" }) },
+						],
+					};
+					const context = new Context(
+						sdk,
+						{ ...contextOptions, publishDelay: 100000, eventLogger },
+						contextParams,
+						buildHoldoutResponse([winnerAfterHoldout({}), loop], [])
+					);
+					if (mode === "replay") {
+						expect(context.variableValue("button.color", "APP_FALLBACK")).toBe("WINNER_AFTER_HOLDOUT");
+					} else {
+						context.customAssignment("exp_loop", 0);
+						expect(context.variableValue("loop.key", "D")).toBe("B");
+					}
+					await finalizing;
+					expect(context.isFinalized()).toBe(true);
+					expect(context.pending()).toBe(0);
+					expect(context._publishTimeout).toBeUndefined();
+				}
+			);
+
+			it("survives a logger that recurses past the stack and stays usable", () => {
+				const depth = 6000;
+				const experiments = [];
+				for (let i = 0; i <= depth + 1; i++) {
+					experiments.push({
+						...holdoutVarExperiment({}),
+						id: 100 + i,
+						name: `exp_r${i}`,
+						holdoutIds: null,
+						split: [0, 1],
+						fullOnVariant: 1,
+						variants: [
+							{ name: "A", config: null },
+							{ name: "B", config: JSON.stringify({ [`r${i}`]: i }) },
+						],
+					});
+				}
+				let calls = 0;
+				let recurse = true;
+				const later = [];
+				const eventLogger = jest.fn((ctx, eventName, data) => {
+					if (eventName !== "exposure") return;
+					if (!recurse) {
+						later.push(data.name);
+						return;
+					}
+					if (++calls < depth) ctx.treatment(`exp_r${calls}`);
+				});
+				const error = jest.spyOn(console, "error").mockImplementation(() => {});
+				const context = new Context(
+					sdk,
+					{ ...contextOptions, eventLogger },
+					contextParams,
+					buildHoldoutResponse(experiments, [])
+				);
+				expect(() => context.treatment("exp_r0")).not.toThrow();
+				expect(error.mock.calls.some(([e]) => e instanceof RangeError)).toBe(true);
+				error.mockRestore();
+				expect(context._deferringLogs).toBe(false);
+				expect(context._replayExhausted).toBe(false);
+				expect(context._deferredLogs).toBeUndefined();
+				const queued = context.pending();
+				recurse = false;
+				expect(context.treatment(`exp_r${depth}`)).toBe(1);
+				expect(context.variableValue(`r${depth + 1}`, "D")).toBe(depth + 1);
+				expect(later).toEqual([`exp_r${depth}`, `exp_r${depth + 1}`]);
+				expect(context.pending()).toBe(queued + 2);
 			});
 
 			it("schedules the publish timer after a variable read's deferred exposures", () => {
@@ -7415,6 +7798,42 @@ describe("Context", () => {
 				}
 			);
 
+			it("keeps a retained unit's value and prototype keys across remove and restore refreshes", async () => {
+				const before = {
+					...shared(1, [0, 1], {}),
+					variants: [
+						{ name: "A", config: '{"k":"a1"}' },
+						{ name: "B", config: '{"k":"OLD"}' },
+					],
+				};
+				const plain = { ...shared(2, [0, 1], { other: 1 }), name: "plain" };
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before, plain] });
+				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
+				expect(context.treatment("plain")).toBe(1);
+				const removed = { ...before, variants: [before.variants[0]] };
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [removed, plain] }));
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+				const restored = {
+					...before,
+					variants: [
+						{ name: "A", config: '{"k":"a1"}' },
+						{
+							name: "B",
+							config: '{"k":"NEW","valueOf":"V","toString":"T","constructor":"C","__proto__":"P"}',
+						},
+					],
+				};
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [restored, plain] }));
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("NEW");
+				expect(context.variableValue("valueOf", "SENTINEL")).toBe("V");
+				expect(context.variableValue("toString", "SENTINEL")).toBe("T");
+				expect(context.variableValue("constructor", "SENTINEL")).toBe("C");
+				expect(context.variableValue("__proto__", "SENTINEL")).toBe("P");
+				expect(Object.getPrototypeOf(context._assignments.plain.variables)).toBe(Object.prototype);
+			});
+
 			it("does not restore a removed arm's variables once the experiment id changes", async () => {
 				const variants = [
 					{ name: "A", config: '{"k":"a"}' },
@@ -7456,7 +7875,7 @@ describe("Context", () => {
 				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
 			});
 
-			it("keeps a retained unit's value and ordinary snapshot across a refresh", async () => {
+			it("keeps a retained unit's value and prototype keys across remove and restore refreshes", async () => {
 				const before = {
 					...shared(1, [0, 1], {}),
 					variants: [
@@ -7468,18 +7887,27 @@ describe("Context", () => {
 				const context = new Context(sdk, contextOptions, contextParams, { experiments: [before, plain] });
 				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
 				expect(context.treatment("plain")).toBe(1);
-				const after = {
+				const removed = { ...before, variants: [before.variants[0]] };
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [removed, plain] }));
+				await context.refresh();
+				expect(context.variableValue("k", "SENTINEL")).toBe("SENTINEL");
+				const restored = {
 					...before,
 					variants: [
-						{ name: "A", config: '{"k":"a1","valueOf":"V"}' },
-						{ name: "B", config: '{"k":"NEW"}' },
+						{ name: "A", config: '{"k":"a1"}' },
+						{
+							name: "B",
+							config: '{"k":"NEW","valueOf":"V","toString":"T","constructor":"C","__proto__":"P"}',
+						},
 					],
 				};
-				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [after, plain] }));
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [restored, plain] }));
 				await context.refresh();
-				expect(context.peekVariableValue("k", "SENTINEL")).toBe("OLD");
-				expect(context.variableValue("k", "SENTINEL")).toBe("OLD");
-				expect(context.variableValue("valueOf", "SENTINEL")).toBe("SENTINEL");
+				expect(context.variableValue("k", "SENTINEL")).toBe("NEW");
+				expect(context.variableValue("valueOf", "SENTINEL")).toBe("V");
+				expect(context.variableValue("toString", "SENTINEL")).toBe("T");
+				expect(context.variableValue("constructor", "SENTINEL")).toBe("C");
+				expect(context.variableValue("__proto__", "SENTINEL")).toBe("P");
 				expect(Object.getPrototypeOf(context._assignments.plain.variables)).toBe(Object.prototype);
 			});
 
@@ -7532,6 +7960,159 @@ describe("Context", () => {
 				expect(Object.keys(variableKeys).sort()).toEqual([...keys].sort());
 				expect(variableKeys.toString).toEqual(["shared_1", "shared_2"]);
 				expect(Object.getOwnPropertyDescriptor(variableKeys, "__proto__").value).toEqual(["shared_1"]);
+			});
+		});
+
+		describe("experiment names and unit types named like Object.prototype members", () => {
+			const memberNames = ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"];
+			const named = (experimentName, over = {}) => ({ ...shared(1, [0, 1], {}), name: experimentName, ...over });
+			const exposures = (context) => context._exposures.map((x) => [x.name, x.variant, x.custom, x.overridden]);
+
+			it.each(memberNames)("assigns and caches an experiment named %s like any other", async (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				expect(context.peek(member)).toBe(1);
+				expect(context.treatment(member)).toBe(1);
+				expect(context.treatment(member)).toBe(1);
+				expect(exposures(context)).toEqual([[member, 1, false, false]]);
+				expect(Object.getPrototypeOf(context._assignments)).toBe(null);
+				provider.getContextData.mockReturnValue(Promise.resolve({ experiments: [named(member)] }));
+				await context.refresh();
+				expect(context.treatment(member)).toBe(1);
+				expect(context.pending()).toBe(1);
+			});
+
+			it.each(memberNames)("applies and caches an override for an experiment named %s", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				context.override(member, 0);
+				expect(context.treatment(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(exposures(context)).toEqual([[member, 0, false, true]]);
+			});
+
+			it.each(memberNames)("applies and caches a custom assignment for an experiment named %s", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				context.customAssignment(member, 0);
+				expect(context.treatment(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(exposures(context)).toEqual([[member, 0, true, false]]);
+			});
+
+			it.each(memberNames)("does not apply an inherited %s as an override or custom assignment", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [named(member)] });
+				expect(context.treatment(member)).toBe(1);
+				expect(exposures(context)).toEqual([[member, 1, false, false]]);
+			});
+
+			it.each(memberNames)("serves the base variant for an unknown experiment named %s", (member) => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [] });
+				expect(context.peek(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(context.treatment(member)).toBe(0);
+				expect(exposures(context)).toEqual([[member, 0, false, false]]);
+			});
+
+			it.each(memberNames)("keeps a unit type named %s as an own unit and assigns from it", (unitType) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{ experiments: [named("e", { unitType })] }
+				);
+				expect(context.getUnit(unitType)).toBeUndefined();
+				context.unit(unitType, "u1");
+				expect(context.getUnit(unitType)).toBe("u1");
+				expect(Object.prototype.hasOwnProperty.call(context.getUnits(), unitType)).toBe(true);
+				expect(Object.getPrototypeOf(context.getUnits())).toBe(Object.prototype);
+				expect(Object.getPrototypeOf(context._assigners)).toBe(null);
+				expect(() => context.unit(unitType, "u1")).not.toThrow();
+				expect(() => context.unit(unitType, "u2")).toThrow(`Unit '${unitType}' UID already set.`);
+				const ordinary = new Context(
+					sdk,
+					contextOptions,
+					{ units: { other: "u1" } },
+					{
+						experiments: [named("e", { unitType: "other" })],
+					}
+				);
+				expect(context.treatment("e")).toBe(ordinary.treatment("e"));
+				expect(context.treatment("e")).toBe(ordinary.treatment("e"));
+				expect(context._exposures.map((x) => [x.name, x.unit])).toEqual([["e", unitType]]);
+			});
+
+			it.each(memberNames)("publishes a unit type named %s", async (unitType) => {
+				publisher.publish.mockReturnValue(Promise.resolve());
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{ experiments: [named("e", { unitType })] }
+				);
+				context.unit(unitType, "u1");
+				context.treatment("e");
+				await context.publish();
+				const published = publisher.publish.mock.calls[publisher.publish.mock.calls.length - 1][0].units;
+				expect(published).toEqual([{ type: unitType, uid: hashUnit("u1") }]);
+			});
+
+			it.each(memberNames)("holds out an experiment named %s like an ordinary one", (member) => {
+				// Split [1, 0] always holds the unit out, so the experiment serves control.
+				const holdout = { ...shared(9, [1, 0], {}), name: "h", holdoutType: "full" };
+				const served = (experimentName) => {
+					const context = new Context(sdk, contextOptions, contextParams, {
+						experiments: [named(experimentName, { holdoutIds: [9] })],
+						holdouts: [holdout],
+					});
+					const variants = [context.treatment(experimentName), context.treatment(experimentName)];
+					return [
+						variants,
+						context._exposures.map((x) => (x.name === experimentName ? "experiment" : x.name)),
+					];
+				};
+				expect(served(member)).toEqual(served("ordinary"));
+			});
+
+			it.each(memberNames)("treats an unset unit type named %s as missing", (unitType) => {
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{ experiments: [named("e", { unitType })] }
+				);
+				expect(context.peek("e")).toBe(0);
+				expect(context.treatment("e")).toBe(0);
+				expect(context._exposures.map((x) => [x.name, x.assigned, x.unit])).toEqual([["e", false, unitType]]);
+			});
+
+			it.each(memberNames)("keeps a cached assignment whose unset unit type is named %s", (unitType) => {
+				// Split [1, 0] always holds out; with no unit the holdout entry is null, which marks the
+				// assignment for re-resolution once that unit is set (and only then).
+				const holdout = { ...shared(9, [1, 0], {}), name: "h", holdoutType: "full", unitType };
+				const context = new Context(
+					sdk,
+					contextOptions,
+					{ units: {} },
+					{
+						experiments: [named("e", { unitType, holdoutIds: [9] })],
+						holdouts: [holdout],
+					}
+				);
+				context.peek("e");
+				const cached = context._assignments.e;
+				expect(cached.holdoutAssignments).toEqual([null]);
+				context.peek("e");
+				expect(context._assignments.e).toBe(cached);
+				context.unit(unitType, "u1");
+				context.peek("e");
+				expect(context._assignments.e).not.toBe(cached);
+			});
+
+			it("keeps getUnits() an ordinary object, as in 1.13.4", () => {
+				const context = new Context(sdk, contextOptions, contextParams, { experiments: [] });
+				const unitMap = context.getUnits();
+				expect(Object.getPrototypeOf(unitMap)).toBe(Object.prototype);
+				// eslint-disable-next-line no-prototype-builtins
+				expect(unitMap.hasOwnProperty("session_id")).toBe(true);
+				expect(String(unitMap)).toBe("[object Object]");
 			});
 		});
 
@@ -7724,7 +8305,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -7954,7 +8535,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						attributes: [
 							{
 								name: "age",
@@ -8003,7 +8584,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -8209,7 +8790,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						goals: [
 							{
 								achievedAt: 1611141535729,
@@ -8368,7 +8949,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						goals: [
 							{
 								name: "goal1",
@@ -8476,7 +9057,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -8600,7 +9181,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						goals: [
 							{
 								name: "goal1",
@@ -8654,7 +9235,7 @@ describe("Context", () => {
 					publishedAt: 1611141535829,
 					units: publishUnits,
 					hashed: true,
-					sdkVersion: SDK_VERSION,
+
 					goals: [
 						{
 							achievedAt: 1611141535729,
@@ -8715,7 +9296,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -8796,7 +9377,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							goals: [
 								{
 									name: "goal2",
@@ -9019,7 +9600,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -9071,7 +9652,7 @@ describe("Context", () => {
 						publishedAt: 1611141535829,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -9643,7 +10224,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -9711,7 +10292,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 1,
@@ -9788,7 +10369,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 2,
@@ -9837,7 +10418,7 @@ describe("Context", () => {
 						publishedAt: 1611141535729,
 						units: publishUnits,
 						hashed: true,
-						sdkVersion: SDK_VERSION,
+
 						exposures: [
 							{
 								id: 3,
@@ -9909,7 +10490,7 @@ describe("Context", () => {
 							publishedAt: 1611141535829,
 							units: publishUnits,
 							hashed: true,
-							sdkVersion: SDK_VERSION,
+
 							exposures: [
 								{
 									id: 1,
@@ -10043,27 +10624,31 @@ describe("Context", () => {
 
 		it("should log an error through eventLogger when JSON cannot be parsed", () => {
 			const eventLogger = jest.fn();
+			const errorSpy = jest.spyOn(console, "error");
 			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_abc", "json_invalid")).toEqual(null);
-			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+			expect(errors).toHaveLength(1);
+			expect(errors[0].message).toMatch(
+				/^Failed to parse JSON custom field value 'json_invalid' for experiment 'exp_test_abc': /
+			);
+			expect(errorSpy).not.toHaveBeenCalled();
 		});
 
 		it("should log an error through eventLogger when a field type is invalid", () => {
 			const eventLogger = jest.fn();
+			const errorSpy = jest.spyOn(console, "error");
 			const context = new Context(sdk, { ...contextOptions, eventLogger }, contextParams, getContextResponse);
 			expect(context.pending()).toEqual(0);
 
 			expect(context.customFieldValue("exp_test_custom_fields", "invalid_type_field")).toEqual(null);
-			expect(eventLogger).toHaveBeenCalledWith(
-				context,
-				"error",
-				expect.objectContaining({
-					message:
-						"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
-				})
-			);
+			const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+			expect(errors.map((e) => e.message)).toEqual([
+				"Unknown custom field type 'invalid' for experiment 'exp_test_custom_fields' and key 'invalid_type_field' - you may need to upgrade to the latest SDK version",
+			]);
+			expect(errorSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -10696,7 +11281,7 @@ describe("Context input handling and lifecycle regressions", () => {
 	});
 
 	describe("error logging routed through eventLogger", () => {
-		it("should not call console.error directly for custom field parse errors", () => {
+		it("should route custom field parse errors through eventLogger, not the console", () => {
 			const eventLogger = jest.fn();
 			const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
@@ -10731,7 +11316,11 @@ describe("Context input handling and lifecycle regressions", () => {
 
 			context.customFieldValue("exp", "bad_json");
 			expect(errorSpy).not.toHaveBeenCalled();
-			expect(eventLogger).toHaveBeenCalledWith(context, "error", expect.any(Error));
+			const errors = eventLogger.mock.calls.filter(([, eventName]) => eventName === "error").map(([, , e]) => e);
+			expect(errors).toHaveLength(1);
+			expect(errors[0].message).toMatch(
+				/^Failed to parse JSON custom field value 'bad_json' for experiment 'exp': /
+			);
 			errorSpy.mockRestore();
 		});
 

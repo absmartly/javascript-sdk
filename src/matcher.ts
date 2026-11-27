@@ -41,7 +41,9 @@ export class AudienceMatcher {
 
 		if (audience && audience.filter) {
 			if (Array.isArray(audience.filter) || isObject(audience.filter)) {
-				return this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
+				return typeof this._jsonExpr.evaluateAudienceExpr === "function"
+					? this._jsonExpr.evaluateAudienceExpr(audience.filter, vars)
+					: this._jsonExpr.evaluateBooleanExpr(audience.filter, vars);
 			}
 		}
 
@@ -86,7 +88,7 @@ export class AudienceMatcher {
 				if (!Array.isArray(rule.environments)) continue;
 
 				if (rule.environments.length > 0) {
-					if (environmentName == null || !rule.environments.includes(environmentName)) {
+					if (environmentName == null || rule.environments.indexOf(environmentName) === -1) {
 						continue;
 					}
 				}

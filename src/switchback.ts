@@ -1,5 +1,5 @@
 import { murmur3_32 } from "./murmur3_32";
-import { stringToUint8Array, toWellFormedString } from "./utils";
+import { stringToUtf8Array, toWellFormedString } from "./utils";
 
 // Switchback experiments (R33, cluster-defined): a port of java-sdk's internal Switchback* classes,
 // which port the platform's SwitchbackAssignment and the Collector's ContextAPI.switchbackServing.
@@ -18,7 +18,9 @@ export function requireValidArmCount(armCount: number) {
 // surrogate encodes as '?', as the platform's String.getBytes(UTF_8) does.
 export function baseHash(clusterUnit: string, cycleIndex: string, seedHi: number, seedLo: number): number {
 	const key = toWellFormedString(`${clusterUnit}\u001f${cycleIndex}`, "?");
-	const keyHash = murmur3_32(stringToUint8Array(key).buffer);
+	// Copied into an exact-length array: an encoder may return a view over a larger buffer. The
+	// Uint8Array copy, unlike ArrayBuffer.prototype.slice, also exists in IE 10.
+	const keyHash = murmur3_32(new Uint8Array(stringToUtf8Array(key)).buffer);
 
 	const buffer = new ArrayBuffer(12);
 	const view = new DataView(buffer);

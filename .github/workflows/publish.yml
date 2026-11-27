@@ -1,0 +1,59 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    concurrency:
+      group: npm-publish-absmartly-javascript-sdk
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      - name: Install a trusted-publishing-compatible npm
+        run: npm install --global npm@11.6.2
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate version and select distribution tag
+        id: release
+        run: node scripts/check-release.js
+
+      - name: Build and test
+        run: npm run build
+
+      - name: Inspect package
+        run: npm pack --dry-run --ignore-scripts
+
+      # A manual run is a package preflight only: npm's dry run skips the authenticated publish request,
+      # so it cannot prove OIDC or any token works. Only a pushed v* tag publishes.
+      - name: Dry-run publish (package preflight)
+        if: github.event_name == 'workflow_dispatch'
+        run: npm publish --dry-run --ignore-scripts --provenance --access public --tag "$DIST_TAG"
+        env:
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+
+      - name: Publish with trusted publishing
+        if: github.event_name == 'push'
+        run: npm publish --ignore-scripts --provenance --access public --tag "$DIST_TAG"
+        env:
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
