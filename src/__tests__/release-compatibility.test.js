@@ -465,6 +465,39 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		await expect(context.ready()).rejects.toThrow(TypeError);
 	});
 
+	it("parses a mismatching strict audience once per evaluation", () => {
+		const audience = '{"filter":[{"value":false}]}';
+		const parse = jest.spyOn(JSON, "parse");
+		try {
+			const context = new SDK(options).createContextWith(
+				{ units: { session_id: "u1" } },
+				{ experiments: [cacheProbeExperiment({ audience, audienceStrict: true })] }
+			);
+			parse.mockClear();
+			expect(context.peek("cacheProbe")).toBe(0);
+			expect(parse.mock.calls.filter(([text]) => text === audience)).toHaveLength(1);
+		} finally {
+			parse.mockRestore();
+		}
+	});
+
+	it("throws a TypeError reading a rule experiment through a custom client without getApplication()", () => {
+		const client = {
+			getContext: () => Promise.resolve({ experiments: [] }),
+			publish: () => Promise.resolve(),
+			getEnvironment: () => "prod",
+			getAgent: () => "agent",
+		};
+		const experiment = cacheProbeExperiment({
+			assignmentRules: JSON.stringify({ rules: [{ type: "assign", variant: 1, conditions: { value: true } }] }),
+		});
+		const context = new SDK({ ...options, client, eventLogger() {} }).createContextWith(
+			{ units: { session_id: "u1" } },
+			{ experiments: [experiment] }
+		);
+		expect(() => context.peek("cacheProbe")).toThrow(TypeError);
+	});
+
 	it("parses a valid audience once per evaluation", () => {
 		const parse = jest.spyOn(JSON, "parse");
 		try {

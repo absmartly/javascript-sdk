@@ -84,8 +84,9 @@
   options when they are explicitly `undefined`, so the defaults apply (1.13.4 passed
   `agent: undefined` through and the `Client` rejected it).
 - `ClientOptions.application.version` is `number | string`, so the `SDK` and `Client`
-  constructors accept a string application version (`application: { name, version:
-"1.2.3" }`); the deprecated `ClientInputOptions` is an alias of `ClientOptions`.
+  constructors accept a string application version
+  (`application: { name, version: "1.2.3" }`); the deprecated `ClientInputOptions`
+  is an alias of `ClientOptions`.
   Affected: TypeScript code that reads `application.version` as a `number`, which must
   now narrow it.
 - `ready()` is declared `Promise<boolean>` (1.13.4 declared `Promise<unknown>`); it
@@ -108,8 +109,10 @@
   `getEnvironment()`, `createContextWith()` throws a `TypeError`, and a context from
   `createContext()` never becomes ready: its `ready()` rejects with that `TypeError`
   (1.13.4's never rejected), and Node reports an unhandled rejection if nothing waits
-  on it. Without `getApplication()`, evaluating an audience or assignment rule emits
-  a `TypeError` logger `error` event and the audience counts as a mismatch. Without
+  on it. Without `getApplication()`, evaluating an audience emits a `TypeError`
+  logger `error` event and the audience counts as a mismatch, and `treatment()`,
+  `peek()` and `variableValue()` of an experiment with assignment rules throw that
+  `TypeError` to the caller. Without
   `getAgent()`, `publish()` with `includeSystemAttributes` rejects with a `TypeError`.
   Affected: applications passing their own `client` object.
 - `variableValue()` no longer queues an exposure for an experiment the unit is not
@@ -125,9 +128,9 @@
   differs from the client one, who now get more (or fewer) retries to match it.
   `timeout: 0` (or a negative value) now means no deadline: a request value of 0 no
   longer falls back to the client timeout, and the request retries up to `retries`
-  times without a time limit (1.13.4 used the client timeout, and did not retry when that was 0 too). Affected: callers configuring
-  `timeout: 0` or a negative timeout, whose requests can now wait indefinitely for a
-  slow server.
+  times without a time limit (1.13.4 used the client timeout, and did not retry when
+  that was 0 too). Affected: callers configuring `timeout: 0` or a negative timeout,
+  whose requests can now wait indefinitely for a slow server.
 - An audience whose evaluation throws now counts as a mismatch (fail closed) and
   emits one logger `error` event; in 1.13.4 it was ignored, so strict audiences
   could let users through. Affected: strict audiences with, for example, a throwing
