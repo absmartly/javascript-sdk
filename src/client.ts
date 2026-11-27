@@ -173,6 +173,12 @@ export default class Client {
 			}
 		}
 
+		if (options.auth === true) {
+			console.warn(
+				"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
+			);
+		}
+
 		const controller = new AbortController();
 
 		const tryOnce = () => {
@@ -182,12 +188,6 @@ export default class Client {
 				signal: controller.signal,
 				keepalive: this._opts.keepalive,
 			};
-
-			if (options.auth === true) {
-				console.warn(
-					"[ABsmartly] The `auth` option is deprecated. Auth headers are now sent by default. Remove `auth: true` from your request options."
-				);
-			}
 
 			if (options.auth !== false) {
 				opts.headers = {

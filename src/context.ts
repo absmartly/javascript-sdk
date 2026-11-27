@@ -700,19 +700,23 @@ export default class Context {
 	}
 
 	private _evaluateAudience(audience: string): boolean | null {
+		let result: boolean | null;
 		try {
-			JSON.parse(audience);
-		} catch (error) {
-			// Invalid audience JSON is indeterminate (null), as in 1.13.4, and reported to the eventLogger.
-			this._logError(new Error(`Invalid audience JSON: ${(error as Error).message}`));
-			return null;
-		}
-		try {
-			return this._audienceMatcher.evaluate(audience, this._getAttributesMap());
+			result = this._audienceMatcher.evaluate(audience, this._getAttributesMap());
 		} catch (error) {
 			this._logError(error as Error);
 			return false;
 		}
+		// Invalid audience JSON is indeterminate (null), as in 1.13.4, and reported to the eventLogger. It is
+		// only parsed again when the result is already null, so a valid audience is parsed once.
+		if (result === null) {
+			try {
+				JSON.parse(audience);
+			} catch (error) {
+				this._logError(new Error(`Invalid audience JSON: ${(error as Error).message}`));
+			}
+		}
+		return result;
 	}
 
 	// `now` is the clock reading a switchback resolves its period at; read here when not given.

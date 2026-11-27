@@ -42,6 +42,7 @@ const ACCEPTED_RUNTIME_DIFFERENCES = [
 	'runtime.errors.notReady.message: "ABSmartly Context is not yet ready." -> "ABsmartly Context is not yet ready."',
 	'runtime.errors.finalized.message: "ABSmartly Context is finalized." -> "ABsmartly Context is finalized."',
 	// Canonical UTF-8 unit hashing: sweep entry 256 is the emoji UID "😀", outside the BMP.
+	'runtime.sweep.256.hash: "-Z9RwqljCn9rjBPBgYvAwg" -> "KgLqw51xanDs83V5GFkntg"',
 	"runtime.sweep.256.peek: 0 -> 1",
 	"runtime.sweep.256.treatment: 0 -> 1",
 ];
@@ -188,18 +189,18 @@ async function main() {
 			]) {
 				const outcome = compile(tmp, path.join(compilerDir, "bin", "tsc"), pkg, `${alias}-${label}`);
 				result.types[expected][label] = outcome;
-				if (label === "candidate" && !outcome.passed) {
+				if (label === "candidate") {
 					outcome.unaccepted = unacceptedTypeErrors(outcome.output);
 					outcome.accepted = outcome.unaccepted.length === 0;
 				}
-				const status = outcome.passed
-					? "PASS"
-					: outcome.accepted
+				const status = outcome.accepted
 					? "PASS (accepted 1.14.0 breaks only)"
+					: outcome.passed && !outcome.unaccepted
+					? "PASS"
 					: "FAIL";
 				console.log(`TypeScript ${expected} ${label}: ${status}`);
 				if (!outcome.passed) console.error(outcome.output);
-				if (!outcome.passed && !outcome.accepted) {
+				if (outcome.unaccepted ? !outcome.accepted : !outcome.passed) {
 					if (outcome.unaccepted) console.error(outcome.unaccepted.join("\n"));
 					result.errors.push(`TypeScript ${expected} ${label} failed`);
 				}

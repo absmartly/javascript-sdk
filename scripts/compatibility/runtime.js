@@ -66,7 +66,7 @@ function errorOf(fn) {
 	}
 }
 
-async function measure(api) {
+async function measure(api, hashUnit) {
 	const events = [];
 	const published = [];
 	let providerCalls = 0;
@@ -138,7 +138,7 @@ async function measure(api) {
 	]);
 	for (const uid of uids) {
 		const ctx = sdk.createContextWith({ units: { session_id: uid } }, fixture, contextOptions);
-		sweep.push({ uid, peek: ctx.peek("checkout"), treatment: ctx.treatment("checkout") });
+		sweep.push({ uid, hash: hashUnit(uid), peek: ctx.peek("checkout"), treatment: ctx.treatment("checkout") });
 	}
 	// The sweep must not pollute the lifecycle trace.
 	return { values, states, errors, events: lifecycleEvents, published, providerCalls, sweep };
@@ -217,8 +217,8 @@ module.exports = async function compareRuntime(baselinePath, candidatePath) {
 	let after;
 	try {
 		Date.now = () => CLOCK;
-		before = await measure(baseline);
-		after = await measure(candidate);
+		before = await measure(baseline, require(path.join(baselineDir, "lib", "utils")).hashUnit);
+		after = await measure(candidate, require(path.join(candidateDir, "lib", "utils")).hashUnit);
 	} finally {
 		Date.now = oldNow;
 	}

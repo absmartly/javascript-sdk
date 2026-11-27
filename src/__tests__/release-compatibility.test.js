@@ -407,6 +407,79 @@ describe("1.13.4 source and behaviour compatibility", () => {
 		expect(messages).toContain("Discarding 1 exposures and 2 goals because context failed to initialize");
 	});
 
+	it("warns about auth: true once per request, not once per retry, on every request", async () => {
+		sdkFetch
+			.mockRejectedValueOnce(new Error("connection refused"))
+			.mockRejectedValueOnce(new Error("connection refused"))
+			.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		const deprecation = () => warn.mock.calls.filter(([message]) => /deprecated/.test(String(message))).length;
+		try {
+			const client = new Client({ ...options, retries: 3 });
+			await client.request({ path: "/x", method: "GET", auth: true });
+			expect(sdkFetch).toHaveBeenCalledTimes(3);
+			expect(deprecation()).toBe(1);
+			await client.request({ path: "/x", method: "GET", auth: true });
+			expect(deprecation()).toBe(2);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("passes a null client option through to the Client, unlike an undefined one", () => {
+		expect(() => new SDK({ ...options, agent: null })).toThrow();
+		expect(new SDK({ ...options, agent: undefined }).getClient().getAgent()).toBe(
+			`absmartly-javascript-sdk/${SDK_VERSION}`
+		);
+	});
+
+	it("treats a negative timeout like 0: retries without a deadline", async () => {
+		sdkFetch.mockRejectedValue(new Error("connection refused"));
+		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const client = new Client({ ...options, timeout: 3000, retries: 3 });
+			const error = await client.request({ path: "/x", method: "GET", timeout: -1 }).catch((e) => e);
+			expect(error.name).toBe("RetryError");
+			expect(sdkFetch).toHaveBeenCalledTimes(4);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("reports a discarded goal-only queue of a failed context", async () => {
+		const eventLogger = jest.fn();
+		const provider = { getContextData: () => Promise.reject(new Error("load failed")) };
+		const context = new SDK({ ...options, provider, eventLogger }).createContext({ units: { session_id: "u1" } });
+		await context.ready();
+		context.track("g1");
+		await context.publish();
+		const messages = eventLogger.mock.calls
+			.filter(([, eventName]) => eventName === "error")
+			.map(([, , error]) => error.message);
+		expect(messages).toContain("Discarding 0 exposures and 1 goals because context failed to initialize");
+	});
+
+	it("rejects ready() of a fetched context whose custom client lacks getEnvironment()", async () => {
+		const client = { getContext: () => Promise.resolve({ experiments: [] }), publish: () => Promise.resolve() };
+		const context = new SDK({ ...options, client }).createContext({ units: { session_id: "u1" } });
+		await expect(context.ready()).rejects.toThrow(TypeError);
+	});
+
+	it("parses a valid audience once per evaluation", () => {
+		const parse = jest.spyOn(JSON, "parse");
+		try {
+			const context = new SDK(options).createContextWith(
+				{ units: { session_id: "u1" } },
+				{ experiments: [cacheProbeExperiment({ audience: '{"filter":[{"value":true}]}' })] }
+			);
+			parse.mockClear();
+			context.peek("cacheProbe");
+			expect(parse.mock.calls.filter(([text]) => text === '{"filter":[{"value":true}]}')).toHaveLength(1);
+		} finally {
+			parse.mockRestore();
+		}
+	});
+
 	it("bounds retries by a per-request timeout that overrides the client timeout", async () => {
 		sdkFetch.mockRejectedValue(new Error("connection refused"));
 		const warn = jest.spyOn(console, "warn").mockImplementation(() => {});

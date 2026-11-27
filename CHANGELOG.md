@@ -10,10 +10,6 @@
 - Semantic-version expression operators (`semver_eq/gt/gte/lt/lte`) and
   `Evaluator.versionCompare`; old expression operators keep their conversion rules.
 - Optional `includeSystemAttributes` publishes `sdk_name` and `sdk_version` only.
-- The `SDK` and `Client` constructors accept a string application version
-  (`application: { name, version: "1.2.3" }`): `ClientOptions.application.version`
-  is now `number | string`, and the deprecated `ClientInputOptions` is an alias of
-  `ClientOptions`. TypeScript code that reads `version` as a `number` must narrow it.
 - Tag-driven npm Trusted Publishing, a manual dry-run package preflight (it does
   not prove authentication works: npm may try to obtain an OIDC token but skips the
   upload), and a `repository` field in `package.json`, which npm provenance requires.
@@ -87,6 +83,11 @@
 - The `SDK` constructor ignores `agent`, `timeout`, `keepalive` and the other client
   options when they are explicitly `undefined`, so the defaults apply (1.13.4 passed
   `agent: undefined` through and the `Client` rejected it).
+- `ClientOptions.application.version` is `number | string`, so the `SDK` and `Client`
+  constructors accept a string application version (`application: { name, version:
+"1.2.3" }`); the deprecated `ClientInputOptions` is an alias of `ClientOptions`.
+  Affected: TypeScript code that reads `application.version` as a `number`, which must
+  now narrow it.
 - `ready()` is declared `Promise<boolean>` (1.13.4 declared `Promise<unknown>`); it
   resolves `true` as before, even when loading fails.
 - `getUnits()` returns a copy: editing it no longer changes the context's units.
@@ -103,8 +104,14 @@
   discarding them. Affected: event loggers that treat every `error` event as fatal,
   and log scrapers.
 - A custom `client` passed to the SDK must implement `getApplication()`,
-  `getEnvironment()` and `getAgent()` (the bundled `Client` has them); creating a
-  context with a client that lacks them throws a `TypeError`.
+  `getEnvironment()` and `getAgent()` (the bundled `Client` has them). Without
+  `getEnvironment()`, `createContextWith()` throws a `TypeError`, and a context from
+  `createContext()` never becomes ready: its `ready()` rejects with that `TypeError`
+  (1.13.4's never rejected), and Node reports an unhandled rejection if nothing waits
+  on it. Without `getApplication()`, evaluating an audience or assignment rule emits
+  a `TypeError` logger `error` event and the audience counts as a mismatch. Without
+  `getAgent()`, `publish()` with `includeSystemAttributes` rejects with a `TypeError`.
+  Affected: applications passing their own `client` object.
 - `variableValue()` no longer queues an exposure for an experiment the unit is not
   in (strict audience mismatch, or no unit for its unit type), even when that is
   the only experiment defining the key; 1.13.4 published one with
@@ -116,10 +123,11 @@
 - A per-request `timeout` now also bounds the retry budget; 1.13.4 always used the
   client timeout for it. Affected: callers passing a per-request `timeout` that
   differs from the client one, who now get more (or fewer) retries to match it.
-  `timeout: 0` now means no deadline: a request value of 0 no longer falls back to
-  the client timeout, and the request retries up to `retries` times without a time
-  limit (1.13.4 used the client timeout, and did not retry when that was 0 too). Affected: callers configuring
-  `timeout: 0`, whose requests can now wait indefinitely for a slow server.
+  `timeout: 0` (or a negative value) now means no deadline: a request value of 0 no
+  longer falls back to the client timeout, and the request retries up to `retries`
+  times without a time limit (1.13.4 used the client timeout, and did not retry when that was 0 too). Affected: callers configuring
+  `timeout: 0` or a negative timeout, whose requests can now wait indefinitely for a
+  slow server.
 - An audience whose evaluation throws now counts as a mismatch (fail closed) and
   emits one logger `error` event; in 1.13.4 it was ignored, so strict audiences
   could let users through. Affected: strict audiences with, for example, a throwing
